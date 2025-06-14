@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="WeaponStats" load_steps=2 format=3 uid="uid://c4m35pe4diaqi"]
+
+[ext_resource type="Script" uid="uid://7jmjdfyeuay1" path="res://scenes/weapons/WeaponStats.gd" id="1_la0iq"]
+
+[resource]
+script = ExtResource("1_la0iq")
+weapon_name = "Pistola"
+weapon_type = "ranged"
+damage = 25
+attack_speed = 1.5
+attack_range = 400
+projectile_speed = 600
+ammo_capacity = -1
+reload_time = 0.0
+accuracy = 0.95
+spread_angle = 0.0
+bullets_per_shot = 1
+has_piercing = false
+has_explosive = false
+knockback_force = 0.0
+metadata/_custom_type_script = "uid://7jmjdfyeuay1"

@@ -1,0 +1,11 @@
+# En tu carpeta del proyecto Godot
+git init
+git add .gitignore
+git add .
+git commit -m "Initial commit"
+
+# Agregar remote (reemplaza con tu URL real)
+git remote add origin https://github.com/xeexuu/Roguelike-roguelite.git
+
+# Push inicial						git branch -M main
+git push -u origin main					git push origin main

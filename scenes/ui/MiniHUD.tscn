@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://bkj5m3n8o4qaq"]
+
+[ext_resource type="Script" uid="uid://jt8vhqmums80" path="res://scenes/ui/MiniHUD.gd" id="1_minihud"]
+
+[node name="MiniHUD" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_minihud")
