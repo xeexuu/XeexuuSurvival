@@ -14,6 +14,5 @@ script = ExtResource("2_lfs8f")
 
 [node name="Player" parent="PlayerManager" instance=ExtResource("2_3ghtp")]
 position = Vector2(960, 540)
-speed = null
 
 [node name="UIManager" type="CanvasLayer" parent="."]

@@ -882,7 +882,7 @@ func setup_unified_cod_system():
 	add_child(enemy_spawner)
 	
 	# 6. Conectar sistemas
-	enemy_spawner.setup(self, rounds_manager)
+	enemy_spawner.setup(player, rounds_manager)
 	rounds_manager.set_enemy_spawner(enemy_spawner)
 	
 	# 7. Conectar señales
