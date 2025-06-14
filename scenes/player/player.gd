@@ -1,546 +1,597 @@
-# scenes/player/player.gd
-extends CharacterBody2D
-class_name Player
+# scenes/managers/game_manager.gd
+extends Node
+class_name GameManager
 
-signal player_died
-signal health_changed(current_health: int, max_health: int)
+@onready var level_manager = $LevelManager
+@onready var player_manager = $PlayerManager
+@onready var ui_manager = $UIManager
 
-@export var speed: float = 150.0  # Velocidad estilo COD zombies
-@export var character_stats: CharacterStats
+var current_level: int = 1
+var game_state: String = "character_selection"
+var player: Player
+var mobile_controls: Control
+var background_sprite: Sprite2D
 
-@onready var animated_sprite = $AnimatedSprite2D
-@onready var camera = $Camera2D
-@onready var shooting_component = $ShootingComponent
-@onready var collision_shape = $CollisionShape2D
+# MENÚ DE PAUSA
+var pause_menu: PauseMenu
+var mobile_menu_button: MobileMenuButton
 
-# NUEVO: Componente de renderizado de arma
-var weapon_renderer: WeaponRenderer
-
-# SISTEMA DE AUDIO SIMPLE
-var audio_player: AudioStreamPlayer2D
-var is_audio_playing: bool = false
-
-var bullets_fired: int = 0
-var current_health: int = 100
-var is_dead: bool = false  # NUEVO: Estado de muerte
-
-# SISTEMA DE ANIMACIONES SIMPLIFICADO - SIN IZQUIERDA/DERECHA
-enum AnimationState {
-	IDLE,
-	WALK_UP,
-	WALK_DOWN,
-	WALK_UP_LEFT,
-	WALK_UP_RIGHT,
-	WALK_DOWN_LEFT,
-	WALK_DOWN_RIGHT
-}
-
-var current_animation_state: AnimationState = AnimationState.IDLE
-
-# Control de orientación y estado
-var facing_right: bool = true
-var last_movement_direction: Vector2 = Vector2.ZERO
-var current_aim_direction: Vector2 = Vector2(1, 0)
-
-# Movimiento móvil
-var mobile_movement_direction: Vector2 = Vector2.ZERO
-
-# Límites del mapa
-var map_bounds: Rect2 = Rect2(-800, -800, 1600, 1600)
-var camera_bounds: Rect2 = Rect2(-900, -900, 1800, 1800)
-
+# Variables para controles móviles - JOYSTICKS MEJORADOS
 var is_mobile: bool = false
 
-# NUEVO: Sistema de sonido de Pelao cuando mata enemigos
-var pelao_kill_sound: AudioStream
-var kill_sound_chance: float = 0.3  # 30% probabilidad
+# JOYSTICK DE MOVIMIENTO MEJORADO
+var movement_joystick_base: Control
+var movement_joystick_knob: Control
+var movement_joystick_area: Control
+var movement_joystick_center: Vector2
+var movement_joystick_max_distance: float = 160.0
+var movement_joystick_dead_zone: float = 25.0
+var current_movement = Vector2.ZERO
+var movement_touch_id: int = -1
 
-# REFERENCIAS DEL SISTEMA
-var score_system: ScoreSystem = null
+# JOYSTICK DE DISPARO MEJORADO
+var shooting_joystick_base: Control
+var shooting_joystick_knob: Control
+var shooting_joystick_area: Control
+var shooting_joystick_center: Vector2
+var shooting_joystick_max_distance: float = 140.0
+var shooting_joystick_dead_zone: float = 20.0
+var current_shoot_direction = Vector2.ZERO
+var shoot_touch_id: int = -1
+var is_shooting: bool = false
+
+# Control de rendimiento
+var last_movement_update: float = 0.0
+var last_shooting_update: float = 0.0
+var joystick_update_interval: float = 1.0 / 60.0
+
+# Variables de selección de personaje
+var selected_character_stats: CharacterStats
+var game_started: bool = false
+
+# SISTEMA DE ENEMIGOS Y RONDAS - UNIFICADO CON PUNTUACIÓN
+var enemy_spawner: EnemySpawner
+var rounds_manager: RoundsManager
+var score_system: ScoreSystem
+var enemies_killed: int = 0
+
+var mobile_process_counter: int = 0
+var mobile_process_skip: int = 1
+
+# GAME OVER
+var game_over_screen: Control
+var is_game_over: bool = false
+
+func _process(_delta):
+	if not game_started or is_game_over:
+		return
+		
+	if is_mobile and player:
+		mobile_process_counter += 1
+		if mobile_process_counter >= mobile_process_skip:
+			mobile_process_counter = 0
+			
+			if current_movement.length() < 0.1:
+				player.mobile_movement_direction = Vector2.ZERO
+			else:
+				player.mobile_movement_direction = current_movement
+			
+			if is_shooting and current_shoot_direction.length() > 0:
+				player.mobile_shoot(current_shoot_direction)
 
 func _ready():
 	is_mobile = OS.has_feature("mobile")
-	z_index = 50
+	setup_background()
+	setup_window()
+	setup_pause_menu()
 	
-	if not animated_sprite:
-		push_error("AnimatedSprite2D no encontrado. Asegúrate de que esté en la escena.")
+	await get_tree().process_frame
+	show_character_selection()
+
+func _input(event):
+	# MEJOR DETECCIÓN DEL MENÚ - FORZAR PARA TODAS LAS PLATAFORMAS
+	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.keycode == KEY_ESCAPE):
+		if game_started and game_state == "playing" and not is_game_over:
+			toggle_pause_menu()
 		return
 	
-	# Configurar estadísticas por defecto si no las hay
-	if not character_stats:
-		character_stats = CharacterStats.new()
-		character_stats.character_name = "Guerrero"
+	# Para Android, detectar el botón de back del sistema
+	if event is InputEventKey and event.keycode == KEY_BACK:
+		if game_started and game_state == "playing" and not is_game_over:
+			toggle_pause_menu()
+		return
 	
-	# USAR VELOCIDAD DEL PERSONAJE
-	speed = character_stats.movement_speed
-	current_health = character_stats.current_health
+	if event.is_action_pressed("toggle_fullscreen"):
+		toggle_fullscreen()
 	
-	# Configurar componentes
-	setup_camera()
-	setup_shooting()
-	setup_audio_system()
-	setup_collision()
-	setup_walking_animations_from_stats()
-	setup_weapon_renderer()
+	if not is_mobile or not game_started:
+		return
 	
+	if event is InputEventScreenTouch:
+		handle_touch_event(event)
+	elif event is InputEventScreenDrag:
+		handle_drag_event(event)
+
+func handle_touch_event(event: InputEventScreenTouch):
+	var touch_pos = event.position
+	var touch_id = event.index
+	
+	if event.pressed:
+		if movement_joystick_area and is_point_in_control(touch_pos, movement_joystick_area):
+			if movement_touch_id == -1:
+				movement_touch_id = touch_id
+				handle_movement_joystick(touch_pos, true)
+		
+		elif shooting_joystick_area and is_point_in_control(touch_pos, shooting_joystick_area):
+			if shoot_touch_id == -1:
+				shoot_touch_id = touch_id
+				handle_shooting_joystick(touch_pos, true)
+	else:
+		if touch_id == movement_touch_id:
+			movement_touch_id = -1
+			reset_movement_joystick()
+		elif touch_id == shoot_touch_id:
+			shoot_touch_id = -1
+			reset_shooting_joystick()
+
+func handle_drag_event(event: InputEventScreenDrag):
+	var touch_id = event.index
+	var touch_pos = event.position
+	
+	var current_time = Time.get_ticks_msec() / 1000.0
+	
+	if touch_id == movement_touch_id:
+		if current_time - last_movement_update >= joystick_update_interval:
+			handle_movement_joystick(touch_pos, true)
+			last_movement_update = current_time
+	elif touch_id == shoot_touch_id:
+		if current_time - last_shooting_update >= joystick_update_interval:
+			handle_shooting_joystick(touch_pos, true)
+			last_shooting_update = current_time
+
+func is_point_in_control(point: Vector2, control: Control) -> bool:
+	if not control:
+		return false
+	var control_rect = Rect2(control.global_position, control.size)
+	return control_rect.has_point(point)
+
+func handle_movement_joystick(touch_pos: Vector2, pressed: bool):
+	if not movement_joystick_base or not movement_joystick_knob:
+		return
+	
+	if pressed:
+		var offset = touch_pos - movement_joystick_center
+		var distance = offset.length()
+		
+		if distance > movement_joystick_max_distance:
+			offset = offset.normalized() * movement_joystick_max_distance
+			distance = movement_joystick_max_distance
+		
+		movement_joystick_knob.position = Vector2(140, 140) + offset
+		
+		if distance > movement_joystick_dead_zone:
+			var strength = (distance - movement_joystick_dead_zone) / (movement_joystick_max_distance - movement_joystick_dead_zone)
+			strength = min(strength, 1.0)
+			current_movement = offset.normalized() * strength
+		else:
+			current_movement = Vector2.ZERO
+
+func reset_movement_joystick():
+	if movement_joystick_knob:
+		movement_joystick_knob.position = Vector2(140, 140)
+	current_movement = Vector2.ZERO
+
+func handle_shooting_joystick(touch_pos: Vector2, pressed: bool):
+	if not shooting_joystick_base or not shooting_joystick_knob:
+		return
+	
+	if pressed:
+		var offset = touch_pos - shooting_joystick_center
+		var distance = offset.length()
+		
+		if distance > shooting_joystick_max_distance:
+			offset = offset.normalized() * shooting_joystick_max_distance
+			distance = shooting_joystick_max_distance
+		
+		shooting_joystick_knob.position = Vector2(140, 140) + offset
+		
+		if distance > shooting_joystick_dead_zone:
+			var strength = (distance - shooting_joystick_dead_zone) / (shooting_joystick_max_distance - shooting_joystick_dead_zone)
+			strength = min(strength, 1.0)
+			current_shoot_direction = offset.normalized()
+			is_shooting = true
+		else:
+			current_shoot_direction = Vector2.ZERO
+			is_shooting = false
+	else:
+		reset_shooting_joystick()
+
+func reset_shooting_joystick():
+	if shooting_joystick_knob:
+		shooting_joystick_knob.position = Vector2(140, 140)
+	current_shoot_direction = Vector2.ZERO
+	is_shooting = false
+
+func toggle_fullscreen():
+	var current_mode = DisplayServer.window_get_mode()
+	if current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+func toggle_pause_menu():
+	if pause_menu.is_paused:
+		pause_menu.hide_menu()
+	else:
+		pause_menu.show_menu()
+
+func _on_mobile_menu_pressed():
+	print("🎮 Botón de menú móvil presionado en GameManager")
+	toggle_pause_menu()
+
+func _on_resume_game():
+	resume_enemy_spawning()
+
+func _on_restart_game():
+	restart_entire_game()
+
+func _on_quit_game():
+	clear_all_enemies()
+	get_tree().paused = false
+	get_tree().quit()
+
+func restart_entire_game():
+	# Limpiar estado
+	clear_all_enemies()
+	is_game_over = false
+	game_started = false
+	enemies_killed = 0
+	
+	# Ocultar pantallas
+	if game_over_screen:
+		game_over_screen.queue_free()
+		game_over_screen = null
+	
+	if pause_menu:
+		pause_menu.hide_menu()
+	
+	# Limpiar controles móviles
+	if mobile_controls:
+		mobile_controls.queue_free()
+		mobile_controls = null
+	
+	# Despausar
+	get_tree().paused = false
+	
+	# Recargar escena
+	get_tree().reload_current_scene()
+
+func setup_pause_menu():
+	pause_menu = preload("res://scenes/ui/PauseMenu.tscn").instantiate()
+	pause_menu.resume_game.connect(_on_resume_game)
+	pause_menu.restart_game.connect(_on_restart_game)
+	pause_menu.quit_game.connect(_on_quit_game)
+	ui_manager.add_child(pause_menu)
+	
+	# CREAR BOTÓN DE MENÚ MÓVIL SIEMPRE (PARA TODAS LAS PLATAFORMAS)
+	mobile_menu_button = MobileMenuButton.new()
+	mobile_menu_button.menu_pressed.connect(_on_mobile_menu_pressed)
+	mobile_menu_button.visible = true  # FORZAR VISIBLE
+	ui_manager.add_child(mobile_menu_button)
+	
+	print("🎮 Botón de menú móvil creado y conectado")
+
+func show_character_selection():
+	var character_selection = preload("res://scenes/ui/CharacterSelection.tscn").instantiate()
+	character_selection.character_selected.connect(_on_character_selected)
+	ui_manager.add_child(character_selection)
+	
+	if player_manager.get_child_count() > 0:
+		player = player_manager.get_child(0) as Player
+		if player:
+			player.set_physics_process(false)
+			player.set_process(false)
+
+func _on_character_selected(character_stats: CharacterStats):
+	selected_character_stats = character_stats
+	game_state = "playing"
+	
+	setup_player()
 	if is_mobile:
-		Engine.physics_ticks_per_second = 60
-
-func set_score_system(score_sys: ScoreSystem):
-	"""Establecer referencia al sistema de puntuación"""
-	score_system = score_sys
-
-func setup_weapon_renderer():
-	"""Configurar el renderizador de arma"""
-	weapon_renderer = WeaponRenderer.new()
-	weapon_renderer.name = "WeaponRenderer"
-	add_child(weapon_renderer)
+		setup_mobile_controls()
 	
-	# Configurar referencia al jugador
-	weapon_renderer.set_player_reference(self)
+	setup_mini_hud()
+	setup_unified_cod_system()
 	
-	# Si ya tenemos estadísticas de personaje con arma, configurarla
-	if character_stats and character_stats.equipped_weapon:
-		weapon_renderer.set_weapon_stats(character_stats.equipped_weapon)
-
-func setup_collision():
-	"""Configurar la forma de colisión basada en el sprite escalado a 128px"""
-	if collision_shape and collision_shape.shape is RectangleShape2D:
-		var rect_shape = collision_shape.shape as RectangleShape2D
-		rect_shape.size = Vector2(48, 80)
-		collision_shape.position = Vector2(0, 8)
-
-func setup_audio_system():
-	audio_player = AudioStreamPlayer2D.new()
-	audio_player.name = "AudioPlayer"
-	audio_player.volume_db = 5.0
-	audio_player.max_distance = 2000.0
-	audio_player.attenuation = 1.0
-	audio_player.bus = "Master"
-	audio_player.finished.connect(_on_audio_finished)
-	add_child(audio_player)
-	
-	if OS.has_feature("mobile"):
-		audio_player.volume_db = 8.0
-	
-	# Cargar sonido de kill de Pelao acelerado
-	if ResourceLoader.exists("res://audio/pelao_shoot.ogg"):
-		pelao_kill_sound = load("res://audio/pelao_shoot.ogg")
-
-func _on_audio_finished():
-	is_audio_playing = false
-
-func play_shoot_sound():
-	var weapon_sound: AudioStream = null
-	if character_stats and character_stats.equipped_weapon:
-		weapon_sound = character_stats.equipped_weapon.attack_sound
-	
-	if not weapon_sound or not audio_player:
-		return
-	
-	if is_mobile:
-		if is_audio_playing:
-			return
+	if player:
+		player.set_physics_process(true)
+		player.set_process(true)
 		
-		if audio_player.stream != weapon_sound:
-			audio_player.stream = weapon_sound
-		
-		if audio_player.stream:
-			audio_player.play()
-			is_audio_playing = true
-	else:
-		if not is_audio_playing:
-			audio_player.stream = weapon_sound
-			if audio_player.stream:
-				audio_player.play()
-				is_audio_playing = true
+		# CONECTAR SEÑAL DE MUERTE DEL JUGADOR
+		player.player_died.connect(_on_player_died)
+	
+	game_started = true
 
-# NUEVO: Función para reproducir sonido de kill de Pelao
-func play_pelao_kill_sound():
-	"""Reproducir sonido de Pelao cuando mata enemigo (solo para Pelao)"""
-	if not character_stats or character_stats.character_name.to_lower() != "pelao":
+func _on_player_died():
+	print("💀 JUGADOR HA MUERTO - INICIANDO GAME OVER")
+	show_game_over_screen()
+
+func show_game_over_screen():
+	if is_game_over:
 		return
 	
-	if not pelao_kill_sound or randf() > kill_sound_chance:
-		return
+	is_game_over = true
+	get_tree().paused = true
 	
-	if is_audio_playing:
-		return
+	# Crear pantalla de Game Over
+	game_over_screen = Control.new()
+	game_over_screen.name = "GameOverScreen"
+	game_over_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	game_over_screen.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	
-	audio_player.stream = pelao_kill_sound
-	audio_player.pitch_scale = 1.5  # Acelerar 1.5x
-	audio_player.play()
-	is_audio_playing = true
-
-func setup_camera():
-	if camera:
-		camera.enabled = true
-		camera.make_current()
-		if is_mobile:
-			camera.zoom = Vector2(1.8, 1.8)
-		else:
-			camera.zoom = Vector2(2.5, 2.5)
-		setup_camera_limits()
-
-func setup_camera_limits():
-	if camera:
-		camera.limit_left = int(camera_bounds.position.x)
-		camera.limit_top = int(camera_bounds.position.y)
-		camera.limit_right = int(camera_bounds.position.x + camera_bounds.size.x)
-		camera.limit_bottom = int(camera_bounds.position.y + camera_bounds.size.y)
-
-func setup_shooting():
-	if shooting_component:
-		shooting_component.bullet_fired.connect(_on_bullet_fired)
-
-func _on_bullet_fired(bullet: Bullet, _direction: Vector2):
-	bullets_fired += 1
-	play_shoot_sound()
+	# Fondo
+	var bg = ColorRect.new()
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0.1, 0.0, 0.0, 0.9)  # Rojo oscuro
+	game_over_screen.add_child(bg)
 	
-	# Iniciar animación de disparo del arma
-	if weapon_renderer:
-		weapon_renderer.start_shooting_animation()
+	# Panel central
+	var panel = Panel.new()
+	var viewport_size = get_viewport().get_visible_rect().size
+	var panel_width = 500 if not is_mobile else min(viewport_size.x * 0.9, 600)
+	var panel_height = 400 if not is_mobile else min(viewport_size.y * 0.7, 500)
 	
-	if bullet and bullet.sprite:
-		bullet.modulate = Color.YELLOW
-
-func take_damage(amount: int):
-	"""Función para recibir daño de los enemigos"""
-	if is_dead:
-		return
-	
-	current_health -= amount
-	current_health = max(current_health, 0)
-	
-	if character_stats:
-		character_stats.current_health = current_health
-	
-	# Resetear racha de kills en el score system
-	if score_system:
-		score_system.reset_kill_streak()
-	
-	# Efecto visual de daño
-	if animated_sprite:
-		animated_sprite.modulate = Color.RED
-		var tween = create_tween()
-		tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.3)
-	
-	# Emitir señal de cambio de vida
-	health_changed.emit(current_health, character_stats.max_health if character_stats else 100)
-	
-	print("💔 Jugador recibe ", amount, " de daño. Vida: ", current_health)
-	
-	# Verificar muerte
-	if current_health <= 0:
-		die()
-
-func die():
-	"""Manejar la muerte del jugador"""
-	if is_dead:
-		return
-	
-	is_dead = true
-	current_health = 0
-	
-	print("💀 JUGADOR HA MUERTO")
-	
-	# Detener movimiento
-	velocity = Vector2.ZERO
-	set_physics_process(false)
-	
-	# Efecto visual de muerte
-	if animated_sprite:
-		animated_sprite.modulate = Color.DARK_RED
-		var death_tween = create_tween()
-		death_tween.tween_property(animated_sprite, "modulate:a", 0.5, 1.0)
-		death_tween.tween_property(animated_sprite, "scale", Vector2(1.5, 0.5), 1.0)
-	
-	# Emitir señal de muerte
-	player_died.emit()
-
-# NUEVO: Función para aplicar knockback al jugador
-func apply_knockback(direction: Vector2, force: float):
-	"""Aplicar knockback al jugador cuando recibe daño"""
-	if is_dead:
-		return
-		
-	if direction.length() > 0:
-		velocity += direction.normalized() * force
-
-# NUEVO: Función llamada cuando el jugador mata un enemigo
-func on_enemy_killed():
-	"""Llamada cuando el jugador mata un enemigo"""
-	play_pelao_kill_sound()
-
-func get_animation_state_from_movement(movement: Vector2) -> AnimationState:
-	"""Convertir un vector de movimiento en un estado de animación de caminata"""
-	if movement.length() < 0.1:
-		return AnimationState.IDLE
-	
-	var angle = movement.angle()
-	var degrees = rad_to_deg(angle)
-	
-	# Normalizar el ángulo para que esté entre 0 y 360
-	if degrees < 0:
-		degrees += 360
-	
-	# Determinar la dirección de caminata basada en el ángulo (SIN LEFT/RIGHT)
-	if degrees >= 315 or degrees < 45:
-		return AnimationState.WALK_DOWN_RIGHT
-	elif degrees >= 45 and degrees < 135:
-		if degrees >= 67.5 and degrees < 112.5:
-			return AnimationState.WALK_DOWN
-		elif degrees < 67.5:
-			return AnimationState.WALK_DOWN_RIGHT
-		else:
-			return AnimationState.WALK_DOWN_LEFT
-	elif degrees >= 135 and degrees < 225:
-		return AnimationState.WALK_DOWN_LEFT
-	elif degrees >= 225 and degrees < 315:
-		if degrees >= 247.5 and degrees < 292.5:
-			return AnimationState.WALK_UP
-		elif degrees < 247.5:
-			return AnimationState.WALK_UP_LEFT
-		else:
-			return AnimationState.WALK_UP_RIGHT
-	
-	return AnimationState.IDLE
-
-func play_animation_for_state(state: AnimationState):
-	"""Reproducir la animación correspondiente al estado con fallback"""
-	var animation_name = get_animation_name_for_state(state)
-	
-	# Intentar reproducir la animación específica
-	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(animation_name):
-		animated_sprite.play(animation_name)
-		return
-	
-	# Si no existe, usar fallback
-	var fallback_animation = get_fallback_animation(state)
-	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation(fallback_animation):
-		animated_sprite.play(fallback_animation)
-		return
-	
-	# Último recurso: idle
-	animated_sprite.play("idle")
-
-func get_animation_name_for_state(state: AnimationState) -> String:
-	"""Obtener el nombre de la animación para un estado dado"""
-	match state:
-		AnimationState.IDLE:
-			return "idle"
-		AnimationState.WALK_UP:
-			return "walk_Up"
-		AnimationState.WALK_DOWN:
-			return "walk_Down"
-		AnimationState.WALK_UP_LEFT:
-			return "walk_Left_Up"
-		AnimationState.WALK_UP_RIGHT:
-			return "walk_Right_Up"
-		AnimationState.WALK_DOWN_LEFT:
-			return "walk_Left_Down"
-		AnimationState.WALK_DOWN_RIGHT:
-			return "walk_Right_Down"
-		_:
-			return "idle"
-
-func get_fallback_animation(state: AnimationState) -> String:
-	"""Obtener animación de fallback para direcciones faltantes"""
-	match state:
-		AnimationState.WALK_UP_LEFT:
-			if animated_sprite.sprite_frames.has_animation("walk_Up"):
-				return "walk_Up"
-			elif animated_sprite.sprite_frames.has_animation("walk_Left_Down"):
-				return "walk_Left_Down"
-		
-		AnimationState.WALK_UP_RIGHT:
-			if animated_sprite.sprite_frames.has_animation("walk_Up"):
-				return "walk_Up"
-			elif animated_sprite.sprite_frames.has_animation("walk_Right_Down"):
-				return "walk_Right_Down"
-		
-		AnimationState.WALK_DOWN_LEFT:
-			if animated_sprite.sprite_frames.has_animation("walk_Down"):
-				return "walk_Down"
-			elif animated_sprite.sprite_frames.has_animation("walk_Right_Down"):
-				return "walk_Right_Down"
-		
-		AnimationState.WALK_DOWN_RIGHT:
-			if animated_sprite.sprite_frames.has_animation("walk_Down"):
-				return "walk_Down"
-		
-		_:
-			pass
-	
-	return "idle"
-
-func _physics_process(delta):
-	if is_dead:
-		return
-		
-	handle_movement(delta)
-	if not is_mobile:
-		handle_shooting()
-	else:
-		handle_mobile_shooting()
-	
-	apply_movement_with_bounds()
-	update_animation_state()
-	update_weapon_position()
-
-func update_weapon_position():
-	"""Actualizar posición y rotación del arma"""
-	if weapon_renderer:
-		weapon_renderer.update_weapon_position_and_rotation(current_aim_direction)
-
-func update_animation_state():
-	"""Actualizar el estado de animación basado en el movimiento"""
-	var new_state = get_animation_state_from_movement(velocity)
-	
-	# Solo cambiar si es diferente al estado actual
-	if new_state != current_animation_state:
-		current_animation_state = new_state
-		play_animation_for_state(current_animation_state)
-		
-		# Actualizar orientación del sprite
-		update_sprite_orientation()
-
-func update_sprite_orientation():
-	"""Actualizar la orientación horizontal del sprite basado en movimiento"""
-	if velocity.x < -0.1 and facing_right:
-		facing_right = false
-		animated_sprite.flip_h = true
-	elif velocity.x > 0.1 and not facing_right:
-		facing_right = true
-		animated_sprite.flip_h = false
-
-func handle_movement(_delta: float):
-	var input_vector = Vector2.ZERO
-	
-	if not is_mobile:
-		if Input.is_action_pressed("move_left"):
-			input_vector.x -= 1
-		if Input.is_action_pressed("move_right"):
-			input_vector.x += 1
-		if Input.is_action_pressed("move_up"):
-			input_vector.y -= 1
-		if Input.is_action_pressed("move_down"):
-			input_vector.y += 1
-	else:
-		if mobile_movement_direction.length() > 0.05:
-			input_vector = mobile_movement_direction
-		else:
-			input_vector = Vector2.ZERO
-	
-	if input_vector.length() > 0:
-		velocity = input_vector.normalized() * speed
-		last_movement_direction = input_vector.normalized()
-	else:
-		velocity = Vector2.ZERO
-
-func apply_movement_with_bounds():
-	move_and_slide()
-	
-	var clamped_pos = Vector2(
-		clamp(global_position.x, map_bounds.position.x, map_bounds.position.x + map_bounds.size.x),
-		clamp(global_position.y, map_bounds.position.y, map_bounds.position.y + map_bounds.size.y)
+	panel.size = Vector2(panel_width, panel_height)
+	panel.position = Vector2(
+		(viewport_size.x - panel_width) / 2,
+		(viewport_size.y - panel_height) / 2
 	)
 	
-	if global_position != clamped_pos:
-		global_position = clamped_pos
-		if global_position.x <= map_bounds.position.x or global_position.x >= map_bounds.position.x + map_bounds.size.x:
-			velocity.x = 0
-		if global_position.y <= map_bounds.position.y or global_position.y >= map_bounds.position.y + map_bounds.size.y:
-			velocity.y = 0
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.15, 0.05, 0.05, 0.95)
+	panel_style.border_color = Color.RED
+	panel_style.border_width_left = 4
+	panel_style.border_width_right = 4
+	panel_style.border_width_top = 4
+	panel_style.border_width_bottom = 4
+	panel_style.corner_radius_top_left = 20
+	panel_style.corner_radius_top_right = 20
+	panel_style.corner_radius_bottom_left = 20
+	panel_style.corner_radius_bottom_right = 20
+	panel.add_theme_stylebox_override("panel", panel_style)
+	
+	game_over_screen.add_child(panel)
+	
+	# Layout
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 30)
+	var padding = 40
+	vbox.position = Vector2(padding, padding)
+	vbox.size = Vector2(panel_width - padding * 2, panel_height - padding * 2)
+	panel.add_child(vbox)
+	
+	# Título GAME OVER
+	var title = Label.new()
+	title.text = "💀 GAME OVER 💀"
+	var title_size = 48 if not is_mobile else 56
+	title.add_theme_font_size_override("font_size", title_size)
+	title.add_theme_color_override("font_color", Color.RED)
+	title.add_theme_color_override("font_shadow_color", Color.BLACK)
+	title.add_theme_constant_override("shadow_offset_x", 4)
+	title.add_theme_constant_override("shadow_offset_y", 4)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+	
+	# Estadísticas finales
+	if score_system:
+		var stats = score_system.get_stats_summary()
+		
+		var stats_label = Label.new()
+		stats_label.text = "Puntuación Final: " + str(stats.score) + "\n" + \
+						  "Ronda Alcanzada: " + str(rounds_manager.get_current_round()) + "\n" + \
+						  "Enemigos Eliminados: " + str(stats.total_kills) + "\n" + \
+						  "Headshots: " + str(stats.headshot_kills) + "\n" + \
+						  "Mejor Racha: " + str(stats.best_streak)
+		
+		var stats_size = 20 if not is_mobile else 24
+		stats_label.add_theme_font_size_override("font_size", stats_size)
+		stats_label.add_theme_color_override("font_color", Color.WHITE)
+		stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vbox.add_child(stats_label)
+	
+	# Botones
+	var restart_btn = create_game_over_button("🔄 REINTENTAR", Color.ORANGE)
+	restart_btn.pressed.connect(restart_entire_game)
+	vbox.add_child(restart_btn)
+	
+	var quit_btn = create_game_over_button("❌ SALIR", Color.RED)
+	quit_btn.pressed.connect(_on_quit_game)
+	vbox.add_child(quit_btn)
+	
+	ui_manager.add_child(game_over_screen)
 
-func handle_shooting():
-	"""Manejo de disparo para desktop"""
-	if not shooting_component:
+func create_game_over_button(text: String, color: Color) -> Button:
+	var button = Button.new()
+	button.text = text
+	
+	var button_height = 60 if not is_mobile else 80
+	button.custom_minimum_size = Vector2(0, button_height)
+	
+	var font_size = 24 if not is_mobile else 32
+	button.add_theme_font_size_override("font_size", font_size)
+	
+	var button_style = StyleBoxFlat.new()
+	button_style.bg_color = color.darkened(0.7)
+	button_style.corner_radius_top_left = 10
+	button_style.corner_radius_top_right = 10
+	button_style.corner_radius_bottom_left = 10
+	button_style.corner_radius_bottom_right = 10
+	button_style.border_color = color
+	button_style.border_width_left = 3
+	button_style.border_width_right = 3
+	button_style.border_width_top = 3
+	button_style.border_width_bottom = 3
+	button.add_theme_stylebox_override("normal", button_style)
+	
+	var button_hover = StyleBoxFlat.new()
+	button_hover.bg_color = color.darkened(0.5)
+	button_hover.corner_radius_top_left = 10
+	button_hover.corner_radius_top_right = 10
+	button_hover.corner_radius_bottom_left = 10
+	button_hover.corner_radius_bottom_right = 10
+	button_hover.border_color = color.lightened(0.2)
+	button_hover.border_width_left = 3
+	button_hover.border_width_right = 3
+	button_hover.border_width_top = 3
+	button_hover.border_width_bottom = 3
+	button.add_theme_stylebox_override("hover", button_hover)
+	
+	button.add_theme_color_override("font_color", Color.WHITE)
+	button.add_theme_color_override("font_shadow_color", Color.BLACK)
+	button.add_theme_constant_override("shadow_offset_x", 2)
+	button.add_theme_constant_override("shadow_offset_y", 2)
+	
+	return button
+
+func setup_background():
+	background_sprite = Sprite2D.new()
+	background_sprite.name = "Background"
+	background_sprite.z_index = -100
+	
+	var jungle_texture = try_load_texture_safe("res://sprites/background/jungle.png")
+	if jungle_texture:
+		background_sprite.texture = jungle_texture
+		background_sprite.position = Vector2(0, 0)
+		
+		var texture_size = jungle_texture.get_size()
+		var scale_factor_x = 1600.0 / float(texture_size.x)
+		var scale_factor_y = 1600.0 / float(texture_size.y)
+		background_sprite.scale = Vector2(scale_factor_x, scale_factor_y)
+		
+		add_child(background_sprite)
+	else:
+		var temp_bg = ColorRect.new()
+		temp_bg.color = Color(0.2, 0.4, 0.2)
+		temp_bg.size = Vector2(1600, 1600)
+		temp_bg.position = Vector2(-800, -800)
+		temp_bg.z_index = -100
+		add_child(temp_bg)
+
+func setup_window():
+	if is_mobile:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+	
+	get_viewport().size_changed.connect(_on_viewport_resized)
+
+func _on_viewport_resized():
+	await get_tree().process_frame
+	update_mobile_controls_position()
+
+func update_mobile_controls_position():
+	if mobile_controls and is_mobile:
+		var viewport_size = get_viewport().get_visible_rect().size
+		mobile_controls.size = viewport_size
+		mobile_controls.position = Vector2.ZERO
+		
+		var margin_horizontal = 60
+		var margin_vertical = 60
+		
+		if movement_joystick_base:
+			movement_joystick_base.position = Vector2(margin_horizontal, viewport_size.y - margin_vertical - 400)
+			movement_joystick_center = movement_joystick_base.global_position + Vector2(200, 200)
+		
+		if shooting_joystick_base:
+			shooting_joystick_base.position = Vector2(viewport_size.x - margin_horizontal - 400, viewport_size.y - margin_vertical - 400)
+			shooting_joystick_center = shooting_joystick_base.global_position + Vector2(200, 200)
+
+func setup_player():
+	if player_manager.get_child_count() > 0:
+		player = player_manager.get_child(0) as Player
+		if player:
+			if selected_character_stats:
+				player.update_character_stats(selected_character_stats)
+			
+			player.global_position = Vector2(0, 0)
+			player.z_index = 10
+			
+			# FORZAR CARGA CORRECTA DE ANIMACIONES DESDE ATLAS
+			fix_player_animations()
+
+func fix_player_animations():
+	if not player or not player.character_stats:
 		return
 	
-	var shoot_direction = Vector2.ZERO
+	print("🎮 Forzando carga de animaciones para: ", player.character_stats.character_name)
 	
-	if Input.is_action_pressed("shoot_left"):
-		shoot_direction.x -= 1
-	if Input.is_action_pressed("shoot_right"):
-		shoot_direction.x += 1
-	if Input.is_action_pressed("shoot_up"):
-		shoot_direction.y -= 1
-	if Input.is_action_pressed("shoot_down"):
-		shoot_direction.y += 1
-	
-	if shoot_direction != Vector2.ZERO:
-		current_aim_direction = shoot_direction.normalized()
-		
-		# Usar posición del cañón para disparar
-		var muzzle_position = global_position
-		if weapon_renderer:
-			muzzle_position = weapon_renderer.get_muzzle_world_position()
-		
-		shooting_component.try_shoot(current_aim_direction, muzzle_position)
-
-func handle_mobile_shooting():
-	"""Manejo de disparo para móvil - llamado desde GameManager"""
-	pass
-
-func mobile_shoot(direction: Vector2):
-	"""Función para disparar desde móvil"""
-	if shooting_component and direction.length() > 0:
-		current_aim_direction = direction.normalized()
-		
-		# Usar posición del cañón para disparar
-		var muzzle_position = global_position
-		if weapon_renderer:
-			muzzle_position = weapon_renderer.get_muzzle_world_position()
-		
-		shooting_component.try_shoot(current_aim_direction, muzzle_position)
-
-func update_character_stats(new_stats: CharacterStats):
-	"""Función para actualizar las estadísticas del personaje en tiempo de ejecución"""
-	character_stats = new_stats
-	speed = character_stats.movement_speed
-	current_health = character_stats.current_health
-	
-	# Actualizar el ShootingComponent con las nuevas estadísticas del ARMA
-	if shooting_component:
-		shooting_component.update_stats_from_player()
-	
-	# NUEVO: Actualizar el WeaponRenderer con la nueva arma
-	if weapon_renderer and character_stats.equipped_weapon:
-		weapon_renderer.set_weapon_stats(character_stats.equipped_weapon)
-	
-	# Configurar animaciones con el nuevo sistema de 128px
-	setup_walking_animations_from_stats()
-	
-	# Actualizar colisión para el nuevo tamaño
-	setup_collision()
-
-func setup_walking_animations_from_stats():
-	"""Configurar las animaciones de caminata desde las estadísticas del personaje - OPTIMIZADO PARA 128px EN PARTIDA"""
-	if not character_stats:
-		create_default_sprite_frames_128px()
-		return
-	
-	# Obtener el folder basado en el nombre del personaje del recurso
-	var char_name = character_stats.character_name.to_lower().replace(" ", "")
+	# Obtener folder del personaje
+	var char_name = player.character_stats.character_name.to_lower().replace(" ", "")
 	var folder_name = get_folder_name_from_character_name(char_name)
 	
-	# NUEVO: Intentar cargar SpriteFrames pre-configurado primero
-	var sprite_frames_path = "res://sprites/player/" + folder_name + "/" + folder_name + "_animations.tres"
-	var loaded_sprite_frames = load_sprite_frames_safe(sprite_frames_path)
+	# Crear SpriteFrames desde cero
+	var sprite_frames = SpriteFrames.new()
 	
-	if loaded_sprite_frames:
-		animated_sprite.sprite_frames = loaded_sprite_frames
-		ensure_sprite_scaling_128px()
-		animated_sprite.play("idle")
-		return
+	# Cargar atlas walk_Right_Down (1024x128, 8 frames)
+	var atlas_path = "res://sprites/player/" + folder_name + "/walk_Right_Down.png"
+	var atlas_texture = try_load_texture_safe(atlas_path)
 	
-	# Si no existe el .tres, crear desde atlas de caminata
-	create_walking_sprite_frames_from_atlas_128px(folder_name)
+	if not atlas_texture:
+		# Fallback a chica
+		atlas_path = "res://sprites/player/chica/walk_Right_Down.png"
+		atlas_texture = try_load_texture_safe(atlas_path)
+	
+	if atlas_texture:
+		print("✅ Atlas cargado: ", atlas_path, " - Tamaño: ", atlas_texture.get_size())
+		
+		# Crear animación idle desde el primer frame
+		sprite_frames.add_animation("idle")
+		sprite_frames.set_animation_speed("idle", 2.0)
+		sprite_frames.set_animation_loop("idle", true)
+		
+		var first_frame = extract_first_frame_from_atlas_1024x128(atlas_texture)
+		sprite_frames.add_frame("idle", first_frame)
+		
+		# Crear animación de caminar
+		sprite_frames.add_animation("walk_Right_Down")
+		sprite_frames.set_animation_speed("walk_Right_Down", 8.0)
+		sprite_frames.set_animation_loop("walk_Right_Down", true)
+		
+		# Cargar todos los 8 frames del atlas
+		for frame_idx in range(8):
+			var frame = extract_frame_from_atlas_1024x128(atlas_texture, frame_idx)
+			sprite_frames.add_frame("walk_Right_Down", frame)
+		
+		# Crear otras animaciones básicas usando los frames existentes
+		var basic_animations = ["walk_Up", "walk_Down", "walk_Left_Down", "walk_Right_Up", "walk_Left_Up"]
+		
+		for anim_name in basic_animations:
+			sprite_frames.add_animation(anim_name)
+			sprite_frames.set_animation_speed(anim_name, 8.0)
+			sprite_frames.set_animation_loop(anim_name, true)
+			
+			# Usar los frames de walk_Right_Down como base
+			for frame_idx in range(8):
+				var frame = sprite_frames.get_frame_texture("walk_Right_Down", frame_idx)
+				sprite_frames.add_frame(anim_name, frame)
+		
+		# Asignar SpriteFrames al jugador
+		if player.animated_sprite:
+			player.animated_sprite.sprite_frames = sprite_frames
+			player.animated_sprite.scale = Vector2(2.0, 2.0)  # Escalar para 128px
+			player.animated_sprite.play("idle")
+			print("✅ Animaciones del jugador configuradas correctamente")
+		else:
+			print("❌ No se encontró AnimatedSprite2D en el jugador")
+	else:
+		print("❌ No se pudo cargar ningún atlas para el personaje")
 
 func get_folder_name_from_character_name(char_name: String) -> String:
-	"""Determinar el nombre de carpeta basado en el nombre del personaje"""
-	# Mapeo básico para nombres conocidos
 	var name_mappings = {
 		"pelao": "pelao",
 		"juancar": "juancar", 
@@ -549,209 +600,20 @@ func get_folder_name_from_character_name(char_name: String) -> String:
 		"guerrerobásico": "pelao",
 		"guerrerobasico": "pelao"
 	}
-	
 	return name_mappings.get(char_name, char_name)
 
-func load_sprite_frames_safe(path: String) -> SpriteFrames:
-	"""Cargar SpriteFrames de forma segura"""
-	if ResourceLoader.exists(path):
-		var resource = load(path)
-		if resource and resource is SpriteFrames:
-			return resource as SpriteFrames
-	return null
-
-func create_walking_sprite_frames_from_atlas_128px(folder_name: String):
-	"""Crear SpriteFrames desde atlas - SIEMPRE DESDE ATLAS CON FALLBACK A CHICA - 128px PARA PARTIDA"""
-	var sprite_frames = SpriteFrames.new()
-	
-	# Lista de animaciones de caminata disponibles
-	var walking_animations = [
-		"walk_Up",
-		"walk_Down", 
-		"walk_Left_Up",
-		"walk_Right_Up",
-		"walk_Left_Down",
-		"walk_Right_Down"
-	]
-	
-	# CREAR IDLE SIEMPRE DESDE ATLAS - NUNCA DESDE SPRITE ESTÁTICO
-	sprite_frames.add_animation("idle")
-	sprite_frames.set_animation_speed("idle", 1.0)
-	sprite_frames.set_animation_loop("idle", true)
-	
-	# Intentar cargar walk_Right_Down del personaje actual
-	var walk_right_down_atlas = try_load_texture_safe("res://sprites/player/" + folder_name + "/walk_Right_Down.png")
-	
-	if walk_right_down_atlas:
-		var idle_frame = extract_first_frame_from_atlas(walk_right_down_atlas)
-		var scaled_idle = create_scaled_texture_dynamic(idle_frame)
-		sprite_frames.add_frame("idle", scaled_idle)
-	else:
-		# FALLBACK: Usar walk_Right_Down de chica
-		var chica_atlas = try_load_texture_safe("res://sprites/player/chica/walk_Right_Down.png")
-		if chica_atlas:
-			var idle_frame = extract_first_frame_from_atlas(chica_atlas)
-			var scaled_idle = create_scaled_texture_dynamic(idle_frame)
-			sprite_frames.add_frame("idle", scaled_idle)
-		else:
-			# Último recurso: textura por defecto
-			sprite_frames.add_frame("idle", create_default_texture_dynamic(Color.CYAN))
-	
-	# Crear animaciones de caminata con fallback a chica
-	for anim_name in walking_animations:
-		# Intentar cargar del personaje actual
-		var atlas_path = "res://sprites/player/" + folder_name + "/" + anim_name + ".png"
-		var atlas_texture = try_load_texture_safe(atlas_path)
-		
-		# Si no existe, usar el de chica
-		if not atlas_texture:
-			var chica_path = "res://sprites/player/chica/" + anim_name + ".png"
-			atlas_texture = try_load_texture_safe(chica_path)
-		
-		if atlas_texture:
-			sprite_frames.add_animation(anim_name)
-			sprite_frames.set_animation_speed(anim_name, 8.0)
-			sprite_frames.set_animation_loop(anim_name, true)
-			
-			load_walking_animation_from_atlas_scaled_64px(sprite_frames, anim_name, atlas_texture)
-	
-	# Asignar el SpriteFrames al AnimatedSprite2D
-	animated_sprite.sprite_frames = sprite_frames
-	ensure_sprite_scaling_128px()
-	animated_sprite.play("idle")
-
-func load_walking_animation_from_atlas_scaled_64px(sprite_frames: SpriteFrames, anim_name: String, atlas_texture: Texture2D):
-	"""Cargar animación de caminata desde atlas y preparar para escalar a 128px"""
-	# Cargar frames normalmente
-	load_frames_from_atlas(sprite_frames, anim_name, atlas_texture, 8, 1)
-	
-	# ESCALAR TODOS LOS FRAMES A 64px DE ALTO (que luego se escalan a 128px)
-	scale_animation_frames_to_64px(sprite_frames, anim_name)
-
-func scale_animation_frames_to_64px(sprite_frames: SpriteFrames, anim_name: String):
-	"""Escalar todos los frames de una animación a 64px de alto"""
-	var frame_count = sprite_frames.get_frame_count(anim_name)
-	
-	for i in range(frame_count):
-		var original_frame = sprite_frames.get_frame_texture(anim_name, i)
-		if original_frame:
-			var scaled_frame = create_scaled_texture_dynamic(original_frame)
-			sprite_frames.set_frame(anim_name, i, scaled_frame)
-
-func create_scaled_texture_dynamic(original_texture: Texture2D, target_height: int = 64) -> Texture2D:
-	"""Crear una versión escalada de la textura al alto objetivo"""
-	if not original_texture:
-		return create_default_texture_dynamic(Color.MAGENTA, target_height)
-	
-	var original_size = original_texture.get_size()
-	
-	# Si ya tiene el alto objetivo, retornar original
-	if original_size.y == target_height:
-		return original_texture
-	
-	# Calcular nueva escala manteniendo proporción
-	var scale_factor = float(target_height) / float(original_size.y)
-	var new_width = int(float(original_size.x) * scale_factor)
-	var new_height = target_height
-	
-	# Crear nueva imagen escalada
-	var original_image = original_texture.get_image()
-	var scaled_image = original_image.duplicate()
-	scaled_image.resize(new_width, new_height, Image.INTERPOLATE_NEAREST)
-	
-	var scaled_texture = ImageTexture.create_from_image(scaled_image)
-	
-	return scaled_texture
-
-func create_default_texture_dynamic(color: Color, texture_size: int = 64) -> Texture2D:
-	"""Crear una textura por defecto del tamaño especificado"""
-	var image = Image.create(texture_size, texture_size, false, Image.FORMAT_RGBA8)
-	image.fill(color)
-	
-	# Agregar algunos detalles básicos escalados
-	var center = Vector2(float(texture_size) / 2.0, float(texture_size) / 2.0)
-	var detail_radius = float(texture_size) / 8.0
-	
-	for x in range(texture_size):
-		for y in range(texture_size):
-			var dist = Vector2(x, y).distance_to(center)
-			if dist < detail_radius:
-				image.set_pixel(x, y, Color.WHITE)
-			elif dist < detail_radius * 1.5:
-				image.set_pixel(x, y, color.darkened(0.3))
-	
-	return ImageTexture.create_from_image(image)
-
-func ensure_sprite_scaling_128px():
-	"""Asegurar que el sprite del jugador tenga 128px de alto dinámicamente"""
-	if not animated_sprite:
-		return
-	
-	# Obtener textura actual para medir
-	var current_texture: Texture2D = null
-	if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("idle"):
-		current_texture = animated_sprite.sprite_frames.get_frame_texture("idle", 0)
-	
-	if current_texture:
-		var current_height = current_texture.get_size().y
-		var target_height = 128.0
-		
-		# Solo escalar si no tiene ya 128px
-		if current_height != target_height:
-			var scale_factor = target_height / float(current_height)
-			animated_sprite.scale = Vector2(scale_factor, scale_factor)
-		else:
-			animated_sprite.scale = Vector2(1.0, 1.0)
-	else:
-		# Escala por defecto si no hay textura
-		animated_sprite.scale = Vector2(4.0, 4.0)
-
-func create_default_sprite_frames_128px():
-	"""Crear SpriteFrames por defecto optimizado para 128px EN PARTIDA"""
-	var sprite_frames = SpriteFrames.new()
-	
-	# Crear animación idle por defecto
-	sprite_frames.add_animation("idle")
-	sprite_frames.set_animation_speed("idle", 1.0)
-	sprite_frames.set_animation_loop("idle", true)
-	
-	var default_texture = create_default_texture_dynamic(Color.BLUE, 64)
-	sprite_frames.add_frame("idle", default_texture)
-	
-	# Crear animaciones de caminata básicas
-	var basic_walk_animations = ["walk_Up", "walk_Down", "walk_Left_Down", "walk_Right_Down"]
-	
-	for anim_name in basic_walk_animations:
-		sprite_frames.add_animation(anim_name)
-		sprite_frames.set_animation_speed(anim_name, 8.0)
-		sprite_frames.set_animation_loop(anim_name, true)
-		
-		# Crear 4 frames por animación con colores ligeramente diferentes
-		for frame_idx in range(4):
-			var frame_color = Color.BLUE.lightened(float(frame_idx) * 0.1)
-			var frame_texture = create_default_texture_dynamic(frame_color, 64)
-			sprite_frames.add_frame(anim_name, frame_texture)
-	
-	animated_sprite.sprite_frames = sprite_frames
-	ensure_sprite_scaling_128px()
-	animated_sprite.play("idle")
-
 func try_load_texture_safe(path: String) -> Texture2D:
-	"""Función para cargar texturas de forma segura"""
 	if not ResourceLoader.exists(path):
 		return null
-	
 	var resource = load(path)
 	if resource is Texture2D:
 		return resource as Texture2D
-	else:
-		return null
+	return null
 
-func extract_first_frame_from_atlas(atlas_texture: Texture2D) -> Texture2D:
-	"""Extraer el primer frame de un atlas de 8x1"""
+func extract_first_frame_from_atlas_1024x128(atlas_texture: Texture2D) -> Texture2D:
 	var texture_size = atlas_texture.get_size()
-	var frame_width = float(texture_size.x) / 8.0
-	var frame_height = float(texture_size.y)
+	var frame_width = float(texture_size.x) / 8.0  # 1024/8 = 128
+	var frame_height = float(texture_size.y)        # 128
 	
 	var first_frame = AtlasTexture.new()
 	first_frame.atlas = atlas_texture
@@ -759,50 +621,303 @@ func extract_first_frame_from_atlas(atlas_texture: Texture2D) -> Texture2D:
 	
 	return first_frame
 
-func load_frames_from_atlas(sprite_frames: SpriteFrames, anim_name: String, atlas_texture: Texture2D, h_frames: int, v_frames: int):
-	"""Cargar frames desde un atlas"""
+func extract_frame_from_atlas_1024x128(atlas_texture: Texture2D, frame_index: int) -> Texture2D:
 	var texture_size = atlas_texture.get_size()
-	var frame_width = float(texture_size.x) / float(h_frames)
-	var frame_height = float(texture_size.y) / float(v_frames)
+	var frame_width = float(texture_size.x) / 8.0  # 128px por frame
+	var frame_height = float(texture_size.y)        # 128px de alto
 	
-	for i in range(h_frames * v_frames):
-		var x = float(i % h_frames) * frame_width
-		var y = float(i / h_frames) * frame_height
-		
-		var atlas_frame = AtlasTexture.new()
-		atlas_frame.atlas = atlas_texture
-		atlas_frame.region = Rect2(x, y, frame_width, frame_height)
-		
-		sprite_frames.add_frame(anim_name, atlas_frame)
+	var x = float(frame_index) * frame_width
+	var y = 0.0
+	
+	var frame = AtlasTexture.new()
+	frame.atlas = atlas_texture
+	frame.region = Rect2(x, y, frame_width, frame_height)
+	
+	return frame
 
-func set_mobile_movement_direction(direction: Vector2):
-	"""Función para establecer la dirección de movimiento desde el joystick móvil"""
-	mobile_movement_direction = direction
+func setup_mini_hud():
+	var mini_hud = preload("res://scenes/ui/MiniHUD.tscn").instantiate()
+	ui_manager.add_child(mini_hud)
+	
+	if player and player.character_stats:
+		mini_hud.update_character_stats(player.character_stats)
 
-func get_current_health() -> int:
-	"""Obtener la vida actual del jugador"""
-	return current_health
+func setup_mobile_controls():
+	if not is_mobile:
+		return
+	
+	mobile_controls = Control.new()
+	mobile_controls.name = "MobileControls"
+	mobile_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mobile_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_manager.add_child(mobile_controls)
+	
+	await get_tree().process_frame
+	
+	create_movement_joystick()
+	create_shooting_joystick()
 
-func get_max_health() -> int:
-	"""Obtener la vida máxima del jugador"""
-	if character_stats:
-		return character_stats.max_health
-	return 100
-
-func heal(amount: int):
-	"""Curar al jugador"""
-	if is_dead:
+func create_movement_joystick():
+	if not mobile_controls:
 		return
 		
-	current_health += amount
-	var max_hp = get_max_health()
-	current_health = min(current_health, max_hp)
+	var viewport_size = get_viewport().get_visible_rect().size
 	
-	if character_stats:
-		character_stats.current_health = current_health
+	movement_joystick_base = Control.new()
+	movement_joystick_base.name = "MovementJoystickBase"
+	movement_joystick_base.size = Vector2(400, 400)
 	
-	health_changed.emit(current_health, max_hp)
+	var margin_horizontal = 60
+	var margin_vertical = 60
+	movement_joystick_base.position = Vector2(margin_horizontal, viewport_size.y - margin_vertical - 400)
+	movement_joystick_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mobile_controls.add_child(movement_joystick_base)
+	
+	# Fondo del joystick
+	var joystick_bg = ColorRect.new()
+	joystick_bg.name = "MovementJoystickBackground"
+	joystick_bg.size = Vector2(360, 360)
+	joystick_bg.position = Vector2(20, 20)
+	joystick_bg.color = Color(0.3, 0.3, 0.3, 0.2)
+	joystick_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	movement_joystick_base.add_child(joystick_bg)
+	
+	# Borde del joystick
+	var joystick_border = ColorRect.new()
+	joystick_border.name = "MovementJoystickBorder"
+	joystick_border.size = Vector2(360, 360)
+	joystick_border.position = Vector2(20, 20)
+	joystick_border.color = Color.TRANSPARENT
+	var border_style = StyleBoxFlat.new()
+	border_style.bg_color = Color.TRANSPARENT
+	border_style.border_color = Color(0.7, 0.7, 0.7, 0.8)
+	border_style.border_width_left = 4
+	border_style.border_width_right = 4
+	border_style.border_width_top = 4
+	border_style.border_width_bottom = 4
+	border_style.corner_radius_top_left = 180
+	border_style.corner_radius_top_right = 180
+	border_style.corner_radius_bottom_left = 180
+	border_style.corner_radius_bottom_right = 180
+	joystick_border.add_theme_stylebox_override("panel", border_style)
+	joystick_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	movement_joystick_base.add_child(joystick_border)
+	
+	# Área tactil
+	movement_joystick_area = Control.new()
+	movement_joystick_area.name = "MovementJoystickArea"
+	movement_joystick_area.size = Vector2(400, 400)
+	movement_joystick_area.position = Vector2.ZERO
+	movement_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS
+	movement_joystick_base.add_child(movement_joystick_area)
+	
+	# Knob del joystick
+	movement_joystick_knob = ColorRect.new()
+	movement_joystick_knob.name = "MovementJoystickKnob"
+	movement_joystick_knob.size = Vector2(120, 120)
+	movement_joystick_knob.position = Vector2(140, 140)
+	movement_joystick_knob.color = Color(0.2, 0.8, 1.0, 0.9)
+	movement_joystick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	var knob_style = StyleBoxFlat.new()
+	knob_style.bg_color = Color(0.2, 0.8, 1.0, 0.9)
+	knob_style.border_color = Color.WHITE
+	knob_style.border_width_left = 2
+	knob_style.border_width_right = 2
+	knob_style.border_width_top = 2
+	knob_style.border_width_bottom = 2
+	knob_style.corner_radius_top_left = 60
+	knob_style.corner_radius_top_right = 60
+	knob_style.corner_radius_bottom_left = 60
+	knob_style.corner_radius_bottom_right = 60
+	movement_joystick_knob.add_theme_stylebox_override("panel", knob_style)
+	
+	movement_joystick_base.add_child(movement_joystick_knob)
+	
+	movement_joystick_center = movement_joystick_base.global_position + Vector2(200, 200)
+	movement_joystick_max_distance = 160.0
+	movement_joystick_dead_zone = 25.0
+	
+	# Etiqueta
+	var move_label = Label.new()
+	move_label.text = "MOVER"
+	move_label.position = Vector2(150, 380)
+	move_label.add_theme_font_size_override("font_size", 24)
+	move_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.9))
+	move_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	move_label.add_theme_constant_override("shadow_offset_x", 2)
+	move_label.add_theme_constant_override("shadow_offset_y", 2)
+	move_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	movement_joystick_base.add_child(move_label)
 
-func is_player_dead() -> bool:
-	"""Verificar si el jugador está muerto"""
-	return is_dead
+func create_shooting_joystick():
+	if not mobile_controls:
+		return
+		
+	var viewport_size = get_viewport().get_visible_rect().size
+	
+	shooting_joystick_base = Control.new()
+	shooting_joystick_base.name = "ShootingJoystickBase"
+	shooting_joystick_base.size = Vector2(400, 400)
+	
+	var margin_horizontal = 60
+	var margin_vertical = 60
+	shooting_joystick_base.position = Vector2(viewport_size.x - margin_horizontal - 400, viewport_size.y - margin_vertical - 400)
+	shooting_joystick_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mobile_controls.add_child(shooting_joystick_base)
+	
+	# Fondo del joystick de disparo
+	var shooting_bg = ColorRect.new()
+	shooting_bg.name = "ShootingJoystickBackground"
+	shooting_bg.size = Vector2(360, 360)
+	shooting_bg.position = Vector2(20, 20)
+	shooting_bg.color = Color(0.8, 0.3, 0.3, 0.2)
+	shooting_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shooting_joystick_base.add_child(shooting_bg)
+	
+	# Borde del joystick de disparo
+	var shooting_border = ColorRect.new()
+	shooting_border.name = "ShootingJoystickBorder"
+	shooting_border.size = Vector2(360, 360)
+	shooting_border.position = Vector2(20, 20)
+	shooting_border.color = Color.TRANSPARENT
+	var border_style = StyleBoxFlat.new()
+	border_style.bg_color = Color.TRANSPARENT
+	border_style.border_color = Color(1.0, 0.5, 0.5, 0.8)
+	border_style.border_width_left = 4
+	border_style.border_width_right = 4
+	border_style.border_width_top = 4
+	border_style.border_width_bottom = 4
+	border_style.corner_radius_top_left = 180
+	border_style.corner_radius_top_right = 180
+	border_style.corner_radius_bottom_left = 180
+	border_style.corner_radius_bottom_right = 180
+	shooting_border.add_theme_stylebox_override("panel", border_style)
+	shooting_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shooting_joystick_base.add_child(shooting_border)
+	
+	# Área tactil para disparo
+	shooting_joystick_area = Control.new()
+	shooting_joystick_area.name = "ShootingJoystickArea"
+	shooting_joystick_area.size = Vector2(400, 400)
+	shooting_joystick_area.position = Vector2.ZERO
+	shooting_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS
+	shooting_joystick_base.add_child(shooting_joystick_area)
+	
+	# Knob de disparo
+	shooting_joystick_knob = ColorRect.new()
+	shooting_joystick_knob.name = "ShootingJoystickKnob"
+	shooting_joystick_knob.size = Vector2(120, 120)
+	shooting_joystick_knob.position = Vector2(140, 140)
+	shooting_joystick_knob.color = Color(1.0, 0.5, 0.2, 0.9)
+	shooting_joystick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	var knob_style = StyleBoxFlat.new()
+	knob_style.bg_color = Color(1.0, 0.5, 0.2, 0.9)
+	knob_style.border_color = Color.WHITE
+	knob_style.border_width_left = 2
+	knob_style.border_width_right = 2
+	knob_style.border_width_top = 2
+	knob_style.border_width_bottom = 2
+	knob_style.corner_radius_top_left = 60
+	knob_style.corner_radius_top_right = 60
+	knob_style.corner_radius_bottom_left = 60
+	knob_style.corner_radius_bottom_right = 60
+	shooting_joystick_knob.add_theme_stylebox_override("panel", knob_style)
+	
+	shooting_joystick_base.add_child(shooting_joystick_knob)
+	
+	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(200, 200)
+	shooting_joystick_max_distance = 140.0
+	shooting_joystick_dead_zone = 20.0
+	
+	# Etiqueta
+	var shoot_label = Label.new()
+	shoot_label.text = "DISPARAR"
+	shoot_label.position = Vector2(140, 380)
+	shoot_label.add_theme_font_size_override("font_size", 24)
+	shoot_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.9))
+	shoot_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	shoot_label.add_theme_constant_override("shadow_offset_x", 2)
+	shoot_label.add_theme_constant_override("shadow_offset_y", 2)
+	shoot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	shooting_joystick_base.add_child(shoot_label)
+
+# SISTEMA UNIFICADO COD ZOMBIES CON PUNTUACIÓN
+func setup_unified_cod_system():
+	if not player:
+		return
+	
+	# 1. Crear ScoreSystem PRIMERO
+	score_system = ScoreSystem.new()
+	score_system.name = "ScoreSystem"
+	add_child(score_system)
+	
+	# 2. Configurar UI de puntuación en la cámara
+	if player.camera:
+		score_system.setup_score_ui_on_camera(player.camera)
+	
+	# 3. Crear RoundsManager
+	rounds_manager = RoundsManager.new()
+	rounds_manager.name = "RoundsManager"
+	add_child(rounds_manager)
+	
+	# 4. Configurar UI de rondas en la cámara
+	if player.camera:
+		rounds_manager.setup_round_ui_on_camera(player.camera)
+	
+	# 5. Crear EnemySpawner
+	enemy_spawner = EnemySpawner.new()
+	enemy_spawner.name = "EnemySpawner"
+	enemy_spawner.spawn_radius_min = 400.0
+	enemy_spawner.spawn_radius_max = 800.0
+	enemy_spawner.despawn_distance = 1200.0
+	add_child(enemy_spawner)
+	
+	# 6. Conectar sistemas
+	enemy_spawner.setup(player, rounds_manager)
+	rounds_manager.set_enemy_spawner(enemy_spawner)
+	
+	# 7. Conectar señales
+	enemy_spawner.enemy_killed.connect(_on_enemy_killed)
+	enemy_spawner.enemy_spawned.connect(_on_enemy_spawned)
+	
+	# 8. Conectar jugador con score system
+	player.set_score_system(score_system)
+	
+	# 9. Iniciar primera ronda
+	rounds_manager.start_round(1)
+
+func _on_enemy_killed(enemy: Enemy):
+	enemies_killed += 1
+	
+	# Notificar al rounds manager
+	rounds_manager.on_enemy_killed()
+	
+	# Añadir puntos en el score system
+	if score_system and enemy:
+		score_system.add_kill_points(enemy.global_position, false, false)
+	
+	# Notificar al jugador para sonido de kill
+	if player:
+		player.on_enemy_killed()
+
+func _on_enemy_spawned(_enemy: Enemy):
+	rounds_manager.on_enemy_spawned()
+
+func pause_enemy_spawning():
+	if enemy_spawner:
+		enemy_spawner.pause_spawning()
+
+func resume_enemy_spawning():
+	if enemy_spawner:
+		enemy_spawner.resume_spawning()
+
+func clear_all_enemies():
+	if enemy_spawner:
+		enemy_spawner.clear_all_enemies()
+
+func get_active_enemy_count() -> int:
+	if enemy_spawner:
+		return enemy_spawner.get_active_enemy_count()
+	return 0
