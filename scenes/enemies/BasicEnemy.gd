@@ -1,4 +1,4 @@
-# scenes/enemies/BasicEnemy.gd - COLISIÓN Y HEADSHOT CORREGIDOS
+# scenes/enemies/BasicEnemy.gd - CORREGIDO: Headshots y prints eliminados
 extends CharacterBody2D
 class_name Enemy
 
@@ -104,7 +104,7 @@ func setup_head_collision():
 	head_area.area_entered.connect(_on_head_area_entered)
 
 func _on_head_area_entered(area):
-	"""Cuando una bala entra en el área de la cabeza - HEADSHOT REAL"""
+	"""Cuando una bala entra en el área de la cabeza - HEADSHOT REAL SIN PRINTS"""
 	if is_dead:
 		return
 		
@@ -114,8 +114,7 @@ func _on_head_area_entered(area):
 			# HEADSHOT REAL - NO ALEATORIO
 			var headshot_damage = int(float(bullet.damage) * bullet.headshot_multiplier)
 			
-			print("💀 HEADSHOT! Daño: ", headshot_damage, " (", bullet.damage, " x ", bullet.headshot_multiplier, ")")
-			
+			# SIN PRINTS DE DEBUG
 			take_damage(headshot_damage, true)
 			
 			if bullet.knockback_force > 0:
@@ -397,7 +396,7 @@ func apply_knockback(direction: Vector2, force: float):
 		velocity += direction.normalized() * force
 
 func take_damage(amount: int, is_headshot: bool = false):
-	"""Recibir daño"""
+	"""Recibir daño - SIN PRINTS DE DEBUG"""
 	if is_dead:
 		return
 	

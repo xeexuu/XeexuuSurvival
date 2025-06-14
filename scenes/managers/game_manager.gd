@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - PUNTUACIÓN COD BO2 Y PRINTS LIMPIADOS
+# scenes/managers/game_manager.gd - GRUPO CORREGIDO
 extends Node
 class_name GameManager
 
@@ -57,32 +57,10 @@ var enemies_killed: int = 0
 var game_over_screen: Control
 var is_game_over: bool = false
 
-func _process(_delta):
-	if not game_started or is_game_over or game_state != "playing":
-		return
-		
-	if is_mobile and player:
-		# Aplicar movimiento móvil
-		if current_movement.length() < 0.1:
-			player.mobile_movement_direction = Vector2.ZERO
-		else:
-			player.mobile_movement_direction = current_movement
-		
-		# Aplicar disparo móvil
-		if is_shooting and current_shoot_direction.length() > 0:
-			player.mobile_shoot(current_shoot_direction)
-	
-	update_ui_elements()
-
-func update_ui_elements():
-	"""Actualizar elementos de UI continuamente"""
-	if not player or not game_started:
-		return
-	
-	if mini_hud:
-		mini_hud.update_health(player.get_current_health(), player.get_max_health())
-
 func _ready():
+	# AÑADIR AL GRUPO CORRECTO
+	add_to_group("game_manager")
+	
 	is_mobile = OS.has_feature("mobile")
 	setup_collision_layers()
 	setup_background()
@@ -91,6 +69,7 @@ func _ready():
 	
 	await get_tree().process_frame
 	show_character_selection()
+
 
 func setup_collision_layers():
 	"""Configurar las capas de colisión correctamente"""

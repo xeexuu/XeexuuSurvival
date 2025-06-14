@@ -1,4 +1,4 @@
-# scenes/projectiles/bullet.gd - CORREGIDO: Sistema puntuación COD BO2 + Sprite invisible eliminado
+# scenes/projectiles/bullet.gd - CORREGIDO: Sprite invisible eliminado + Headshots funcionando
 extends Area2D
 class_name Bullet
 
@@ -40,6 +40,7 @@ func _ready():
 	lifetime_timer.timeout.connect(_on_lifetime_timeout)
 	add_child(lifetime_timer)
 	
+	# CREAR SPRITE SIEMPRE - NO DEJAR INVISIBLE
 	setup_sprite()
 	area_entered.connect(_on_area_entered)
 	body_entered.connect(_on_body_entered)
@@ -55,29 +56,33 @@ func _ready():
 		score_system = game_manager.score_system
 
 func setup_sprite():
-	"""Configurar sprite de la bala estilo COD Black Ops"""
-	if not sprite or not sprite.texture:
-		var image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
-		image.fill(Color.TRANSPARENT)
+	"""Configurar sprite de la bala estilo COD Black Ops - SIEMPRE VISIBLE"""
+	if not sprite:
+		return
 		
-		var base_color = Color.YELLOW
-		if has_piercing:
-			base_color = Color.CYAN
-		elif has_explosive:
-			base_color = Color.ORANGE
-		
-		# Crear bala más visible estilo COD
-		for x in range(8):
-			for y in range(8):
-				var dist = Vector2(x - 4, y - 4).length()
-				if dist <= 2:
-					image.set_pixel(x, y, base_color)
-				elif dist <= 3:
-					image.set_pixel(x, y, base_color.darkened(0.2))
-				elif dist <= 4:
-					image.set_pixel(x, y, base_color.darkened(0.5))
-		
-		sprite.texture = ImageTexture.create_from_image(image)
+	# CREAR TEXTURA SIEMPRE, NO DEPENDER DE SPRITE EXISTENTE
+	var image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
+	
+	var base_color = Color.YELLOW
+	if has_piercing:
+		base_color = Color.CYAN
+	elif has_explosive:
+		base_color = Color.ORANGE
+	
+	# Crear bala más visible estilo COD
+	for x in range(8):
+		for y in range(8):
+			var dist = Vector2(x - 4, y - 4).length()
+			if dist <= 2:
+				image.set_pixel(x, y, base_color)
+			elif dist <= 3:
+				image.set_pixel(x, y, base_color.darkened(0.2))
+			elif dist <= 4:
+				image.set_pixel(x, y, base_color.darkened(0.5))
+	
+	sprite.texture = ImageTexture.create_from_image(image)
+	sprite.visible = true  # FORZAR VISIBILIDAD
 
 func setup(new_direction: Vector2, new_speed: float, weapon_range: float = 300.0):
 	"""Configurar la bala"""
@@ -130,13 +135,14 @@ func _on_body_entered(body: Node2D):
 		handle_hit(body)
 
 func handle_headshot_hit(enemy: Node2D):
-	"""Manejar impacto headshot estilo COD Black Ops"""
+	"""Manejar impacto headshot estilo COD Black Ops - SIN PRINTS"""
 	if is_being_destroyed or not (enemy is Enemy):
 		return
 	
 	if has_piercing and enemy in targets_hit:
 		return
 	
+	# CALCULAR DAÑO DE HEADSHOT CORRECTAMENTE
 	var headshot_damage = int(float(damage) * headshot_multiplier)
 	apply_damage_to_target(enemy, headshot_damage, true)
 	apply_knockback_to_target(enemy)
@@ -220,8 +226,9 @@ func destroy_bullet(reason: String):
 	call_deferred("queue_free")
 
 func apply_damage_to_target(target: Node2D, damage_amount: int, is_headshot: bool = false):
-	"""Aplicar daño al objetivo"""
+	"""Aplicar daño al objetivo - CORREGIDO PARA HEADSHOTS"""
 	if target is Enemy:
+		# LLAMAR CON PARÁMETROS CORRECTOS
 		target.take_damage(damage_amount, is_headshot)
 		return
 	
