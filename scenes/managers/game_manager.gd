@@ -25,7 +25,7 @@ var is_mobile: bool = false
 # Joystick de movimiento - MUCHO MÁS GRANDE
 var movement_joystick_base: Control
 var movement_joystick_knob: Control
-var movement_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
+var movement_joystick_area: Control  # CAMBIAR de Control a TouchScreenButton
 var movement_joystick_center: Vector2
 
 var current_movement = Vector2.ZERO
@@ -35,7 +35,7 @@ var movement_touch_id: int = -1
 # Joystick de disparo - TIPOS CORRECTOS
 var shooting_joystick_base: Control
 var shooting_joystick_knob: Control
-var shooting_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
+var shooting_joystick_area: Control  # CAMBIAR de Control a TouchScreenButton
 var shooting_joystick_center: Vector2
 
 var current_shoot_direction = Vector2.ZERO
@@ -65,7 +65,9 @@ func _ready():
 	# AÑADIR AL GRUPO CORRECTO
 	add_to_group("game_manager")
 	
-	is_mobile = OS.has_feature("mobile")
+	# MEJORAR DETECCIÓN MÓVIL
+	is_mobile = OS.has_feature("mobile") or OS.get_name() == "Android" or OS.get_name() == "iOS"
+	
 	setup_collision_layers()
 	setup_background()
 	setup_window()
@@ -317,19 +319,19 @@ func handle_drag_event(event: InputEventScreenDrag):
 	elif touch_id == shoot_touch_id:
 		handle_shooting_joystick(touch_pos)
 
-func is_point_in_expanded_area(point: Vector2, area: TouchScreenButton) -> bool:
+func is_point_in_expanded_area(point: Vector2, area: Control) -> bool:  # CAMBIAR TIPO
 	"""Verificar si un punto está dentro de un área MUCHO MÁS EXPANDIDA"""
 	if not area:
 		return false
 	
 	# ÁREA GIGANTE - 5x el tamaño original
-	var expansion = area.size * 4.0  # AUMENTADO de 3.0 a 4.0
+	var expansion = area.size * 4.0
 	var expanded_pos = area.global_position - expansion
 	var expanded_size = area.size + (expansion * 2)
 	var expanded_rect = Rect2(expanded_pos, expanded_size)
 	
 	return expanded_rect.has_point(point)
-
+	
 func handle_movement_joystick(touch_pos: Vector2):
 	"""Manejar joystick de movimiento - SIN PEGARSE"""
 	if not movement_joystick_base or not movement_joystick_knob:
@@ -408,7 +410,7 @@ func reset_shooting_joystick():
 
 
 func setup_mobile_controls():
-	"""Configurar controles móviles AGRANDADOS"""
+	"""Configurar controles móviles AGRANDADOS - ANDROID COMPATIBLE"""
 	if not is_mobile:
 		return
 	
@@ -416,15 +418,25 @@ func setup_mobile_controls():
 	mobile_controls.name = "MobileControls"
 	mobile_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mobile_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mobile_controls.z_index = 100  # Z-INDEX MUY ALTO
 	ui_manager.add_child(mobile_controls)
 	
 	await get_tree().process_frame
 	
 	create_movement_joystick_large()
 	create_shooting_joystick_large()
+	
+	# FORZAR VISIBILIDAD
+	if movement_joystick_base:
+		movement_joystick_base.visible = true
+		movement_joystick_base.modulate = Color.WHITE
+	
+	if shooting_joystick_base:
+		shooting_joystick_base.visible = true  
+		shooting_joystick_base.modulate = Color.WHITE
 
 func create_movement_joystick_large():
-	"""Crear joystick de movimiento GIGANTE"""
+	"""Crear joystick de movimiento GIGANTE - ANDROID COMPATIBLE"""
 	var viewport_size = get_viewport().get_visible_rect().size
 	var joystick_size = movement_joystick_max_distance * 2  # 400px de diámetro
 	
@@ -437,19 +449,22 @@ func create_movement_joystick_large():
 	)
 	mobile_controls.add_child(movement_joystick_base)
 	
-	movement_joystick_area = TouchScreenButton.new()
+	# USAR Control SIMPLE EN LUGAR DE TouchScreenButton
+	movement_joystick_area = Control.new()  # CAMBIO CLAVE
+	movement_joystick_area.name = "MovementJoystickArea"
 	movement_joystick_area.size = Vector2(joystick_size, joystick_size)
 	movement_joystick_area.position = Vector2.ZERO
+	movement_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS  # IMPORTANTE
 	movement_joystick_base.add_child(movement_joystick_area)
 	
 	# Base más visible y grande
 	var base_style = StyleBoxFlat.new()
-	base_style.bg_color = Color(0.2, 0.2, 0.2, 0.6)  # Menos opaco para ver mejor
-	base_style.border_color = Color(0.6, 0.8, 1.0, 0.8)
-	base_style.border_width_left = 4
-	base_style.border_width_right = 4
-	base_style.border_width_top = 4
-	base_style.border_width_bottom = 4
+	base_style.bg_color = Color(0.2, 0.2, 0.2, 0.7)  # MÁS VISIBLE
+	base_style.border_color = Color(0.6, 0.8, 1.0, 1.0)  # MÁS OPACO
+	base_style.border_width_left = 5
+	base_style.border_width_right = 5
+	base_style.border_width_top = 5
+	base_style.border_width_bottom = 5
 	base_style.corner_radius_top_left = movement_joystick_max_distance
 	base_style.corner_radius_top_right = movement_joystick_max_distance
 	base_style.corner_radius_bottom_left = movement_joystick_max_distance
@@ -458,25 +473,27 @@ func create_movement_joystick_large():
 	var base_panel = Panel.new()
 	base_panel.size = Vector2(joystick_size, joystick_size)
 	base_panel.add_theme_stylebox_override("panel", base_style)
+	base_panel.z_index = 1
 	movement_joystick_base.add_child(base_panel)
 	
-	# Knob más grande
+	# Knob más grande y visible
 	movement_joystick_knob = Control.new()
 	movement_joystick_knob.name = "MovementJoystickKnob"
-	var knob_size = 80  # AUMENTADO de 50 a 80
+	var knob_size = 90  # AUMENTADO MÁS
 	movement_joystick_knob.size = Vector2(knob_size, knob_size)
 	movement_joystick_knob.position = Vector2(
 		movement_joystick_max_distance - knob_size/2, 
 		movement_joystick_max_distance - knob_size/2
 	)
+	movement_joystick_knob.z_index = 2
 	
 	var knob_style = StyleBoxFlat.new()
-	knob_style.bg_color = Color(0.8, 0.8, 0.8, 0.9)
-	knob_style.border_color = Color.WHITE
-	knob_style.border_width_left = 3
-	knob_style.border_width_right = 3
-	knob_style.border_width_top = 3
-	knob_style.border_width_bottom = 3
+	knob_style.bg_color = Color(0.9, 0.9, 0.9, 1.0)  # MÁS OPACO
+	knob_style.border_color = Color.CYAN
+	knob_style.border_width_left = 4
+	knob_style.border_width_right = 4
+	knob_style.border_width_top = 4
+	knob_style.border_width_bottom = 4
 	knob_style.corner_radius_top_left = knob_size/2
 	knob_style.corner_radius_top_right = knob_size/2
 	knob_style.corner_radius_bottom_left = knob_size/2
@@ -493,7 +510,7 @@ func create_movement_joystick_large():
 
 
 func create_shooting_joystick_large():
-	"""Crear joystick de disparo GIGANTE"""
+	"""Crear joystick de disparo GIGANTE - ANDROID COMPATIBLE"""
 	var viewport_size = get_viewport().get_visible_rect().size
 	var joystick_size = shooting_joystick_max_distance * 2  # 360px de diámetro
 	
@@ -506,24 +523,22 @@ func create_shooting_joystick_large():
 	)
 	mobile_controls.add_child(shooting_joystick_base)
 	
-	# USAR TouchScreenButton CORRECTAMENTE
-	shooting_joystick_area = TouchScreenButton.new()  # CORRECTO
+	# USAR Control SIMPLE EN LUGAR DE TouchScreenButton
+	shooting_joystick_area = Control.new()  # CAMBIO CLAVE
 	shooting_joystick_area.name = "ShootingJoystickArea"
 	shooting_joystick_area.size = Vector2(joystick_size, joystick_size)
 	shooting_joystick_area.position = Vector2.ZERO
-	# Hacer el botón invisible pero funcional
-	shooting_joystick_area.modulate = Color(1, 1, 1, 0)  # Completamente transparente
-	shooting_joystick_area.action = "shooting_joystick"  # Nombre de acción
+	shooting_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS  # IMPORTANTE
 	shooting_joystick_base.add_child(shooting_joystick_area)
 	
 	# Base roja más visible
 	var base_style = StyleBoxFlat.new()
-	base_style.bg_color = Color(0.4, 0.1, 0.1, 0.6)
-	base_style.border_color = Color(1.0, 0.4, 0.4, 0.8)
-	base_style.border_width_left = 4
-	base_style.border_width_right = 4
-	base_style.border_width_top = 4
-	base_style.border_width_bottom = 4
+	base_style.bg_color = Color(0.4, 0.1, 0.1, 0.7)  # MÁS VISIBLE
+	base_style.border_color = Color(1.0, 0.4, 0.4, 1.0)  # MÁS OPACO
+	base_style.border_width_left = 5
+	base_style.border_width_right = 5
+	base_style.border_width_top = 5
+	base_style.border_width_bottom = 5
 	base_style.corner_radius_top_left = shooting_joystick_max_distance
 	base_style.corner_radius_top_right = shooting_joystick_max_distance
 	base_style.corner_radius_bottom_left = shooting_joystick_max_distance
@@ -532,25 +547,27 @@ func create_shooting_joystick_large():
 	var base_panel = Panel.new()
 	base_panel.size = Vector2(joystick_size, joystick_size)
 	base_panel.add_theme_stylebox_override("panel", base_style)
+	base_panel.z_index = 1
 	shooting_joystick_base.add_child(base_panel)
 	
-	# Knob rojo más grande
+	# Knob rojo más grande y visible
 	shooting_joystick_knob = Control.new()
 	shooting_joystick_knob.name = "ShootingJoystickKnob"
-	var knob_size = 70  # AUMENTADO de 45 a 70
+	var knob_size = 80  # AUMENTADO MÁS
 	shooting_joystick_knob.size = Vector2(knob_size, knob_size)
 	shooting_joystick_knob.position = Vector2(
 		shooting_joystick_max_distance - knob_size/2, 
 		shooting_joystick_max_distance - knob_size/2
 	)
+	shooting_joystick_knob.z_index = 2
 	
 	var knob_style = StyleBoxFlat.new()
-	knob_style.bg_color = Color(0.9, 0.3, 0.3, 0.9)
-	knob_style.border_color = Color.WHITE
-	knob_style.border_width_left = 3
-	knob_style.border_width_right = 3
-	knob_style.border_width_top = 3
-	knob_style.border_width_bottom = 3
+	knob_style.bg_color = Color(1.0, 0.3, 0.3, 1.0)  # MÁS OPACO
+	knob_style.border_color = Color.YELLOW
+	knob_style.border_width_left = 4
+	knob_style.border_width_right = 4
+	knob_style.border_width_top = 4
+	knob_style.border_width_bottom = 4
 	knob_style.corner_radius_top_left = knob_size/2
 	knob_style.corner_radius_top_right = knob_size/2
 	knob_style.corner_radius_bottom_left = knob_size/2
@@ -636,12 +653,22 @@ func setup_background():
 		add_child(temp_bg)
 
 func setup_window():
-	"""Configurar ventana del juego"""
+	"""Configurar ventana del juego - ANDROID MEJORADO"""
 	if is_mobile:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-		DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+		
+		# CONFIGURACIÓN ESPECÍFICA PARA ANDROID
+		if OS.get_name() == "Android":
+			DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+			
 		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+		
+		# FORZAR PANTALLA COMPLETA SIN BARRAS
+		var window = get_window()
+		if window:
+			window.borderless = true
+			
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
 		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
