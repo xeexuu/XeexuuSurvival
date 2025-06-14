@@ -1,4 +1,4 @@
-# scenes/ui/CharacterSelection.gd - ANDROID CORREGIDO
+# scenes/ui/CharacterSelection.gd - LAYOUT HORIZONTAL PARA MÓVIL
 extends Control
 class_name CharacterSelection
 
@@ -23,8 +23,9 @@ func setup_selection_ui():
 	var main_scroll = ScrollContainer.new()
 	main_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if is_mobile:
-		main_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-		main_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		# EN MÓVIL: Scroll horizontal
+		main_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		main_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	else:
 		main_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		main_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -35,7 +36,8 @@ func setup_selection_ui():
 	main_container.add_theme_constant_override("separation", 50 if is_mobile else 30)
 	
 	if is_mobile:
-		main_container.custom_minimum_size = Vector2(viewport_size.x - 20, max(viewport_size.y, 1000))
+		# Tamaño mínimo más ancho para permitir scroll horizontal
+		main_container.custom_minimum_size = Vector2(max(viewport_size.x, 1200), viewport_size.y - 20)
 	else:
 		main_container.custom_minimum_size = Vector2(viewport_size.x - 40, viewport_size.y - 40)
 		main_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -51,12 +53,12 @@ func setup_selection_ui():
 	
 	# Título
 	var title_container = Control.new()
-	title_container.custom_minimum_size = Vector2(0, 160 if is_mobile else 120)
+	title_container.custom_minimum_size = Vector2(0, 120 if is_mobile else 100)
 	main_container.add_child(title_container)
 	
 	var title = Label.new()
 	title.text = "⚔ SELECCIONA TU GUERRERO ⚔"
-	var title_size = 72 if is_mobile else 48
+	var title_size = 64 if is_mobile else 48
 	title.add_theme_font_size_override("font_size", title_size)
 	title.add_theme_color_override("font_color", Color.GOLD)
 	title.add_theme_color_override("font_shadow_color", Color.BLACK)
@@ -70,21 +72,23 @@ func setup_selection_ui():
 	# Área de personajes
 	var characters_area = Control.new()
 	characters_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	characters_area.custom_minimum_size = Vector2(0, 800 if is_mobile else 600)
+	characters_area.custom_minimum_size = Vector2(0, 550 if is_mobile else 500)
 	main_container.add_child(characters_area)
 	
 	# CARGAR PERSONAJES CON VALORES ORIGINALES DEL .tres
 	var characters = load_all_characters_with_original_values()
 	
-	# Contenedor de personajes
+	# Contenedor de personajes - SIEMPRE HORIZONTAL PARA MÓVIL
 	var characters_container
 	if is_mobile:
-		characters_container = VBoxContainer.new()
-		characters_container.add_theme_constant_override("separation", 80)
+		# MÓVIL: Layout horizontal con scroll
+		characters_container = HBoxContainer.new()
+		characters_container.add_theme_constant_override("separation", 40)  # Separación entre tarjetas
 		characters_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		characters_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		characters_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	else:
+		# ESCRITORIO: Mantener horizontal también
 		characters_container = HBoxContainer.new()
 		characters_container.add_theme_constant_override("separation", 60)
 		characters_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -93,16 +97,26 @@ func setup_selection_ui():
 	
 	characters_area.add_child(characters_container)
 	
-	# Crear tarjetas
+	# Crear tarjetas más anchas para móvil horizontal
 	for character in characters:
-		var character_card = create_character_card_mobile_friendly(character, is_mobile)
+		var character_card = create_character_card_horizontal(character, is_mobile)
 		characters_container.add_child(character_card)
 	
 	# Espaciador inferior
 	var bottom_spacer = Control.new()
 	bottom_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	bottom_spacer.custom_minimum_size = Vector2(0, 80 if is_mobile else 50)
+	bottom_spacer.custom_minimum_size = Vector2(0, 60 if is_mobile else 40)
 	main_container.add_child(bottom_spacer)
+	
+	# INSTRUCCIONES PARA MÓVIL
+	if is_mobile:
+		var instructions = Label.new()
+		instructions.text = "← Desliza horizontalmente para ver más personajes →"
+		instructions.add_theme_font_size_override("font_size", 20)
+		instructions.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8, 0.8))
+		instructions.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		instructions.custom_minimum_size = Vector2(0, 30)
+		main_container.add_child(instructions)
 
 func load_all_characters_with_original_values() -> Array[CharacterStats]:
 	"""Cargar personajes con valores ORIGINALES del .tres"""
@@ -201,11 +215,13 @@ func create_minimal_fallback() -> Array[CharacterStats]:
 	
 	return characters
 
-func create_character_card_mobile_friendly(character: CharacterStats, is_mobile: bool) -> Control:
-	"""Crear tarjeta de personaje optimizada"""
+func create_character_card_horizontal(character: CharacterStats, is_mobile: bool) -> Control:
+	"""Crear tarjeta de personaje optimizada para layout horizontal"""
 	var viewport_size = get_viewport().get_visible_rect().size
-	var card_width = 450 if not is_mobile else min(viewport_size.x * 0.85, 500)
-	var card_height = 600 if not is_mobile else 650
+	
+	# TARJETAS MÁS COMPACTAS PARA LAYOUT HORIZONTAL
+	var card_width = 280 if not is_mobile else 320   # Más estrecha
+	var card_height = 480 if not is_mobile else 520  # Más baja
 	
 	# Contenedor principal
 	var card_container = Control.new()
@@ -232,8 +248,8 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 	
 	# Layout
 	var card_layout = VBoxContainer.new()
-	card_layout.add_theme_constant_override("separation", 25 if not is_mobile else 30)
-	var padding = 25 if not is_mobile else 30
+	card_layout.add_theme_constant_override("separation", 20 if not is_mobile else 25)
+	var padding = 20 if not is_mobile else 25
 	card_layout.position = Vector2(padding, padding)
 	card_layout.size = Vector2(card_width - padding * 2, card_height - padding * 2)
 	main_panel.add_child(card_layout)
@@ -241,7 +257,7 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 	# Nombre del personaje
 	var name_label = Label.new()
 	name_label.text = character.character_name.capitalize()
-	var name_font_size = 36 if not is_mobile else 48
+	var name_font_size = 32 if not is_mobile else 38
 	name_label.add_theme_font_size_override("font_size", name_font_size)
 	name_label.add_theme_color_override("font_color", Color.GOLD)
 	name_label.add_theme_color_override("font_shadow_color", Color.BLACK)
@@ -250,9 +266,9 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card_layout.add_child(name_label)
 	
-	# Área del sprite
+	# Área del sprite - MÁS COMPACTA
 	var sprite_container = Control.new()
-	sprite_container.custom_minimum_size = Vector2(0, 200 if not is_mobile else 250)
+	sprite_container.custom_minimum_size = Vector2(0, 140 if not is_mobile else 160)
 	card_layout.add_child(sprite_container)
 	
 	# CARGAR SPRITE FORZANDO DIFERENTES MÉTODOS
@@ -263,7 +279,7 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 		sprite_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		sprite_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		
-		var display_size = 150 if not is_mobile else 180
+		var display_size = 120 if not is_mobile else 140
 		sprite_rect.size = Vector2(display_size, display_size)
 		sprite_rect.position = Vector2(
 			(card_width - padding * 2 - display_size) / 2.0,
@@ -275,7 +291,7 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 		# Placeholder mejorado
 		var placeholder = ColorRect.new()
 		placeholder.color = get_character_color(character.character_name)
-		var placeholder_size = 120 if not is_mobile else 150
+		var placeholder_size = 100 if not is_mobile else 120
 		placeholder.size = Vector2(placeholder_size, placeholder_size)
 		placeholder.position = Vector2(
 			(card_width - padding * 2 - placeholder_size) / 2.0,
@@ -285,16 +301,16 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 		
 		var initial = Label.new()
 		initial.text = get_character_initial(character.character_name)
-		initial.add_theme_font_size_override("font_size", 60 if not is_mobile else 80)
+		initial.add_theme_font_size_override("font_size", 50 if not is_mobile else 60)
 		initial.add_theme_color_override("font_color", Color.WHITE)
 		initial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		initial.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		initial.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		placeholder.add_child(initial)
 	
-	# Estadísticas
+	# Estadísticas - MÁS COMPACTAS
 	var stats_container = Control.new()
-	stats_container.custom_minimum_size = Vector2(0, 150 if not is_mobile else 180)
+	stats_container.custom_minimum_size = Vector2(0, 120 if not is_mobile else 140)
 	card_layout.add_child(stats_container)
 	
 	var stats_bg = StyleBoxFlat.new()
@@ -309,17 +325,17 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 	stats_panel.add_theme_stylebox_override("panel", stats_bg)
 	stats_container.add_child(stats_panel)
 	
-	# Grid de estadísticas
+	# Grid de estadísticas - 2x2 para ser más compacto
 	var stats_grid = GridContainer.new()
 	stats_grid.columns = 2
-	stats_grid.add_theme_constant_override("h_separation", 20)
-	stats_grid.add_theme_constant_override("v_separation", 15)
-	stats_grid.position = Vector2(20, 20)
-	stats_grid.size = Vector2(card_width - padding * 2 - 40, stats_container.custom_minimum_size.y - 40)
+	stats_grid.add_theme_constant_override("h_separation", 15)
+	stats_grid.add_theme_constant_override("v_separation", 12)
+	stats_grid.position = Vector2(15, 15)
+	stats_grid.size = Vector2(card_width - padding * 2 - 30, stats_container.custom_minimum_size.y - 30)
 	stats_panel.add_child(stats_grid)
 	
-	var stat_font_size = 24 if not is_mobile else 32
-	var icon_font_size = 28 if not is_mobile else 36
+	var stat_font_size = 20 if not is_mobile else 24
+	var icon_font_size = 24 if not is_mobile else 28
 	
 	# Vida
 	var health_icon = create_stat_icon("❤", Color.LIGHT_GREEN, icon_font_size)
@@ -349,12 +365,12 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 	stats_grid.add_child(luck_icon)
 	stats_grid.add_child(luck_value)
 	
-	# Botón de selección
+	# Botón de selección - MÁS COMPACTO
 	var select_button = Button.new()
 	select_button.text = "¡SELECCIONAR!"
-	var button_height = 70 if not is_mobile else 90
+	var button_height = 60 if not is_mobile else 70
 	select_button.custom_minimum_size = Vector2(card_width - padding * 2, button_height)
-	var button_font_size = 28 if not is_mobile else 36
+	var button_font_size = 24 if not is_mobile else 28
 	select_button.add_theme_font_size_override("font_size", button_font_size)
 	
 	var button_style = StyleBoxFlat.new()
@@ -380,7 +396,7 @@ func create_character_card_mobile_friendly(character: CharacterStats, is_mobile:
 	
 	card_layout.add_child(select_button)
 	
-	# Efectos hover
+	# Efectos hover solo en escritorio
 	if not is_mobile:
 		select_button.mouse_entered.connect(func(): 
 			var tween = create_tween()
@@ -516,7 +532,7 @@ func create_stat_icon(icon_text: String, color: Color, font_size: int) -> Label:
 	icon.add_theme_constant_override("shadow_offset_y", 2)
 	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	icon.custom_minimum_size = Vector2(50, 40)
+	icon.custom_minimum_size = Vector2(40, 30)
 	return icon
 
 func create_stat_value(value_text: String, color: Color, font_size: int) -> Label:
@@ -530,7 +546,7 @@ func create_stat_value(value_text: String, color: Color, font_size: int) -> Labe
 	value.add_theme_constant_override("shadow_offset_y", 2)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	value.custom_minimum_size = Vector2(80, 40)
+	value.custom_minimum_size = Vector2(60, 30)
 	return value
 
 func get_character_color(char_name: String) -> Color:

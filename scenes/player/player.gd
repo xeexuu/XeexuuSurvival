@@ -1,4 +1,4 @@
-# scenes/player/player.gd - AUDIO CORREGIDO Y VISTA DESDE ARRIBA
+# scenes/player/player.gd - MOVIMIENTO MÓVIL CORREGIDO
 extends CharacterBody2D
 class_name Player
 
@@ -17,8 +17,10 @@ var max_health: int = 4
 var move_speed: float = 300.0
 var is_mobile: bool = false
 
-# Control de movimiento móvil
+# Control de movimiento móvil - VARIABLES CONECTADAS
 var mobile_movement_direction: Vector2 = Vector2.ZERO
+var mobile_shoot_direction: Vector2 = Vector2.ZERO
+var mobile_is_shooting: bool = false
 
 # Direcciones para animaciones y disparos
 var last_movement_direction: Vector2 = Vector2.ZERO
@@ -55,6 +57,8 @@ func _ready():
 	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS
 	collision_layer = 1
 	collision_mask = 2 | 3
+	
+	print("🎮 Player inicializado - Es móvil: ", is_mobile)
 
 func setup_audio_player():
 	"""Configurar reproductor de audio sin solapamiento"""
@@ -106,6 +110,7 @@ func apply_character_stats():
 	load_character_sprites()
 	
 	is_fully_initialized = true
+	print("🎮 Character stats aplicadas - Velocidad: ", move_speed)
 
 func load_character_sprites():
 	"""Cargar sprites del personaje"""
@@ -162,12 +167,16 @@ func handle_enemy_separation():
 				enemy.apply_knockback(push_direction, push_force)
 
 func handle_movement(_delta):
-	"""Manejar movimiento del jugador"""
+	"""Manejar movimiento del jugador - CORREGIDO PARA MÓVIL"""
 	var input_direction = Vector2.ZERO
 	
 	if is_mobile:
+		# USAR DIRECTAMENTE EL MOVIMIENTO MÓVIL
 		input_direction = mobile_movement_direction
+		if input_direction.length() > 0:
+			print("🕹️ Aplicando movimiento móvil: ", input_direction)
 	else:
+		# Movimiento con teclado
 		input_direction.x = Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
 		input_direction.y = Input.get_action_strength("move_down") - Input.get_action_strength("move_up")
 	
@@ -179,18 +188,27 @@ func handle_movement(_delta):
 		final_speed *= grab_slowdown_factor
 	
 	velocity = input_direction * final_speed
+	
+	# DEBUG: Mostrar velocidad aplicada
+	if velocity.length() > 0:
+		print("🚀 Velocidad aplicada: ", velocity)
+	
 	update_animations(input_direction)
 
 func handle_shooting():
-	"""Manejar disparo del jugador"""
+	"""Manejar disparo del jugador - CORREGIDO PARA MÓVIL"""
 	if not shooting_component or is_grabbed:
 		return
 	
 	var shoot_direction = Vector2.ZERO
 	
 	if is_mobile:
-		return
+		# USAR DIRECTAMENTE EL DISPARO MÓVIL
+		if mobile_is_shooting and mobile_shoot_direction.length() > 0:
+			shoot_direction = mobile_shoot_direction
+			print("🔫 Aplicando disparo móvil: ", shoot_direction)
 	else:
+		# Disparo con teclado
 		shoot_direction.x = Input.get_action_strength("shoot_right") - Input.get_action_strength("shoot_left")
 		shoot_direction.y = Input.get_action_strength("shoot_down") - Input.get_action_strength("shoot_up")
 	
@@ -198,9 +216,17 @@ func handle_shooting():
 		perform_shoot(shoot_direction.normalized())
 
 func mobile_shoot(direction: Vector2):
-	"""Función para disparar desde controles móviles"""
+	"""Función para disparar desde controles móviles - MEJORADA"""
 	if direction.length() > 0 and not is_grabbed:
-		perform_shoot(direction.normalized())
+		mobile_shoot_direction = direction.normalized()
+		mobile_is_shooting = true
+		print("📱 mobile_shoot llamada con dirección: ", direction)
+		
+		# Disparar inmediatamente
+		perform_shoot(mobile_shoot_direction)
+	else:
+		mobile_is_shooting = false
+		mobile_shoot_direction = Vector2.ZERO
 
 func perform_shoot(direction: Vector2):
 	"""Realizar disparo en la dirección especificada"""
@@ -223,6 +249,7 @@ func perform_shoot(direction: Vector2):
 			weapon_renderer.start_shooting_animation()
 		
 		update_shooting_animation(direction)
+		print("💥 Disparo realizado en dirección: ", direction)
 
 func update_weapon_position():
 	"""Actualizar posición y rotación del arma"""
