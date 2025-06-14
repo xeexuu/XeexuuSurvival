@@ -1,4 +1,4 @@
-# scenes/player/player.gd - AUDIO DE KILL CORREGIDO
+# scenes/player/player.gd - AUDIO DE KILL ELIMINADO COMPLETAMENTE
 extends CharacterBody2D
 class_name Player
 
@@ -28,11 +28,6 @@ var last_shot_direction: Vector2 = Vector2.RIGHT
 var score_system: ScoreSystem
 var weapon_renderer: WeaponRenderer
 
-# SISTEMA DE AUDIO DE KILL CORREGIDO PARA PELAO
-var kill_sound_player: AudioStreamPlayer2D
-var is_kill_sound_playing: bool = false  # Prevenir solapamiento
-var pelao_kill_sound: AudioStream
-
 # Efectos de daño estilo COD Black Ops
 var is_invulnerable: bool = false
 var invulnerability_duration: float = 1.0
@@ -50,7 +45,6 @@ func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_camera()
 	setup_weapon_renderer()
-	setup_kill_sound_system()
 	
 	collision_layer = 1
 	collision_mask = 2
@@ -71,25 +65,6 @@ func setup_weapon_renderer():
 	weapon_renderer.name = "WeaponRenderer"
 	weapon_renderer.set_player_reference(self)
 	add_child(weapon_renderer)
-
-func setup_kill_sound_system():
-	"""Configurar sistema de sonido de kill para Pelao - CORREGIDO"""
-	kill_sound_player = AudioStreamPlayer2D.new()
-	kill_sound_player.name = "KillSoundPlayer"
-	kill_sound_player.volume_db = -5.0
-	kill_sound_player.pitch_scale = 1.2
-	
-	# Conectar señal para detectar cuando termina el sonido
-	kill_sound_player.finished.connect(_on_kill_sound_finished)
-	
-	add_child(kill_sound_player)
-	
-	print("🔊 Sistema de audio de kill configurado")
-
-func _on_kill_sound_finished():
-	"""Cuando termina de reproducirse el sonido de kill"""
-	is_kill_sound_playing = false
-	print("🔊 Sonido de kill terminado, listo para el siguiente")
 
 func update_character_stats(new_stats: CharacterStats):
 	"""Actualizar estadísticas del personaje"""
@@ -114,34 +89,10 @@ func apply_character_stats():
 	if weapon_renderer and character_stats.equipped_weapon:
 		weapon_renderer.set_weapon_stats(character_stats.equipped_weapon)
 	
-	# CONFIGURAR SONIDO DE KILL ESPECÍFICO PARA PELAO
-	setup_pelao_kill_sound()
-	
 	# Cargar sprites usando el sistema separado
 	load_character_sprites()
 	
 	is_fully_initialized = true
-
-func setup_pelao_kill_sound():
-	"""Configurar sonido específico para Pelao - MEJORADO"""
-	if not character_stats or not kill_sound_player:
-		return
-	
-	var char_name = character_stats.character_name.to_lower().replace(" ", "")
-	
-	if char_name == "pelao":
-		if ResourceLoader.exists("res://audio/pelao_shoot.ogg"):
-			pelao_kill_sound = load("res://audio/pelao_shoot.ogg")
-			if pelao_kill_sound:
-				print("🔊 Sonido de kill de Pelao cargado correctamente")
-			else:
-				print("❌ Error al cargar sonido de Pelao")
-		else:
-			print("❌ Archivo de sonido de Pelao no encontrado")
-			pelao_kill_sound = null
-	else:
-		pelao_kill_sound = null
-		print("🔊 Personaje no es Pelao, sin sonido especial")
 
 func load_character_sprites():
 	"""Cargar sprites del personaje usando el sistema separado"""
@@ -254,7 +205,7 @@ func update_weapon_position():
 	weapon_renderer.update_weapon_position_and_rotation(aim_direction)
 
 func play_shoot_sound():
-	"""Reproducir sonido de disparo - NO EL DE KILL"""
+	"""Reproducir sonido de disparo"""
 	if character_stats and character_stats.equipped_weapon and character_stats.equipped_weapon.attack_sound:
 		var audio_player = AudioStreamPlayer2D.new()
 		audio_player.stream = character_stats.equipped_weapon.attack_sound
@@ -318,31 +269,10 @@ func update_shooting_animation(_shoot_direction: Vector2):
 	pass
 
 func handle_enemy_collisions():
-	"""Manejar colisiones con enemigos estilo COD Black Ops - MEJORADO"""
-	if is_invulnerable or not is_alive():
-		return
-	
-	# Solo verificar colisiones físicas reales con enemigos
-	for i in get_slide_collision_count():
-		var collision = get_slide_collision(i)
-		var collider = collision.get_collider()
-		
-		if collider is Enemy:
-			var enemy = collider as Enemy
-			if not enemy.is_dead and enemy.is_in_attack_range():
-				# Solo recibir daño si el enemigo está realmente atacando
-				if enemy.is_attacking or enemy.is_in_attack_animation:
-					print("💥 Colisión con enemigo atacante - recibiendo daño")
-					take_damage(enemy.damage)
-					
-					var knockback_direction = (global_position - enemy.global_position).normalized()
-					apply_knockback(knockback_direction, 100.0)
-					
-					break
-			else:
-				# Solo empujar si no está atacando
-				var push_direction = (global_position - enemy.global_position).normalized()
-				apply_knockback(push_direction, 50.0)
+	"""Manejar colisiones con enemigos estilo COD Black Ops - DESHABILITADO"""
+	# COMENTADO: Ya no manejamos daño por colisión aquí
+	# Los enemigos ahora atacan usando su propio sistema
+	pass
 
 func take_damage(amount: int):
 	"""Recibir daño con efectos estilo COD Black Ops"""
@@ -502,22 +432,9 @@ func apply_death_screen_effect():
 	death_tween.tween_property(death_overlay, "color:a", 0.7, 2.0)
 
 func on_enemy_killed():
-	"""CORREGIDO: Reproducir sonido de kill específico de Pelao SIN SOLAPAMIENTO"""
-	if not character_stats:
-		return
-	
-	var char_name = character_stats.character_name.to_lower().replace(" ", "")
-	
-	if char_name == "pelao" and pelao_kill_sound and kill_sound_player:
-		# Solo reproducir si no hay otro sonido en curso
-		if not is_kill_sound_playing:
-			is_kill_sound_playing = true
-			kill_sound_player.stream = pelao_kill_sound
-			kill_sound_player.pitch_scale = randf_range(1.1, 1.3)
-			kill_sound_player.play()
-			print("🔊 Reproduciendo sonido de kill de Pelao")
-		else:
-			print("🔊 Sonido de kill ya en curso, omitiendo")
+	"""ELIMINADO: Sin sonido de kill, función vacía"""
+	# NO hace nada ahora - sin sonido de kill
+	pass
 
 # Funciones de recarga manual
 func start_manual_reload():

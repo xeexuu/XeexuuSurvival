@@ -687,20 +687,29 @@ func create_shooting_joystick():
 	pass
 
 func _on_enemy_killed(enemy: Enemy):
-	"""Cuando un enemigo es eliminado - MEJORADO"""
+	"""Cuando un enemigo es eliminado - CORREGIDO PARA SCORE"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 	
+	# CORREGIR: Verificar si fue headshot y actualizar score
 	if score_system and enemy:
-		# DETECTAR SI FUE HEADSHOT BASADO EN LA POSICIÓN DE LA BALA
-		var is_headshot = enemy.has_method("was_headshot_kill") and enemy.was_headshot_kill()
+		# Para simplificar, asumimos headshot si el enemigo recibió más daño del normal
+		var is_headshot = false
+		
+		# Obtener el último daño recibido para determinar si fue headshot
+		# (esto es una aproximación, en un sistema más complejo guardaríamos esta info)
+		var base_damage = 25  # Daño base de pistola
+		
+		# Si el enemigo murió de un solo golpe con más daño del esperado, probablemente fue headshot
+		if enemy.max_health > base_damage and enemy.current_health <= 0:
+			is_headshot = true
+		
 		score_system.add_kill_points(enemy.global_position, is_headshot, false)
+		print("💰 Puntos añadidos al score system")
 	
-	# NOTIFICAR AL JUGADOR PARA SONIDO DE KILL (SOLO PELAO)
-	if player:
-		player.on_enemy_killed()
+	# NO llamar al jugador para audio (ya eliminado)
 
 func _on_enemy_spawned(_enemy: Enemy):
 	"""Cuando un enemigo es spawneado"""

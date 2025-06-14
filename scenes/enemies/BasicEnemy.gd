@@ -1,4 +1,4 @@
-# scenes/enemies/BasicEnemy.gd - ATAQUE CORREGIDO ESTILO COD BLACK OPS
+# scenes/enemies/BasicEnemy.gd - SISTEMA DE ATAQUE COD BO CORREGIDO
 extends CharacterBody2D
 class_name Enemy
 
@@ -23,17 +23,20 @@ var is_attacking: bool = false
 var last_attack_time: float = 0.0
 var attack_cooldown: float = 2.0
 
-# Variables para ataque estilo COD Black Ops Zombies - CORREGIDAS
+# Variables para ataque estilo COD Black Ops Zombies - MEJORADAS
 var attack_animation_duration: float = 0.8
 var is_in_attack_animation: bool = false
-var lunge_force: float = 200.0
+var lunge_force: float = 100.0  # REDUCIDO para que no se pegue
 var grab_damage: int = 1
 
 # NUEVO: Variables para prevenir spam de ataques
 var can_damage_player: bool = true
-var damage_cooldown: float = 1.5  # Cooldown entre ataques exitosos
-var attack_hitbox: Area2D  # Area de ataque separada
+var damage_cooldown: float = 1.5
 var is_attack_ready: bool = true
+
+# NUEVO: Control de proximidad al jugador
+var proximity_distance: float = 35.0  # Distancia mínima al jugador
+var separation_force_strength: float = 200.0
 
 # Variables para sprites
 var enemy_sprite_frames: SpriteFrames
@@ -72,28 +75,10 @@ var head_area: Area2D
 func _ready():
 	setup_enemy()
 	setup_head_collision()
-	setup_attack_system()  # NUEVO: Sistema de ataque mejorado
+	setup_attack_system()
 
 func setup_attack_system():
-	"""NUEVO: Configurar sistema de ataque mejorado estilo COD Black Ops"""
-	# Crear área de ataque separada
-	attack_hitbox = Area2D.new()
-	attack_hitbox.name = "AttackHitbox"
-	attack_hitbox.collision_layer = 0
-	attack_hitbox.collision_mask = 1  # Solo el jugador
-	
-	var attack_shape = CollisionShape2D.new()
-	var attack_circle = CircleShape2D.new()
-	attack_circle.radius = attack_range * 1.2  # Ligeramente más grande que el rango
-	attack_shape.shape = attack_circle
-	
-	attack_hitbox.add_child(attack_shape)
-	add_child(attack_hitbox)
-	
-	# Conectar señales del área de ataque
-	attack_hitbox.body_entered.connect(_on_attack_area_entered)
-	attack_hitbox.body_exited.connect(_on_attack_area_exited)
-	
+	"""Configurar sistema de ataque COD Black Ops"""
 	# Configurar timer de cooldown de daño
 	var damage_cooldown_timer = Timer.new()
 	damage_cooldown_timer.name = "DamageCooldownTimer"
@@ -103,16 +88,6 @@ func setup_attack_system():
 	add_child(damage_cooldown_timer)
 	
 	print("✅ Sistema de ataque COD Black Ops configurado para enemigo")
-
-func _on_attack_area_entered(body):
-	"""Cuando el jugador entra en el área de ataque"""
-	if body is Player and not is_dead:
-		print("🎯 Jugador entró en área de ataque del enemigo")
-
-func _on_attack_area_exited(body):
-	"""Cuando el jugador sale del área de ataque"""
-	if body is Player and not is_dead:
-		print("🎯 Jugador salió del área de ataque del enemigo")
 
 func _on_damage_cooldown_finished():
 	"""Cuando termina el cooldown de daño"""
@@ -167,6 +142,10 @@ func setup_enemy():
 	
 	last_position = global_position
 	wander_target = global_position + Vector2(randf_range(-200, 200), randf_range(-200, 200))
+	
+	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS
+	collision_layer = 2  # Enemigos en capa 2
+	collision_mask = 1 | 3  # Colisiona con jugador (1) y estructuras (3)
 	
 	if not is_sprite_loaded:
 		load_enemy_sprite_from_atlas()
@@ -577,7 +556,7 @@ func update_state():
 		current_state = EnemyState.IDLE
 
 func handle_movement_cod_style(delta):
-	"""Manejo de movimiento estilo COD Zombies con separación"""
+	"""Manejo de movimiento estilo COD Zombies MEJORADO"""
 	var movement_direction = Vector2.ZERO
 	
 	if is_in_attack_animation:
@@ -589,14 +568,22 @@ func handle_movement_cod_style(delta):
 		EnemyState.CHASING:
 			movement_direction = get_movement_towards_player()
 		EnemyState.ATTACKING:
-			movement_direction = Vector2.ZERO
+			movement_direction = Vector2.ZERO  # NO moverse cuando ataca
 		EnemyState.IDLE:
 			movement_direction = get_wander_movement()
 		EnemyState.STUNNED:
 			movement_direction = velocity.move_toward(Vector2.ZERO, move_speed * delta * 2)
 	
+	# NUEVO: Aplicar separación para evitar que se peguen
 	if separation_force.length() > 0:
-		movement_direction += separation_force.normalized() * 0.3
+		movement_direction += separation_force.normalized() * 0.5
+	
+	# NUEVO: Mantener distancia mínima del jugador
+	if player:
+		var distance_to_player = global_position.distance_to(player.global_position)
+		if distance_to_player < proximity_distance and distance_to_player > 0:
+			var separation_from_player = (global_position - player.global_position).normalized()
+			movement_direction += separation_from_player * separation_force_strength * delta
 	
 	if movement_direction != Vector2.ZERO:
 		velocity = movement_direction.normalized() * move_speed
@@ -606,12 +593,19 @@ func handle_movement_cod_style(delta):
 	move_and_slide()
 
 func get_movement_towards_player() -> Vector2:
-	"""Obtener dirección de movimiento hacia el jugador"""
+	"""Obtener dirección de movimiento hacia el jugador MEJORADO"""
 	if not player:
+		return Vector2.ZERO
+	
+	var distance_to_player = global_position.distance_to(player.global_position)
+	
+	# Si está muy cerca, no moverse más
+	if distance_to_player <= proximity_distance:
 		return Vector2.ZERO
 	
 	var direction = (player.global_position - global_position).normalized()
 	
+	# Añadir algo de aleatoriedad
 	if randf() < 0.1:
 		direction = direction.rotated(randf_range(-0.3, 0.3))
 	
@@ -654,17 +648,15 @@ func handle_combat_cod_style():
 		var current_time = Time.get_ticks_msec() / 1000.0
 		
 		if current_time - last_attack_time >= attack_cooldown:
-			# VERIFICAR DISTANCIA REAL AL JUGADOR ANTES DE ATACAR
 			var distance_to_player = global_position.distance_to(player.global_position)
 			if distance_to_player <= attack_range:
 				perform_zombie_grab_attack()
 
 func perform_zombie_grab_attack():
-	"""Realizar ataque de agarre estilo COD Black Ops Zombies - CORREGIDO"""
+	"""Realizar ataque de agarre estilo COD Black Ops Zombies - MEJORADO"""
 	if not player or not is_attack_ready or not can_damage_player:
 		return
 	
-	# VERIFICACIÓN DOBLE DE DISTANCIA
 	var distance_to_player = global_position.distance_to(player.global_position)	
 	if distance_to_player > attack_range:
 		print("🚫 Ataque cancelado - jugador fuera de rango: ", distance_to_player)
@@ -682,14 +674,14 @@ func perform_zombie_grab_attack():
 	if sprite:
 		sprite.modulate = Color.ORANGE_RED
 	
-	# Lanzamiento hacia el jugador (lunge)
+	# REDUCIR lunge para evitar que se pegue
 	var lunge_direction = (player.global_position - global_position).normalized()
 	velocity += lunge_direction * lunge_force
 	
 	# Secuencia de ataque en fases estilo COD Black Ops
 	var attack_tween = create_tween()
 	
-	# Fase 1: Preparación y lunge (0.2s)
+	# Fase 1: Preparación (0.2s)
 	attack_tween.tween_callback(func(): 
 		if sprite:
 			var prep_tween = create_tween()
@@ -698,11 +690,10 @@ func perform_zombie_grab_attack():
 	)
 	attack_tween.tween_interval(0.2)
 	
-	# Fase 2: Agarre y daño (0.4s) - CON VERIFICACIÓN DE DISTANCIA
+	# Fase 2: Agarre y daño (0.4s)
 	attack_tween.tween_callback(func():
-		# VERIFICAR NUEVAMENTE LA DISTANCIA ANTES DE APLICAR DAÑO
 		var final_distance = global_position.distance_to(player.global_position)
-		if final_distance <= attack_range * 1.5:  # Dar un poco más de margen
+		if final_distance <= attack_range * 1.5:
 			apply_grab_damage_to_player()
 			create_grab_effect()
 			print("💥 Daño aplicado al jugador - distancia final: ", final_distance)
@@ -731,7 +722,7 @@ func perform_zombie_grab_attack():
 	)
 
 func apply_grab_damage_to_player():
-	"""Aplicar daño de agarre al jugador estilo COD Black Ops - CONTROLADO"""
+	"""Aplicar daño de agarre al jugador estilo COD Black Ops"""
 	if not player:
 		return
 	
@@ -744,19 +735,15 @@ func apply_grab_damage_to_player():
 	
 	print("💀 Aplicando ", final_damage, " de daño al jugador")
 	
-	# Aplicar daño
+	# APLICAR DAÑO DIRECTAMENTE AL JUGADOR
 	if player.has_method("take_damage"):
 		player.take_damage(final_damage)
-	elif player.has_node("HealthComponent"):
-		var health_component = player.get_node("HealthComponent")
-		if health_component.has_method("take_damage"):
-			health_component.take_damage(final_damage)
 	
 	# Aplicar efecto de agarre (slow)
 	if player and player.has_method("apply_grab_effect"):
-		player.apply_grab_effect(1.0)  # 1 segundo de efecto
+		player.apply_grab_effect(1.0)
 	
-	# Knockback menor que el zarpazo
+	# Knockback menor
 	if player and player.has_method("apply_knockback"):
 		var push_direction = (player.global_position - global_position).normalized()
 		player.apply_knockback(push_direction, 75.0)
