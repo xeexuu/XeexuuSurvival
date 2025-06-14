@@ -21,7 +21,12 @@ var player: Player = null
 var is_dead: bool = false
 var is_attacking: bool = false
 var last_attack_time: float = 0.0
-var attack_cooldown: float = 2.0
+var attack_cooldown: float = 1.0  # Reducido para ataques más frecuentes
+
+# NUEVO: Variables para ataque de zarpazo estilo COD WAW
+var attack_animation_duration: float = 0.8
+var claw_effect_node: Node2D = null
+var is_in_attack_animation: bool = false
 
 # VARIABLES PARA SPRITES
 var enemy_sprite_frames: SpriteFrames
@@ -315,6 +320,7 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	current_health = max_health
 	is_dead = false
 	is_attacking = false
+	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	
 	aggression_level = randf_range(0.8, 1.2)
@@ -344,12 +350,18 @@ func reset_for_pool():
 	"""Resetear enemigo para el pool"""
 	is_dead = false
 	is_attacking = false
+	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	current_health = max_health
 	
 	if sprite:
 		sprite.modulate = original_color
 		sprite.visible = false
+	
+	# Limpiar efecto de zarpazo si existe
+	if claw_effect_node:
+		claw_effect_node.queue_free()
+		claw_effect_node = null
 	
 	set_physics_process(false)
 	set_process(false)
@@ -418,7 +430,7 @@ func update_state():
 		last_player_position = player.global_position
 		search_timer = 0.0
 	
-	if distance_to_player <= attack_range and not is_attacking:
+	if distance_to_player <= attack_range and not is_attacking and not is_in_attack_animation:
 		current_state = EnemyState.ATTACKING
 	elif distance_to_player <= detection_range:
 		current_state = EnemyState.CHASING
@@ -430,6 +442,12 @@ func update_state():
 func handle_movement_cod_style(delta):
 	"""Manejo de movimiento estilo COD Zombies con separación"""
 	var movement_direction = Vector2.ZERO
+	
+	# No moverse durante el ataque
+	if is_in_attack_animation:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
 	
 	match current_state:
 		EnemyState.CHASING:
@@ -549,26 +567,77 @@ func update_sprite_animation(animation: String, direction: Vector2):
 
 func handle_combat_cod_style():
 	"""Manejo de combate estilo COD"""
-	if current_state == EnemyState.ATTACKING and not is_attacking:
+	if current_state == EnemyState.ATTACKING and not is_attacking and not is_in_attack_animation:
 		var current_time = Time.get_ticks_msec() / 1000.0
 		if current_time - last_attack_time >= attack_cooldown:
-			attack_player_cod_style()
+			perform_claw_attack_cod_waw()
 
-func attack_player_cod_style():
-	"""Ataque estilo COD Zombies"""
-	if not player or is_attacking:
+func perform_claw_attack_cod_waw():
+	"""Realizar ataque de zarpazo estilo Call of Duty World at War"""
+	if not player or is_attacking or is_in_attack_animation:
 		return
 	
 	is_attacking = true
+	is_in_attack_animation = true
 	last_attack_time = Time.get_ticks_msec() / 1000.0
 	
+	# Efecto visual de preparación del ataque
 	if sprite:
 		sprite.modulate = Color.ORANGE_RED
-		var tween = create_tween()
-		tween.tween_property(sprite, "modulate", original_color, 0.4)
 	
-	var final_damage = int(float(damage) * aggression_level)
+	# Crear efecto de zarpazo
+	create_claw_slash_effect()
 	
+	# Secuencia de ataque en fases
+	var attack_tween = create_tween()
+	
+	# Fase 1: Preparación (0.2s) - el zombi se prepara
+	attack_tween.tween_callback(func(): 
+		if sprite:
+			var prep_tween = create_tween()
+			prep_tween.tween_property(sprite, "scale", Vector2(1.2, 1.2), 0.1)
+			prep_tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.1)
+	)
+	attack_tween.tween_interval(0.2)
+	
+	# Fase 2: Ataque (0.3s) - el zarpazo real
+	attack_tween.tween_callback(func():
+		# Aplicar daño al jugador
+		apply_damage_to_player()
+		
+		# Efecto de zarpazo más intenso
+		create_intense_claw_effect()
+		
+		# Sonido de zarpazo (si tienes audio)
+		# play_claw_sound()
+	)
+	attack_tween.tween_interval(0.3)
+	
+	# Fase 3: Recuperación (0.3s) - el zombi se recupera
+	attack_tween.tween_callback(func():
+		if sprite:
+			sprite.modulate = original_color
+		
+		is_in_attack_animation = false
+		
+		# Iniciar cooldown
+		if attack_timer:
+			attack_timer.start()
+	)
+
+func apply_damage_to_player():
+	"""Aplicar daño al jugador con efectos estilo COD WAW"""
+	if not player:
+		return
+	
+	# Verificar si el jugador sigue en rango de ataque
+	var distance_to_player = global_position.distance_to(player.global_position)
+	if distance_to_player > attack_range * 1.5:  # Un poco más de rango para el zarpazo
+		return
+	
+	var final_damage = max(1, int(float(damage) * aggression_level))
+	
+	# Aplicar daño
 	if player.has_method("take_damage"):
 		player.take_damage(final_damage)
 	elif player.has_node("HealthComponent"):
@@ -576,12 +645,82 @@ func attack_player_cod_style():
 		if health_component.has_method("take_damage"):
 			health_component.take_damage(final_damage)
 	
+	# Aplicar knockback fuerte estilo COD WAW
 	if player and player.has_method("apply_knockback"):
 		var push_direction = (player.global_position - global_position).normalized()
-		player.apply_knockback(push_direction, 100.0)
+		player.apply_knockback(push_direction, 150.0)  # Knockback más fuerte
 	
-	if attack_timer:
-		attack_timer.start()
+	print("🧟 Zombi ataca con zarpazo: ", final_damage, " de daño")
+
+func create_claw_slash_effect():
+	"""Crear efecto visual de zarpazo"""
+	if claw_effect_node:
+		claw_effect_node.queue_free()
+	
+	claw_effect_node = Node2D.new()
+	claw_effect_node.position = global_position
+	get_tree().current_scene.add_child(claw_effect_node)
+	
+	# Crear múltiples líneas de zarpazo
+	for i in range(3):
+		var slash_line = Line2D.new()
+		slash_line.width = 8.0
+		slash_line.default_color = Color.RED
+		
+		# Calcular dirección hacia el jugador
+		var to_player = (player.global_position - global_position).normalized()
+		var perpendicular = Vector2(-to_player.y, to_player.x)
+		
+		# Crear línea de zarpazo diagonal
+		var start_offset = perpendicular * (float(i - 1) * 15.0)
+		var end_offset = start_offset + to_player * 60.0
+		
+		slash_line.add_point(start_offset)
+		slash_line.add_point(end_offset)
+		
+		claw_effect_node.add_child(slash_line)
+		
+		# Animar la línea apareciendo
+		slash_line.modulate = Color.TRANSPARENT
+		var line_tween = claw_effect_node.create_tween()
+		line_tween.tween_property(slash_line, "modulate", Color.RED, 0.1)
+		line_tween.tween_property(slash_line, "modulate", Color.TRANSPARENT, 0.4)
+
+func create_intense_claw_effect():
+	"""Crear efecto más intenso durante el impacto"""
+	if not claw_effect_node:
+		return
+	
+	# Partículas de sangre/impacto
+	for i in range(6):
+		var particle = Sprite2D.new()
+		var particle_image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
+		particle_image.fill(Color.DARK_RED)
+		particle.texture = ImageTexture.create_from_image(particle_image)
+		
+		var angle = (float(i) * PI * 2.0) / 6.0
+		var offset = Vector2.from_angle(angle) * randf_range(20, 40)
+		particle.position = offset
+		
+		claw_effect_node.add_child(particle)
+		
+		# Animar partícula
+		var particle_tween = claw_effect_node.create_tween()
+		particle_tween.parallel().tween_property(particle, "position", offset * 2, 0.5)
+		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
+		particle_tween.parallel().tween_property(particle, "scale", Vector2.ZERO, 0.5)
+	
+	# Limpiar efecto después de un tiempo
+	var cleanup_timer = Timer.new()
+	cleanup_timer.wait_time = 1.0
+	cleanup_timer.one_shot = true
+	cleanup_timer.timeout.connect(func(): 
+		if claw_effect_node:
+			claw_effect_node.queue_free()
+			claw_effect_node = null
+	)
+	claw_effect_node.add_child(cleanup_timer)
+	cleanup_timer.start()
 
 func _on_attack_timer_timeout():
 	"""Cuando termina el cooldown de ataque"""
@@ -648,9 +787,15 @@ func die():
 	
 	is_dead = true
 	current_state = EnemyState.DEAD
+	is_in_attack_animation = false
 	
 	velocity = Vector2.ZERO
 	set_physics_process(false)
+	
+	# Limpiar efecto de zarpazo
+	if claw_effect_node:
+		claw_effect_node.queue_free()
+		claw_effect_node = null
 	
 	if sprite:
 		sprite.modulate = Color.GRAY

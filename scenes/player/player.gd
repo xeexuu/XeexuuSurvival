@@ -2,6 +2,9 @@
 extends CharacterBody2D
 class_name Player
 
+signal player_died
+signal health_changed(current_health: int, max_health: int)
+
 @export var speed: float = 150.0  # Velocidad estilo COD zombies
 @export var character_stats: CharacterStats
 
@@ -19,6 +22,7 @@ var is_audio_playing: bool = false
 
 var bullets_fired: int = 0
 var current_health: int = 100
+var is_dead: bool = false  # NUEVO: Estado de muerte
 
 # SISTEMA DE ANIMACIONES SIMPLIFICADO - SIN IZQUIERDA/DERECHA
 enum AnimationState {
@@ -51,6 +55,9 @@ var is_mobile: bool = false
 var pelao_kill_sound: AudioStream
 var kill_sound_chance: float = 0.3  # 30% probabilidad
 
+# REFERENCIAS DEL SISTEMA
+var score_system: ScoreSystem = null
+
 func _ready():
 	is_mobile = OS.has_feature("mobile")
 	z_index = 50
@@ -78,6 +85,10 @@ func _ready():
 	
 	if is_mobile:
 		Engine.physics_ticks_per_second = 60
+
+func set_score_system(score_sys: ScoreSystem):
+	"""Establecer referencia al sistema de puntuación"""
+	score_system = score_sys
 
 func setup_weapon_renderer():
 	"""Configurar el renderizador de arma"""
@@ -195,11 +206,18 @@ func _on_bullet_fired(bullet: Bullet, _direction: Vector2):
 
 func take_damage(amount: int):
 	"""Función para recibir daño de los enemigos"""
+	if is_dead:
+		return
+	
 	current_health -= amount
 	current_health = max(current_health, 0)
 	
 	if character_stats:
 		character_stats.current_health = current_health
+	
+	# Resetear racha de kills en el score system
+	if score_system:
+		score_system.reset_kill_streak()
 	
 	# Efecto visual de daño
 	if animated_sprite:
@@ -207,17 +225,45 @@ func take_damage(amount: int):
 		var tween = create_tween()
 		tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.3)
 	
+	# Emitir señal de cambio de vida
+	health_changed.emit(current_health, character_stats.max_health if character_stats else 100)
+	
+	print("💔 Jugador recibe ", amount, " de daño. Vida: ", current_health)
+	
 	# Verificar muerte
 	if current_health <= 0:
 		die()
 
 func die():
 	"""Manejar la muerte del jugador"""
-	pass
+	if is_dead:
+		return
+	
+	is_dead = true
+	current_health = 0
+	
+	print("💀 JUGADOR HA MUERTO")
+	
+	# Detener movimiento
+	velocity = Vector2.ZERO
+	set_physics_process(false)
+	
+	# Efecto visual de muerte
+	if animated_sprite:
+		animated_sprite.modulate = Color.DARK_RED
+		var death_tween = create_tween()
+		death_tween.tween_property(animated_sprite, "modulate:a", 0.5, 1.0)
+		death_tween.tween_property(animated_sprite, "scale", Vector2(1.5, 0.5), 1.0)
+	
+	# Emitir señal de muerte
+	player_died.emit()
 
 # NUEVO: Función para aplicar knockback al jugador
 func apply_knockback(direction: Vector2, force: float):
 	"""Aplicar knockback al jugador cuando recibe daño"""
+	if is_dead:
+		return
+		
 	if direction.length() > 0:
 		velocity += direction.normalized() * force
 
@@ -329,6 +375,9 @@ func get_fallback_animation(state: AnimationState) -> String:
 	return "idle"
 
 func _physics_process(delta):
+	if is_dead:
+		return
+		
 	handle_movement(delta)
 	if not is_mobile:
 		handle_shooting()
@@ -661,51 +710,31 @@ func create_default_sprite_frames_128px():
 	"""Crear SpriteFrames por defecto optimizado para 128px EN PARTIDA"""
 	var sprite_frames = SpriteFrames.new()
 	
-	# Crear animación idle básica a 64px (que se escalará a 128px)
+	# Crear animación idle por defecto
 	sprite_frames.add_animation("idle")
 	sprite_frames.set_animation_speed("idle", 1.0)
 	sprite_frames.set_animation_loop("idle", true)
-	sprite_frames.add_frame("idle", create_default_texture_dynamic(Color.CYAN))
 	
-	# Crear animaciones de caminata básicas a 64px
-	var basic_walk_anims = ["walk_Up", "walk_Down", "walk_Right_Down", "walk_Left_Down"]
-	var colors = [Color.LIGHT_BLUE, Color.LIGHT_GREEN, Color.LIGHT_CORAL, Color.LIGHT_YELLOW]
+	var default_texture = create_default_texture_dynamic(Color.BLUE, 64)
+	sprite_frames.add_frame("idle", default_texture)
 	
-	for i in range(basic_walk_anims.size()):
-		var anim_name = basic_walk_anims[i]
+	# Crear animaciones de caminata básicas
+	var basic_walk_animations = ["walk_Up", "walk_Down", "walk_Left_Down", "walk_Right_Down"]
+	
+	for anim_name in basic_walk_animations:
 		sprite_frames.add_animation(anim_name)
 		sprite_frames.set_animation_speed(anim_name, 8.0)
 		sprite_frames.set_animation_loop(anim_name, true)
 		
-		# Agregar 2 frames básicos de 64px para simular caminata
-		sprite_frames.add_frame(anim_name, create_default_texture_dynamic(colors[i]))
-		sprite_frames.add_frame(anim_name, create_default_texture_dynamic(colors[i].darkened(0.2)))
+		# Crear 4 frames por animación con colores ligeramente diferentes
+		for frame_idx in range(4):
+			var frame_color = Color.BLUE.lightened(float(frame_idx) * 0.1)
+			var frame_texture = create_default_texture_dynamic(frame_color, 64)
+			sprite_frames.add_frame(anim_name, frame_texture)
 	
 	animated_sprite.sprite_frames = sprite_frames
 	ensure_sprite_scaling_128px()
 	animated_sprite.play("idle")
-
-func extract_first_frame_from_atlas(atlas_texture: Texture2D) -> Texture2D:
-	"""Extraer el primer frame de un atlas horizontal"""
-	var texture_size = atlas_texture.get_size()
-	var frame_width = float(texture_size.x) / 8.0
-	var frame_height = texture_size.y
-	
-	# Crear AtlasTexture para el primer frame (frame 0)
-	var first_frame = AtlasTexture.new()
-	first_frame.atlas = atlas_texture
-	first_frame.region = Rect2(0, 0, frame_width, frame_height)
-	
-	return first_frame
-
-func load_frames_from_atlas(_sprite_frames: SpriteFrames, _anim_name: String, atlas_texture: Texture2D, h_frames: int, v_frames: int):
-	"""Cargar frames desde un atlas de sprites - FUNCIÓN CORREGIDA PARA EVITAR WARNINGS"""
-	var texture_size = atlas_texture.get_size()
-	var _frame_width = float(texture_size.x) / float(h_frames)
-	var _frame_height = float(texture_size.y) / float(v_frames)
-	
-	# Esta función está implementada pero no se usa actualmente
-	# Se mantiene para compatibilidad futura
 
 func try_load_texture_safe(path: String) -> Texture2D:
 	"""Función para cargar texturas de forma segura"""
@@ -717,3 +746,63 @@ func try_load_texture_safe(path: String) -> Texture2D:
 		return resource as Texture2D
 	else:
 		return null
+
+func extract_first_frame_from_atlas(atlas_texture: Texture2D) -> Texture2D:
+	"""Extraer el primer frame de un atlas de 8x1"""
+	var texture_size = atlas_texture.get_size()
+	var frame_width = float(texture_size.x) / 8.0
+	var frame_height = float(texture_size.y)
+	
+	var first_frame = AtlasTexture.new()
+	first_frame.atlas = atlas_texture
+	first_frame.region = Rect2(0, 0, frame_width, frame_height)
+	
+	return first_frame
+
+func load_frames_from_atlas(sprite_frames: SpriteFrames, anim_name: String, atlas_texture: Texture2D, h_frames: int, v_frames: int):
+	"""Cargar frames desde un atlas"""
+	var texture_size = atlas_texture.get_size()
+	var frame_width = float(texture_size.x) / float(h_frames)
+	var frame_height = float(texture_size.y) / float(v_frames)
+	
+	for i in range(h_frames * v_frames):
+		var x = float(i % h_frames) * frame_width
+		var y = float(i / h_frames) * frame_height
+		
+		var atlas_frame = AtlasTexture.new()
+		atlas_frame.atlas = atlas_texture
+		atlas_frame.region = Rect2(x, y, frame_width, frame_height)
+		
+		sprite_frames.add_frame(anim_name, atlas_frame)
+
+func set_mobile_movement_direction(direction: Vector2):
+	"""Función para establecer la dirección de movimiento desde el joystick móvil"""
+	mobile_movement_direction = direction
+
+func get_current_health() -> int:
+	"""Obtener la vida actual del jugador"""
+	return current_health
+
+func get_max_health() -> int:
+	"""Obtener la vida máxima del jugador"""
+	if character_stats:
+		return character_stats.max_health
+	return 100
+
+func heal(amount: int):
+	"""Curar al jugador"""
+	if is_dead:
+		return
+		
+	current_health += amount
+	var max_hp = get_max_health()
+	current_health = min(current_health, max_hp)
+	
+	if character_stats:
+		character_stats.current_health = current_health
+	
+	health_changed.emit(current_health, max_hp)
+
+func is_player_dead() -> bool:
+	"""Verificar si el jugador está muerto"""
+	return is_dead

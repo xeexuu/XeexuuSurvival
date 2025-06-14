@@ -17,7 +17,7 @@ var enemies_multiplier_per_round: float = 1.25
 # Sistema de salud de enemigos estilo COD
 var base_enemy_health: int = 150
 
-# UI de rondas - AHORA EN CÁMARA
+# UI de rondas - AHORA EN ESQUINA INFERIOR IZQUIERDA
 var round_ui: Control
 var player_camera: Camera2D
 
@@ -28,7 +28,7 @@ func _ready():
 	pass
 
 func setup_round_ui_on_camera(camera: Camera2D):
-	"""Configurar la UI de rondas en la esquina de la cámara del personaje"""
+	"""Configurar la UI de rondas en la esquina INFERIOR IZQUIERDA de la cámara"""
 	player_camera = camera
 	if not player_camera:
 		return
@@ -38,84 +38,79 @@ func setup_round_ui_on_camera(camera: Camera2D):
 	round_ui.process_mode = Node.PROCESS_MODE_ALWAYS
 	
 	var is_mobile = OS.has_feature("mobile")
-	var ui_size = Vector2(240, 100) if not is_mobile else Vector2(320, 130)
+	var ui_size = Vector2(180, 80) if not is_mobile else Vector2(220, 100)  # MÁS PEQUEÑO
 	round_ui.size = ui_size
 	
-	# Posición relativa a la cámara (esquina superior derecha)
+	# Posición relativa a la cámara (ESQUINA INFERIOR IZQUIERDA)
 	round_ui.position = Vector2(0, 0)  # Será actualizada en _process
 	
-	# Fondo semi-transparente
-	var bg = ColorRect.new()
-	bg.size = ui_size
-	bg.color = Color(0.0, 0.0, 0.0, 0.8)
-	var style = create_round_panel_style()
-	bg.add_theme_stylebox_override("panel", style)
-	round_ui.add_child(bg)
-	
-	# Contenedor vertical
+	# Contenedor vertical SIN FONDO
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	vbox.position = Vector2(15, 10)
-	vbox.size = Vector2(ui_size.x - 30, ui_size.y - 20)
+	vbox.add_theme_constant_override("separation", 5)
+	vbox.position = Vector2(10, 10)  # Margen pequeño
+	vbox.size = Vector2(ui_size.x - 20, ui_size.y - 20)
 	round_ui.add_child(vbox)
 	
-	# Etiqueta de ronda
+	# Etiqueta de ronda - NÚMEROS ROMANOS
 	var round_label = Label.new()
 	round_label.name = "RoundLabel"
-	round_label.text = "RONDA 1"
-	var round_font_size = 28 if not is_mobile else 36
+	round_label.text = "RONDA I"
+	var round_font_size = 24 if not is_mobile else 28
 	round_label.add_theme_font_size_override("font_size", round_font_size)
-	round_label.add_theme_color_override("font_color", Color.ORANGE)
+	round_label.add_theme_color_override("font_color", Color.GOLD)
 	round_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	round_label.add_theme_constant_override("shadow_offset_x", 2)
 	round_label.add_theme_constant_override("shadow_offset_y", 2)
-	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	vbox.add_child(round_label)
 	
 	# Etiqueta de enemigos restantes
 	var enemies_label = Label.new()
 	enemies_label.name = "EnemiesLabel"
 	enemies_label.text = "Zombies: 6"
-	var enemies_font_size = 20 if not is_mobile else 26
+	var enemies_font_size = 18 if not is_mobile else 22
 	enemies_label.add_theme_font_size_override("font_size", enemies_font_size)
 	enemies_label.add_theme_color_override("font_color", Color.RED)
 	enemies_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	enemies_label.add_theme_constant_override("shadow_offset_x", 1)
 	enemies_label.add_theme_constant_override("shadow_offset_y", 1)
-	enemies_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enemies_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	vbox.add_child(enemies_label)
 	
 	# Añadir a la cámara
 	player_camera.add_child(round_ui)
 
 func _process(_delta):
-	"""Actualizar posición de la UI relativa a la cámara"""
+	"""Actualizar posición de la UI relativa a la cámara - INFERIOR IZQUIERDA"""
 	if round_ui and player_camera:
 		var viewport_size = get_viewport().get_visible_rect().size
 		var camera_zoom = player_camera.zoom
 		
-		# Calcular posición en la esquina superior derecha de la cámara
+		# Calcular posición en la esquina INFERIOR IZQUIERDA de la cámara
 		var ui_offset = Vector2(
-			(viewport_size.x / camera_zoom.x) / 2 - round_ui.size.x - 20,
-			-(viewport_size.y / camera_zoom.y) / 2 + 20
+			-(viewport_size.x / camera_zoom.x) / 2 + 20,  # Izquierda + margen
+			(viewport_size.y / camera_zoom.y) / 2 - round_ui.size.y - 20  # Abajo - alto - margen
 		)
 		
 		round_ui.position = ui_offset
 
-func create_round_panel_style() -> StyleBoxFlat:
-	"""Crear estilo para el panel de ronda"""
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.1, 0.1, 0.15, 0.95)
-	style.border_color = Color(1.0, 0.5, 0.0, 0.9)
-	style.border_width_left = 3
-	style.border_width_right = 3
-	style.border_width_top = 3
-	style.border_width_bottom = 3
-	style.corner_radius_top_left = 10
-	style.corner_radius_top_right = 10
-	style.corner_radius_bottom_left = 10
-	style.corner_radius_bottom_right = 10
-	return style
+func int_to_roman(num: int) -> String:
+	"""Convertir número entero a números romanos"""
+	if num <= 0:
+		return "0"
+	
+	var values = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+	var letters = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
+	
+	var result = ""
+	for i in range(values.size()):
+		var count = num / values[i]
+		if count > 0:
+			for j in range(count):
+				result += letters[i]
+			num = num % values[i]
+	
+	return result
 
 func set_enemy_spawner(spawner: EnemySpawner):
 	"""Establecer referencia al spawner de enemigos"""
@@ -196,12 +191,14 @@ func _on_round_complete():
 
 func show_round_start_message():
 	"""Mostrar mensaje de inicio de ronda"""
-	var message = create_round_message("RONDA " + str(current_round), Color.ORANGE, 3.0)
+	var roman_round = int_to_roman(current_round)
+	var message = create_round_message("RONDA " + roman_round, Color.ORANGE, 3.0)
 	show_message(message)
 
 func show_round_complete_message():
 	"""Mostrar mensaje de ronda completada"""
-	var message = create_round_message("RONDA " + str(current_round) + " COMPLETADA", Color.GREEN, 2.0)
+	var roman_round = int_to_roman(current_round)
+	var message = create_round_message("RONDA " + roman_round + " COMPLETADA", Color.GREEN, 2.0)
 	show_message(message)
 
 func create_round_message(text: String, color: Color, duration: float) -> Control:
@@ -244,7 +241,8 @@ func update_round_ui():
 	
 	var round_label = round_ui.find_child("RoundLabel")
 	if round_label:
-		round_label.text = "RONDA " + str(current_round)
+		var roman_round = int_to_roman(current_round)
+		round_label.text = "RONDA " + roman_round
 	
 	update_enemies_ui()
 
