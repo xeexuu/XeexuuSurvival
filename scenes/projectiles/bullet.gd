@@ -1,4 +1,4 @@
-# scenes/projectiles/bullet.gd
+# scenes/projectiles/bullet.gd - CORREGIDO: Sistema puntuación COD BO2 + Sprite invisible eliminado
 extends Area2D
 class_name Bullet
 
@@ -22,12 +22,15 @@ var distance_traveled: float = 0.0
 var lifetime_timer: Timer
 var is_being_destroyed: bool = false
 
+# REFERENCIA AL SCORE SYSTEM PARA PUNTUACIÓN
+var score_system: ScoreSystem
+
 @onready var sprite = $Sprite2D
 @onready var collision = $CollisionShape2D
 
 func _ready():
 	collision_layer = 4
-	collision_mask = 2
+	collision_mask = 2  # SOLO ENEMIGOS - NO JUGADOR
 	
 	add_to_group("bullets")
 	
@@ -42,10 +45,18 @@ func _ready():
 	body_entered.connect(_on_body_entered)
 	
 	lifetime_timer.start()
+	
+	# OBTENER REFERENCIA AL SCORE SYSTEM
+	var game_manager = get_tree().get_first_node_in_group("game_manager")
+	if not game_manager:
+		game_manager = get_node_or_null("/root/Main/GameManager")
+	
+	if game_manager and game_manager.has_method("get") and game_manager.get("score_system"):
+		score_system = game_manager.score_system
 
 func setup_sprite():
 	"""Configurar sprite de la bala estilo COD Black Ops"""
-	if not sprite.texture:
+	if not sprite or not sprite.texture:
 		var image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
 		image.fill(Color.TRANSPARENT)
 		
@@ -97,21 +108,30 @@ func _on_lifetime_timeout():
 
 func _on_area_entered(area: Area2D):
 	if area != self and not is_being_destroyed:
+		# VERIFICAR QUE SEA ÁREA DE ENEMIGO VÁLIDA
+		var enemy_parent = area.get_parent()
+		if not enemy_parent or not (enemy_parent is Enemy):
+			return
+			
 		if area.name == "HeadArea":
-			handle_headshot_hit(area.get_parent())
+			handle_headshot_hit(enemy_parent)
 		else:
-			handle_hit(area)
+			handle_hit(enemy_parent)
 
 func _on_body_entered(body: Node2D):
-	if body is Player or is_being_destroyed:
+	if is_being_destroyed:
 		return
 	
-	if body is Enemy or body.has_method("take_damage"):
+	# SOLO PROCESAR ENEMIGOS - NO JUGADOR
+	if body is Player:
+		return
+		
+	if body is Enemy:
 		handle_hit(body)
 
 func handle_headshot_hit(enemy: Node2D):
 	"""Manejar impacto headshot estilo COD Black Ops"""
-	if is_being_destroyed:
+	if is_being_destroyed or not (enemy is Enemy):
 		return
 	
 	if has_piercing and enemy in targets_hit:
@@ -121,7 +141,11 @@ func handle_headshot_hit(enemy: Node2D):
 	apply_damage_to_target(enemy, headshot_damage, true)
 	apply_knockback_to_target(enemy)
 	
-	# Crear efecto de headshot usando el sistema separado
+	# PUNTUACIÓN COD BO2: HEADSHOT = 100 PUNTOS INMEDIATAMENTE
+	if score_system:
+		score_system.add_kill_points(global_position, true, false)  # 100 puntos headshot
+	
+	# Crear efecto de headshot
 	SpriteEffectsHandler.create_headshot_effect(global_position, get_tree().current_scene)
 	
 	if has_piercing and pierce_count < max_pierce:
@@ -135,7 +159,7 @@ func handle_headshot_hit(enemy: Node2D):
 
 func handle_hit(target: Node2D):
 	"""Manejar impacto normal"""
-	if is_being_destroyed:
+	if is_being_destroyed or not (target is Enemy):
 		return
 	
 	if has_piercing and target in targets_hit:
@@ -144,7 +168,11 @@ func handle_hit(target: Node2D):
 	apply_damage_to_target(target, damage, false)
 	apply_knockback_to_target(target)
 	
-	# Crear efecto de impacto usando el sistema separado
+	# PUNTUACIÓN COD BO2: HIT NORMAL = 50 PUNTOS INMEDIATAMENTE
+	if score_system:
+		score_system.add_kill_points(global_position, false, false)  # 50 puntos normal
+	
+	# Crear efecto de impacto
 	if has_piercing:
 		SpriteEffectsHandler.create_piercing_effect(global_position, get_tree().current_scene)
 	else:
@@ -210,13 +238,6 @@ func apply_damage_to_target(target: Node2D, damage_amount: int, is_headshot: boo
 		else:
 			target.take_damage(damage_amount)
 		return
-	
-	# Buscar en los hijos
-	for child in target.get_children():
-		if child.has_method("take_damage") or child.name.to_lower().contains("health"):
-			if child.has_method("take_damage"):
-				child.take_damage(damage_amount)
-			break
 
 func apply_knockback_to_target(target: Node2D):
 	"""Aplicar knockback al objetivo estilo COD Black Ops"""

@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - COMPLETO SIN ERRORES
+# scenes/managers/game_manager.gd - PUNTUACIÓN COD BO2 Y PRINTS LIMPIADOS
 extends Node
 class_name GameManager
 
@@ -22,7 +22,7 @@ var mobile_menu_button: MobileMenuButton
 # Variables para controles móviles
 var is_mobile: bool = false
 
-# Joystick de movimiento - ÁREAS 5 VECES MÁS GRANDES Y CENTRADAS
+# Joystick de movimiento
 var movement_joystick_base: Control
 var movement_joystick_knob: Control
 var movement_joystick_area: Control
@@ -32,7 +32,7 @@ var movement_joystick_dead_zone: float = 20.0
 var current_movement = Vector2.ZERO
 var movement_touch_id: int = -1
 
-# Joystick de disparo - ÁREAS 5 VECES MÁS GRANDES Y CENTRADAS
+# Joystick de disparo
 var shooting_joystick_base: Control
 var shooting_joystick_knob: Control
 var shooting_joystick_area: Control
@@ -151,8 +151,6 @@ func _on_character_selected(character_stats: CharacterStats):
 	
 	if player:
 		player.visible = true
-		
-		# USAR VALORES ORIGINALES DEL ARCHIVO .tres
 		player.current_health = selected_character_stats.current_health
 		player.max_health = selected_character_stats.max_health
 		
@@ -196,11 +194,9 @@ func load_player_sprites():
 	if not player or not selected_character_stats:
 		return
 	
-	# FORZAR CARGA DE SPRITES ESPECÍFICOS DEL PERSONAJE
 	var character_name = selected_character_stats.character_name.to_lower()
 	var sprite_frames: SpriteFrames = null
 	
-	# Intentar cargar sprites específicos
 	if character_name == "pelao":
 		sprite_frames = load_character_sprites_direct("pelao")
 	elif character_name == "juancar":
@@ -208,7 +204,6 @@ func load_player_sprites():
 	elif character_name == "chica":
 		sprite_frames = load_character_sprites_direct("chica")
 	
-	# Si no se pudo cargar, usar el sistema genérico
 	if not sprite_frames:
 		sprite_frames = SpriteEffectsHandler.load_character_sprite_atlas(selected_character_stats.character_name)
 	
@@ -293,35 +288,31 @@ func start_enemy_spawning_safely():
 	rounds_manager.manually_start_spawning()
 
 func _on_player_died():
-	"""Cuando el jugador muere - CORREGIDO"""
+	"""Cuando el jugador muere"""
 	if is_game_over:
 		return
 	
 	is_game_over = true
 	pause_enemy_spawning()
 	
-	# Esperar un momento antes de mostrar Game Over
 	await get_tree().create_timer(1.0).timeout
 	show_game_over_screen()
 
 func show_game_over_screen():
-	"""Mostrar pantalla de Game Over - FUNCIONAL"""
+	"""Mostrar pantalla de Game Over"""
 	if game_over_screen:
 		return
 	
-	# Crear pantalla de Game Over
 	game_over_screen = Control.new()
 	game_over_screen.name = "GameOverScreen"
 	game_over_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	game_over_screen.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
 	
-	# Fondo rojo semi-transparente
 	var bg = ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(0.8, 0.0, 0.0, 0.7)
 	game_over_screen.add_child(bg)
 	
-	# Panel central
 	var panel = Panel.new()
 	var viewport_size = get_viewport().get_visible_rect().size
 	var panel_size = Vector2(400, 300) if not is_mobile else Vector2(min(viewport_size.x * 0.9, 500), 400)
@@ -345,14 +336,12 @@ func show_game_over_screen():
 	panel.add_theme_stylebox_override("panel", panel_style)
 	game_over_screen.add_child(panel)
 	
-	# Contenedor vertical
 	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 30)
 	vbox.position = Vector2(30, 30)
 	vbox.size = Vector2(panel_size.x - 60, panel_size.y - 60)
 	panel.add_child(vbox)
 	
-	# Título Game Over
 	var title = Label.new()
 	title.text = "💀 GAME OVER 💀"
 	var title_size = 36 if not is_mobile else 42
@@ -364,12 +353,10 @@ func show_game_over_screen():
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 	
-	# Estadísticas finales
 	var stats_container = VBoxContainer.new()
 	stats_container.add_theme_constant_override("separation", 10)
 	vbox.add_child(stats_container)
 	
-	# Ronda alcanzada
 	var round_label = Label.new()
 	var roman_round = rounds_manager.int_to_roman(rounds_manager.get_current_round()) if rounds_manager else "I"
 	round_label.text = "Ronda alcanzada: " + roman_round
@@ -378,7 +365,6 @@ func show_game_over_screen():
 	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats_container.add_child(round_label)
 	
-	# Puntuación final
 	var score_label = Label.new()
 	var final_score = score_system.get_current_score() if score_system else 0
 	score_label.text = "Puntuación final: " + str(final_score)
@@ -387,7 +373,6 @@ func show_game_over_screen():
 	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats_container.add_child(score_label)
 	
-	# Enemigos eliminados
 	var kills_label = Label.new()
 	kills_label.text = "Zombies eliminados: " + str(enemies_killed)
 	kills_label.add_theme_font_size_override("font_size", 18)
@@ -395,12 +380,10 @@ func show_game_over_screen():
 	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats_container.add_child(kills_label)
 	
-	# Botones
 	var buttons_container = VBoxContainer.new()
 	buttons_container.add_theme_constant_override("separation", 15)
 	vbox.add_child(buttons_container)
 	
-	# Botón Reintentar
 	var retry_btn = Button.new()
 	retry_btn.text = "🔄 REINTENTAR"
 	retry_btn.custom_minimum_size = Vector2(300, 50) if not is_mobile else Vector2(350, 60)
@@ -420,7 +403,6 @@ func show_game_over_screen():
 	)
 	buttons_container.add_child(retry_btn)
 	
-	# Botón Salir
 	var quit_btn = Button.new()
 	quit_btn.text = "❌ SALIR"
 	quit_btn.custom_minimum_size = Vector2(300, 50) if not is_mobile else Vector2(350, 60)
@@ -440,11 +422,8 @@ func show_game_over_screen():
 	)
 	buttons_container.add_child(quit_btn)
 	
-	# Añadir a la UI y pausar
 	ui_manager.add_child(game_over_screen)
 	get_tree().paused = true
-	
-	print("💀 Game Over screen mostrado")
 
 func restart_entire_game():
 	"""Reiniciar todo el juego"""
@@ -457,25 +436,22 @@ func restart_entire_game():
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
-# CONTROLES MÓVILES - FUNCIONES CORREGIDAS
+# CONTROLES MÓVILES
 func handle_touch_event(event: InputEventScreenTouch):
-	"""Manejar eventos de toque - ÁREAS EXPANDIDAS"""
+	"""Manejar eventos de toque"""
 	var touch_pos = event.position
 	var touch_id = event.index
 	
 	if event.pressed:
-		# Verificar joystick de movimiento (área expandida)
 		if movement_joystick_area and is_point_in_expanded_area(touch_pos, movement_joystick_area):
 			if movement_touch_id == -1:
 				movement_touch_id = touch_id
 				handle_movement_joystick(touch_pos)
-		# Verificar joystick de disparo (área expandida)
 		elif shooting_joystick_area and is_point_in_expanded_area(touch_pos, shooting_joystick_area):
 			if shoot_touch_id == -1:
 				shoot_touch_id = touch_id
 				handle_shooting_joystick(touch_pos)
 	else:
-		# Soltar toque
 		if touch_id == movement_touch_id:
 			movement_touch_id = -1
 			reset_movement_joystick()
@@ -484,7 +460,7 @@ func handle_touch_event(event: InputEventScreenTouch):
 			reset_shooting_joystick()
 
 func handle_drag_event(event: InputEventScreenDrag):
-	"""Manejar eventos de arrastre - FUNCIÓN CORREGIDA"""
+	"""Manejar eventos de arrastre"""
 	var touch_id = event.index
 	var touch_pos = event.position
 	
@@ -494,12 +470,11 @@ func handle_drag_event(event: InputEventScreenDrag):
 		handle_shooting_joystick(touch_pos)
 
 func is_point_in_expanded_area(point: Vector2, area: Control) -> bool:
-	"""Verificar si un punto está dentro de un área EXPANDIDA 5x"""
+	"""Verificar si un punto está dentro de un área expandida"""
 	if not area:
 		return false
 	
-	# Área expandida 5 veces más grande
-	var expansion = area.size * 2.5  # 5x total (2.5x en cada dirección)
+	var expansion = area.size * 2.5
 	var expanded_pos = area.global_position - expansion
 	var expanded_size = area.size + (expansion * 2)
 	var expanded_rect = Rect2(expanded_pos, expanded_size)
@@ -518,7 +493,6 @@ func handle_movement_joystick(touch_pos: Vector2):
 		offset = offset.normalized() * movement_joystick_max_distance
 		distance = movement_joystick_max_distance
 	
-	# Actualizar posición del knob
 	movement_joystick_knob.position = Vector2(movement_joystick_max_distance, movement_joystick_max_distance) + offset
 	
 	if distance > movement_joystick_dead_zone:
@@ -546,7 +520,6 @@ func handle_shooting_joystick(touch_pos: Vector2):
 		offset = offset.normalized() * shooting_joystick_max_distance
 		distance = shooting_joystick_max_distance
 	
-	# Actualizar posición del knob
 	shooting_joystick_knob.position = Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance) + offset
 	
 	if distance > shooting_joystick_dead_zone:
@@ -564,7 +537,7 @@ func reset_shooting_joystick():
 	is_shooting = false
 
 func setup_mobile_controls():
-	"""Configurar controles móviles - JOYSTICKS CENTRADOS Y GRANDES"""
+	"""Configurar controles móviles"""
 	if not is_mobile:
 		return
 	
@@ -580,27 +553,24 @@ func setup_mobile_controls():
 	create_shooting_joystick_centered()
 
 func create_movement_joystick_centered():
-	"""Crear joystick de movimiento CENTRADO Y GRANDE"""
+	"""Crear joystick de movimiento centrado"""
 	var viewport_size = get_viewport().get_visible_rect().size
 	var joystick_size = movement_joystick_max_distance * 2
 	
-	# Base del joystick - MÁS CENTRADO
 	movement_joystick_base = Control.new()
 	movement_joystick_base.name = "MovementJoystickBase"
 	movement_joystick_base.size = Vector2(joystick_size, joystick_size)
 	movement_joystick_base.position = Vector2(
-		viewport_size.x * 0.15,  # 15% desde la izquierda (más centrado)
-		viewport_size.y * 0.6    # 60% desde arriba (más centrado verticalmente)
+		viewport_size.x * 0.15,
+		viewport_size.y * 0.6
 	)
 	mobile_controls.add_child(movement_joystick_base)
 	
-	# Área de detección (5x más grande)
 	movement_joystick_area = Control.new()
 	movement_joystick_area.size = Vector2(joystick_size, joystick_size)
 	movement_joystick_area.position = Vector2.ZERO
 	movement_joystick_base.add_child(movement_joystick_area)
 	
-	# Fondo del joystick - MÁS VISIBLE
 	var base_style = StyleBoxFlat.new()
 	base_style.bg_color = Color(0.2, 0.2, 0.2, 0.8)
 	base_style.border_color = Color(0.6, 0.8, 1.0, 0.9)
@@ -618,10 +588,9 @@ func create_movement_joystick_centered():
 	base_panel.add_theme_stylebox_override("panel", base_style)
 	movement_joystick_base.add_child(base_panel)
 	
-	# Knob del joystick - MÁS GRANDE Y VISIBLE
 	movement_joystick_knob = Control.new()
 	movement_joystick_knob.name = "MovementJoystickKnob"
-	var knob_size = 50  # Más grande
+	var knob_size = 50
 	movement_joystick_knob.size = Vector2(knob_size, knob_size)
 	movement_joystick_knob.position = Vector2(
 		movement_joystick_max_distance - knob_size/2, 
@@ -646,32 +615,27 @@ func create_movement_joystick_centered():
 	movement_joystick_knob.add_child(knob_panel)
 	
 	movement_joystick_base.add_child(movement_joystick_knob)
-	
-	# Calcular centro
 	movement_joystick_center = movement_joystick_base.global_position + Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
 
 func create_shooting_joystick_centered():
-	"""Crear joystick de disparo CENTRADO Y GRANDE"""
+	"""Crear joystick de disparo centrado"""
 	var viewport_size = get_viewport().get_visible_rect().size
 	var joystick_size = shooting_joystick_max_distance * 2
 	
-	# Base del joystick - MÁS CENTRADO
 	shooting_joystick_base = Control.new()
 	shooting_joystick_base.name = "ShootingJoystickBase"
 	shooting_joystick_base.size = Vector2(joystick_size, joystick_size)
 	shooting_joystick_base.position = Vector2(
-		viewport_size.x * 0.75,  # 75% desde la izquierda (más centrado)
-		viewport_size.y * 0.6    # 60% desde arriba (más centrado verticalmente)
+		viewport_size.x * 0.75,
+		viewport_size.y * 0.6
 	)
 	mobile_controls.add_child(shooting_joystick_base)
 	
-	# Área de detección (5x más grande)
 	shooting_joystick_area = Control.new()
 	shooting_joystick_area.size = Vector2(joystick_size, joystick_size)
 	shooting_joystick_area.position = Vector2.ZERO
 	shooting_joystick_base.add_child(shooting_joystick_area)
 	
-	# Fondo del joystick - MÁS VISIBLE
 	var base_style = StyleBoxFlat.new()
 	base_style.bg_color = Color(0.4, 0.1, 0.1, 0.8)
 	base_style.border_color = Color(1.0, 0.4, 0.4, 0.9)
@@ -689,10 +653,9 @@ func create_shooting_joystick_centered():
 	base_panel.add_theme_stylebox_override("panel", base_style)
 	shooting_joystick_base.add_child(base_panel)
 	
-	# Knob del joystick - MÁS GRANDE Y VISIBLE
 	shooting_joystick_knob = Control.new()
 	shooting_joystick_knob.name = "ShootingJoystickKnob"
-	var knob_size = 45  # Más grande
+	var knob_size = 45
 	shooting_joystick_knob.size = Vector2(knob_size, knob_size)
 	shooting_joystick_knob.position = Vector2(
 		shooting_joystick_max_distance - knob_size/2, 
@@ -717,8 +680,6 @@ func create_shooting_joystick_centered():
 	shooting_joystick_knob.add_child(knob_panel)
 	
 	shooting_joystick_base.add_child(shooting_joystick_knob)
-	
-	# Calcular centro
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
 
 func toggle_fullscreen():
@@ -755,17 +716,16 @@ func _on_quit_game():
 	get_tree().quit()
 
 func setup_pause_menu():
-	"""Configurar menú de pausa - BOTÓN SIEMPRE VISIBLE"""
+	"""Configurar menú de pausa"""
 	pause_menu = preload("res://scenes/ui/PauseMenu.tscn").instantiate()
 	pause_menu.resume_game.connect(_on_resume_game)
 	pause_menu.restart_game.connect(_on_restart_game)
 	pause_menu.quit_game.connect(_on_quit_game)
 	ui_manager.add_child(pause_menu)
 	
-	# BOTÓN DE MENÚ SIEMPRE VISIBLE (TESTING)
 	mobile_menu_button = MobileMenuButton.new()
 	mobile_menu_button.menu_pressed.connect(_on_mobile_menu_pressed)
-	mobile_menu_button.visible = true  # SIEMPRE VISIBLE
+	mobile_menu_button.visible = true
 	ui_manager.add_child(mobile_menu_button)
 
 func setup_background():
@@ -814,27 +774,16 @@ func setup_mini_hud():
 		mini_hud.update_character_stats(player.character_stats)
 
 func _on_enemy_killed(enemy: Enemy):
-	"""Cuando un enemigo es eliminado - PUNTUACIÓN CORREGIDA"""
+	"""SISTEMA COD BO2: Puntuación por KILL final cuando enemigo muere"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 	
-	# SISTEMA DE PUNTUACIÓN CORRECTO: 50 normal, 100 headshot
+	# SOLO PUNTOS POR KILL FINAL (adicional a los de impactos)
 	if score_system and enemy:
-		# Determinar si fue headshot basado en el daño recibido
-		var was_headshot = false
-		
-		# Si el enemigo fue dañado recientemente con multiplicador, es headshot
-		# Esto se podría mejorar con un sistema más robusto, pero por simplicidad:
-		was_headshot = randf() < 0.3  # Temporal - el sistema real está en BasicEnemy
-		
-		if was_headshot:
-			score_system.add_kill_points(enemy.global_position, true, false)  # 100 puntos
-			print("💀 HEADSHOT! +100 puntos")
-		else:
-			score_system.add_kill_points(enemy.global_position, false, false)  # 50 puntos
-			print("💀 Kill normal +50 puntos")
+		# Registrar kill para estadísticas
+		score_system.add_enemy_kill()
 
 func _on_enemy_spawned(_enemy: Enemy):
 	"""Cuando un enemigo es spawneado"""
@@ -862,7 +811,6 @@ func get_active_enemy_count() -> int:
 		return enemy_spawner.get_active_enemy_count()
 	return 0
 
-# Funciones adicionales del GameManager
 func get_current_round() -> int:
 	"""Obtener ronda actual"""
 	if rounds_manager:
@@ -907,22 +855,18 @@ func get_game_stats() -> Dictionary:
 
 func force_restart_game():
 	"""Forzar reinicio completo del juego"""
-	# Limpiar todos los sistemas
 	clear_all_enemies()
 	
-	# Resetear variables
 	is_game_over = false
 	game_started = false
 	enemies_killed = 0
 	game_state = "character_selection"
 	current_level = 1
 	
-	# Limpiar controles móviles
 	if mobile_controls:
 		mobile_controls.queue_free()
 		mobile_controls = null
 	
-	# Limpiar sistemas
 	if score_system:
 		score_system.queue_free()
 		score_system = null
@@ -935,32 +879,26 @@ func force_restart_game():
 		enemy_spawner.queue_free()
 		enemy_spawner = null
 	
-	# Resetear jugador
 	if player:
 		player.set_physics_process(false)
 		player.set_process(false)
 		player.visible = false
 	
-	# Despausar y recargar
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
 func emergency_cleanup():
 	"""Limpieza de emergencia del juego"""
-	# Detener todos los procesos
 	set_process(false)
 	set_physics_process(false)
 	
-	# Limpiar enemigos
 	clear_all_enemies()
 	
-	# Limpiar timers
 	for child in get_children():
 		if child is Timer:
 			child.stop()
 			child.queue_free()
 	
-	# Limpiar UI
 	if mobile_controls:
 		mobile_controls.queue_free()
 	
@@ -980,7 +918,6 @@ func _notification(what):
 			if is_game_active():
 				toggle_pause_menu()
 		NOTIFICATION_APPLICATION_RESUMED:
-			# El juego puede seguir pausado si el usuario lo pausó manualmente
 			pass
 
 func _exit_tree():

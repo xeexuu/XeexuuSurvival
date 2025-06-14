@@ -1,4 +1,4 @@
-# scenes/managers/RoundsManager.gd
+# scenes/managers/RoundsManager.gd - SIN PRINTS REPETITIVOS
 extends Node
 class_name RoundsManager
 
@@ -17,10 +17,10 @@ var enemies_multiplier_per_round: float = 1.25
 # Sistema de salud de enemigos estilo COD
 var base_enemy_health: int = 150
 
-# UI de rondas - CORREGIDA
+# UI de rondas
 var round_ui: Control
 var player_camera: Camera2D
-var round_label: Label  # Referencias directas
+var round_label: Label
 var enemies_label: Label
 
 # Referencias
@@ -33,10 +33,9 @@ func _ready():
 	pass
 
 func setup_round_ui_on_camera(camera: Camera2D):
-	"""Configurar la UI de rondas en la esquina INFERIOR IZQUIERDA - CORREGIDA"""
+	"""Configurar la UI de rondas en la esquina INFERIOR IZQUIERDA"""
 	player_camera = camera
 	if not player_camera:
-		print("❌ No se puede configurar UI sin cámara")
 		return
 	
 	round_ui = Control.new()
@@ -47,17 +46,14 @@ func setup_round_ui_on_camera(camera: Camera2D):
 	var ui_size = Vector2(200, 90) if not is_mobile else Vector2(240, 110)
 	round_ui.size = ui_size
 	
-	# Posición relativa a la cámara (ESQUINA INFERIOR IZQUIERDA)
-	round_ui.position = Vector2(0, 0)  # Será actualizada en _process
+	round_ui.position = Vector2(0, 0)
 	
-	# Contenedor vertical SIN FONDO
 	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
 	vbox.position = Vector2(15, 15)
 	vbox.size = Vector2(ui_size.x - 30, ui_size.y - 30)
 	round_ui.add_child(vbox)
 	
-	# Etiqueta de ronda - NÚMEROS ROMANOS - REFERENCIAS DIRECTAS
 	round_label = Label.new()
 	round_label.name = "RoundLabel"
 	round_label.text = "RONDA I"
@@ -70,7 +66,6 @@ func setup_round_ui_on_camera(camera: Camera2D):
 	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	vbox.add_child(round_label)
 	
-	# Etiqueta de enemigos restantes - REFERENCIAS DIRECTAS
 	enemies_label = Label.new()
 	enemies_label.name = "EnemiesLabel"
 	enemies_label.text = "Zombies: 0"
@@ -83,10 +78,7 @@ func setup_round_ui_on_camera(camera: Camera2D):
 	enemies_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	vbox.add_child(enemies_label)
 	
-	# Añadir a la cámara
 	player_camera.add_child(round_ui)
-	
-	print("✅ UI de rondas configurada correctamente con referencias directas")
 
 func _process(_delta):
 	"""Actualizar posición de la UI relativa a la cámara - INFERIOR IZQUIERDA"""
@@ -94,10 +86,9 @@ func _process(_delta):
 		var viewport_size = get_viewport().get_visible_rect().size
 		var camera_zoom = player_camera.zoom
 		
-		# Calcular posición en la esquina INFERIOR IZQUIERDA de la cámara
 		var ui_offset = Vector2(
-			-(viewport_size.x / camera_zoom.x) / 2 + 20,  # Izquierda + margen
-			(viewport_size.y / camera_zoom.y) / 2 - round_ui.size.y - 20  # Abajo - alto - margen
+			-(viewport_size.x / camera_zoom.x) / 2 + 20,
+			(viewport_size.y / camera_zoom.y) / 2 - round_ui.size.y - 20
 		)
 		
 		round_ui.position = ui_offset
@@ -129,48 +120,34 @@ func set_enemy_spawner(spawner: EnemySpawner):
 func enable_auto_start():
 	"""Habilitar inicio automático de spawning"""
 	auto_start_enabled = true
-	print("✅ Auto-start habilitado en RoundsManager")
 
 func start_round(round_number: int):
 	"""Iniciar una nueva ronda"""
 	current_round = round_number
 	
-	# Calcular número de enemigos para esta ronda
 	var enemies_this_round = calculate_enemies_for_round(current_round)
 	enemies_remaining_in_round = enemies_this_round
 	total_enemies_spawned = 0
 	enemies_killed_in_round = 0
 	
-	# ACTUALIZAR UI INMEDIATAMENTE
 	update_round_ui()
-	
-	# Mostrar mensaje de nueva ronda
 	show_round_start_message()
-	
-	# Emitir señal
 	round_changed.emit(current_round)
 	
-	# Solo iniciar spawn si está habilitado
 	if auto_start_enabled and enemy_spawner:
 		var enemy_health = calculate_enemy_health_for_round(current_round)
 		enemy_spawner.start_round(enemies_this_round, enemy_health)
-		print("🎮 Ronda ", current_round, " iniciada con spawn automático")
-	else:
-		print("🎮 Ronda ", current_round, " configurada, esperando activación manual")
 
 func manually_start_spawning():
 	"""Iniciar spawning manualmente"""
 	if not enemy_spawner:
-		print("❌ No hay enemy_spawner para iniciar spawning")
 		return
 	
 	var enemies_this_round = calculate_enemies_for_round(current_round)
 	var enemy_health = calculate_enemy_health_for_round(current_round)
 	
 	enemy_spawner.start_round(enemies_this_round, enemy_health)
-	auto_start_enabled = true  # Habilitar para siguientes rondas
-	
-	print("🎮 Spawning iniciado manualmente para ronda ", current_round)
+	auto_start_enabled = true
 
 func calculate_enemies_for_round(round_num: int) -> int:
 	"""Calcular número de enemigos para una ronda específica"""
@@ -178,47 +155,35 @@ func calculate_enemies_for_round(round_num: int) -> int:
 		return base_enemies_per_round
 	
 	var enemies = int(float(base_enemies_per_round) * pow(enemies_multiplier_per_round, round_num - 1))
-	return min(enemies, 50)  # Máximo 50 enemigos por ronda
+	return min(enemies, 50)
 
 func calculate_enemy_health_for_round(round_num: int) -> int:
 	"""Calcular la salud de los enemigos para una ronda específica - Estilo COD"""
 	if round_num <= 9:
-		# Rondas 1-9: Empezar en 150 y ganar 100 por ronda
 		return base_enemy_health + ((round_num - 1) * 100)
 	else:
-		# Ronda 10+: Multiplicar por 1.1 por cada ronda adicional
-		var round_9_health = base_enemy_health + (8 * 100)  # 950 de salud en ronda 9
+		var round_9_health = base_enemy_health + (8 * 100)
 		var additional_rounds = round_num - 9
 		return int(float(round_9_health) * pow(1.1, additional_rounds))
 
 func on_enemy_killed():
-	"""Llamar cuando un enemigo es eliminado - CORREGIDO"""
+	"""Llamar cuando un enemigo es eliminado"""
 	enemies_killed_in_round += 1
 	enemies_remaining_in_round = max(0, enemies_remaining_in_round - 1)
 	
-	print("💀 Enemigo eliminado. Restantes: ", get_enemies_remaining())
-	
-	# Actualizar UI INMEDIATAMENTE
 	update_enemies_ui()
-	
 	enemies_remaining_changed.emit(enemies_remaining_in_round)
 
 func on_enemy_spawned():
 	"""Llamar cuando un enemigo es spawneado"""
 	total_enemies_spawned += 1
-	# Actualizar UI cuando se spawnea
 	update_enemies_ui()
 
 func _on_round_complete():
 	"""Cuando el spawner confirma que la ronda está completa"""
 	await get_tree().create_timer(2.0).timeout
-	
-	# Mostrar mensaje de ronda completada
 	show_round_complete_message()
-	
 	await get_tree().create_timer(3.0).timeout
-	
-	# Iniciar siguiente ronda
 	start_round(current_round + 1)
 
 func show_round_start_message():
@@ -252,7 +217,6 @@ func create_round_message(text: String, color: Color, duration: float) -> Contro
 	
 	message_container.add_child(message_label)
 	
-	# Animación de aparición
 	message_label.modulate = Color.TRANSPARENT
 	var tween = message_container.create_tween()
 	tween.tween_property(message_label, "modulate", Color.WHITE, 0.5)
@@ -267,33 +231,25 @@ func show_message(message: Control):
 	get_tree().current_scene.add_child(message)
 
 func update_round_ui():
-	"""Actualizar toda la UI de ronda - CORREGIDO CON REFERENCIAS DIRECTAS"""
+	"""Actualizar toda la UI de ronda"""
 	if not round_label:
-		print("❌ No hay round_label para actualizar")
 		return
 	
 	var roman_round = int_to_roman(current_round)
 	round_label.text = "RONDA " + roman_round
-	print("✅ Ronda actualizada a: ", round_label.text)
-	
 	update_enemies_ui()
 
 func update_enemies_ui():
-	"""Actualizar solo la UI de enemigos restantes - CORREGIDO CON REFERENCIAS DIRECTAS"""
+	"""Actualizar solo la UI de enemigos restantes"""
 	if not enemies_label:
-		print("❌ No hay enemies_label para actualizar")
 		return
 	
-	# Calcular enemigos restantes correctamente
 	var active_count = enemy_spawner.get_active_enemy_count() if enemy_spawner else 0
 	var to_spawn = enemy_spawner.get_enemies_remaining_to_spawn() if enemy_spawner else 0
 	var total_remaining = active_count + to_spawn
 	
 	enemies_label.text = "Zombies: " + str(total_remaining)
 	
-	print("✅ Enemigos actualizados: ", enemies_label.text, " (Activos: ", active_count, ", Por spawn: ", to_spawn, ")")
-	
-	# Cambiar color según enemigos restantes
 	if total_remaining <= 1:
 		enemies_label.add_theme_color_override("font_color", Color.GREEN)
 	elif total_remaining <= 5:
@@ -306,7 +262,7 @@ func get_current_round() -> int:
 	return current_round
 
 func get_enemies_remaining() -> int:
-	"""Obtener enemigos restantes en la ronda - CORREGIDO"""
+	"""Obtener enemigos restantes en la ronda"""
 	if enemy_spawner:
 		var active = enemy_spawner.get_active_enemy_count()
 		var to_spawn = enemy_spawner.get_enemies_remaining_to_spawn()

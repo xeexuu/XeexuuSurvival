@@ -1,4 +1,4 @@
-# scenes/managers/ScoreSystem.gd - PUNTUACIÓN ESTILO COD BLACK OPS ZOMBIES
+# scenes/managers/ScoreSystem.gd - COD BLACK OPS 2 ZOMBIES SCORING EXACTO
 extends Node
 class_name ScoreSystem
 
@@ -11,14 +11,11 @@ var headshot_kills: int = 0
 var current_kill_streak: int = 0
 var best_kill_streak: int = 0
 
-# Puntuaciones estilo COD Black Ops Zombies
-var base_kill_points: int = 50
-var headshot_bonus: int = 100
-var melee_kill_bonus: int = 130
+# PUNTUACIÓN EXACTA COD BLACK OPS 2 ZOMBIES
+var base_hit_points: int = 50     # Cada impacto = 50 puntos
+var headshot_hit_points: int = 100  # Cada headshot = 100 puntos
+var melee_kill_bonus: int = 130   # Bonus por melee kill
 var max_window_repair_points: int = 200
-
-# Multiplicadores de ronda estilo Black Ops
-var round_multiplier: float = 1.0
 
 # UI de puntuación - ESQUINA INFERIOR DERECHA
 var score_ui: Control
@@ -114,55 +111,49 @@ func _process(_delta):
 		
 		score_ui.position = ui_offset
 
-# Corrección para ScoreSystem.gd
-# Reemplazar la función add_kill_points:
-
-func add_kill_points(enemy_position: Vector2, is_headshot: bool = false, is_melee: bool = false):
-	"""Añadir puntos por matar enemigo - PUNTOS FIJOS 50/100"""
+func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee: bool = false):
+	"""SISTEMA COD BO2: 50 puntos por hit, 100 por headshot, +130 por melee kill"""
 	var points = 0
-	var popup_type = "kill"
+	var popup_type = "hit"
 	
-	# PUNTOS FIJOS SIN MODIFICADORES
+	# PUNTOS POR IMPACTO (NO POR KILL)
 	if is_headshot:
-		points = 100  # HEADSHOT SIEMPRE 100 PUNTOS
+		points = headshot_hit_points  # 100 puntos por headshot
 		popup_type = "headshot"
 		headshot_kills += 1
-		print("🎯 HEADSHOT! +100 puntos")
 	else:
-		points = 50   # KILL NORMAL SIEMPRE 50 PUNTOS
-		popup_type = "kill"
-		print("💥 Kill normal +50 puntos")
+		points = base_hit_points      # 50 puntos por hit normal
+		popup_type = "hit"
 	
-	# Bonus por melee kill (adicional)
+	# Bonus por melee kill (adicional a los puntos de impacto)
 	if is_melee:
-		points += 50  # 50 puntos extra por melee
+		points += melee_kill_bonus  # +130 puntos extra por melee
 		popup_type = "melee"
-		print("👊 Melee bonus +50 puntos adicionales")
-	
-	# NO APLICAR MULTIPLICADOR DE RONDA - PUNTOS FIJOS
 	
 	# Añadir puntos
 	current_score += points
-	total_kills += 1
 	current_kill_streak += 1
 	
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
 	
-	# Actualizar UI INMEDIATAMENTE
+	# Actualizar UI
 	update_score_ui()
 	
 	# Mostrar popup de puntuación
-	show_score_popup(points, enemy_position, popup_type)
+	show_score_popup(points, hit_position, popup_type)
 	
 	# Emitir señales
 	score_changed.emit(current_score)
-	score_popup.emit(points, enemy_position, popup_type)
+	score_popup.emit(points, hit_position, popup_type)
+
+func add_enemy_kill():
+	"""Registrar kill de enemigo (solo para estadísticas)"""
+	total_kills += 1
 
 func add_repair_points(repair_position: Vector2, repair_amount: int):
 	"""Añadir puntos por reparar ventanas/barricadas"""
 	var points = min(repair_amount * 10, max_window_repair_points)
-	points = int(float(points) * round_multiplier)
 	
 	current_score += points
 	update_score_ui()
@@ -171,28 +162,14 @@ func add_repair_points(repair_position: Vector2, repair_amount: int):
 
 func add_bonus_points(amount: int, position: Vector2, reason: String = "bonus"):
 	"""Añadir puntos bonus por diversas razones"""
-	var points = int(float(amount) * round_multiplier)
-	current_score += points
+	current_score += amount
 	update_score_ui()
-	show_score_popup(points, position, reason)
+	show_score_popup(amount, position, reason)
 	score_changed.emit(current_score)
 
 func reset_kill_streak():
 	"""Resetear racha de kills (cuando el jugador recibe daño)"""
 	current_kill_streak = 0
-
-func set_round_multiplier(round_number: int):
-	"""Establecer multiplicador basado en la ronda estilo Black Ops"""
-	if round_number <= 3:
-		round_multiplier = 1.0
-	elif round_number <= 6:
-		round_multiplier = 1.25
-	elif round_number <= 10:
-		round_multiplier = 1.5
-	elif round_number <= 15:
-		round_multiplier = 1.75
-	else:
-		round_multiplier = 2.0
 
 func show_score_popup(points: int, world_position: Vector2, popup_type: String):
 	"""Mostrar popup de puntuación estilo Black Ops"""
@@ -222,18 +199,18 @@ func create_score_popup(points: int, popup_type: String) -> Control:
 		"headshot":
 			color = Color(1.0, 0.8, 0.0, 1.0)  # Dorado brillante
 			font_size = 32
-			label.text = "HEADSHOT! +" + str(points)
+			label.text = "+" + str(points)
 		"melee":
 			color = Color(1.0, 0.2, 0.2, 1.0)  # Rojo intenso
 			font_size = 32
-			label.text = "MELEE! +" + str(points)
+			label.text = "+" + str(points)
 		"repair":
 			color = Color(0.0, 0.8, 1.0, 1.0)  # Azul cyan
 			font_size = 24
 		"bonus":
 			color = Color(0.2, 1.0, 0.2, 1.0)  # Verde brillante
 			font_size = 26
-		_:  # kill normal
+		_:  # hit normal
 			color = Color.WHITE
 			font_size = 28
 	
@@ -328,6 +305,12 @@ func get_headshot_percentage() -> float:
 		return 0.0
 	return (float(headshot_kills) / float(total_kills)) * 100.0
 
+func set_round_multiplier(round_number: int):
+	"""Establecer multiplicador basado en la ronda (función de compatibilidad)"""
+	# En COD BO2 no hay multiplicador de ronda para puntos de impacto
+	# Esta función existe solo para compatibilidad
+	pass
+
 func get_stats_summary() -> Dictionary:
 	"""Obtener resumen de estadísticas"""
 	return {
@@ -336,6 +319,5 @@ func get_stats_summary() -> Dictionary:
 		"headshot_kills": headshot_kills,
 		"headshot_percentage": get_headshot_percentage(),
 		"current_streak": current_kill_streak,
-		"best_streak": best_kill_streak,
-		"round_multiplier": round_multiplier
+		"best_streak": best_kill_streak
 	}
