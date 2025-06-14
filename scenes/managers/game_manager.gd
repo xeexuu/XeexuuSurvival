@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - COLISIONES Y LAYERS CORREGIDOS
+# scenes/managers/game_manager.gd - CONTROLES MÓVILES CORREGIDOS
 extends Node
 class_name GameManager
 
@@ -22,31 +22,26 @@ var mobile_menu_button: MobileMenuButton
 # Variables para controles móviles
 var is_mobile: bool = false
 
-# Joystick de movimiento
+# Joystick de movimiento - CORREGIDO
 var movement_joystick_base: Control
 var movement_joystick_knob: Control
 var movement_joystick_area: Control
 var movement_joystick_center: Vector2
-var movement_joystick_max_distance: float = 160.0
-var movement_joystick_dead_zone: float = 25.0
+var movement_joystick_max_distance: float = 80.0
+var movement_joystick_dead_zone: float = 15.0
 var current_movement = Vector2.ZERO
 var movement_touch_id: int = -1
 
-# Joystick de disparo
+# Joystick de disparo - CORREGIDO
 var shooting_joystick_base: Control
 var shooting_joystick_knob: Control
 var shooting_joystick_area: Control
 var shooting_joystick_center: Vector2
-var shooting_joystick_max_distance: float = 140.0
-var shooting_joystick_dead_zone: float = 20.0
+var shooting_joystick_max_distance: float = 70.0
+var shooting_joystick_dead_zone: float = 12.0
 var current_shoot_direction = Vector2.ZERO
 var shoot_touch_id: int = -1
 var is_shooting: bool = false
-
-# Control de rendimiento
-var last_movement_update: float = 0.0
-var last_shooting_update: float = 0.0
-var joystick_update_interval: float = 1.0 / 60.0
 
 # Variables de selección de personaje
 var selected_character_stats: CharacterStats
@@ -58,9 +53,6 @@ var rounds_manager: RoundsManager
 var score_system: ScoreSystem
 var enemies_killed: int = 0
 
-var mobile_process_counter: int = 0
-var mobile_process_skip: int = 1
-
 # Game Over
 var game_over_screen: Control
 var is_game_over: bool = false
@@ -70,17 +62,15 @@ func _process(_delta):
 		return
 		
 	if is_mobile and player:
-		mobile_process_counter += 1
-		if mobile_process_counter >= mobile_process_skip:
-			mobile_process_counter = 0
-			
-			if current_movement.length() < 0.1:
-				player.mobile_movement_direction = Vector2.ZERO
-			else:
-				player.mobile_movement_direction = current_movement
-			
-			if is_shooting and current_shoot_direction.length() > 0:
-				player.mobile_shoot(current_shoot_direction)
+		# Aplicar movimiento móvil
+		if current_movement.length() < 0.1:
+			player.mobile_movement_direction = Vector2.ZERO
+		else:
+			player.mobile_movement_direction = current_movement
+		
+		# Aplicar disparo móvil
+		if is_shooting and current_shoot_direction.length() > 0:
+			player.mobile_shoot(current_shoot_direction)
 	
 	update_ui_elements()
 
@@ -91,13 +81,10 @@ func update_ui_elements():
 	
 	if mini_hud:
 		mini_hud.update_health(player.get_current_health(), player.get_max_health())
-	
-	if score_system and rounds_manager:
-		score_system.set_round_multiplier(rounds_manager.get_current_round())
 
 func _ready():
 	is_mobile = OS.has_feature("mobile")
-	setup_collision_layers()  # NUEVO: Configurar layers de colisión
+	setup_collision_layers()
 	setup_background()
 	setup_window()
 	setup_pause_menu()
@@ -106,20 +93,12 @@ func _ready():
 	show_character_selection()
 
 func setup_collision_layers():
-	"""NUEVO: Configurar las capas de colisión correctamente estilo COD Black Ops"""
-	# Configurar las capas del proyecto
-	# Capa 1: Jugador
-	# Capa 2: Enemigos  
-	# Capa 3: Estructuras/Paredes
-	# Capa 4: Proyectiles/Balas
-	# Capa 5: Areas especiales (headshots, etc.)
-	
-	print("🎯 Configurando sistema de colisiones estilo COD Black Ops")
+	"""Configurar las capas de colisión correctamente"""
+	print("🎯 Configurando sistema de colisiones")
 	print("  - Capa 1: Jugador")
 	print("  - Capa 2: Enemigos")
 	print("  - Capa 3: Estructuras")
 	print("  - Capa 4: Proyectiles")
-	print("  - Capa 5: Areas especiales")
 
 func _input(event):
 	# Detección del menú para todas las plataformas
@@ -181,7 +160,6 @@ func _on_character_selected(character_stats: CharacterStats):
 			player.current_health = selected_character_stats.current_health
 			player.max_health = selected_character_stats.max_health
 		
-		# CONFIGURAR LAYERS DE COLISIÓN DEL JUGADOR
 		setup_player_collision_layers()
 		
 		player.set_physics_process(true)
@@ -196,17 +174,15 @@ func _on_character_selected(character_stats: CharacterStats):
 	start_enemy_spawning_safely()
 
 func setup_player_collision_layers():
-	"""NUEVO: Configurar las capas de colisión del jugador"""
+	"""Configurar las capas de colisión del jugador"""
 	if not player:
 		return
 	
 	# Jugador en capa 1, colisiona con enemigos (capa 2) y estructuras (capa 3)
 	player.collision_layer = 1
-	player.collision_mask = 2 | 3  # Colisiona con enemigos y estructuras
+	player.collision_mask = 2 | 3
 	
 	print("✅ Capas de colisión del jugador configuradas")
-	print("  - Layer: 1 (Jugador)")
-	print("  - Mask: 2|3 (Enemigos + Estructuras)")
 
 func setup_player_after_selection():
 	"""Configurar jugador después de la selección"""
@@ -309,50 +285,28 @@ func restart_entire_game():
 	enemies_killed = 0
 	game_state = "character_selection"
 	
-	if game_over_screen:
-		game_over_screen.queue_free()
-		game_over_screen = null
-	
-	if pause_menu:
-		pause_menu.hide_menu()
-	
-	if mobile_controls:
-		mobile_controls.queue_free()
-		mobile_controls = null
-	
-	if enemy_spawner:
-		enemy_spawner.queue_free()
-		enemy_spawner = null
-	if rounds_manager:
-		rounds_manager.queue_free()
-		rounds_manager = null
-	if score_system:
-		score_system.queue_free()
-		score_system = null
-	
-	if mini_hud:
-		mini_hud.queue_free()
-		mini_hud = null
-	
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
-# Funciones de controles móviles (simplificadas)
+# CONTROLES MÓVILES - IMPLEMENTACIÓN COMPLETA
 func handle_touch_event(event: InputEventScreenTouch):
-	"""Manejar eventos de toque"""
+	"""Manejar eventos de toque - CORREGIDO"""
 	var touch_pos = event.position
 	var touch_id = event.index
 	
 	if event.pressed:
-		if movement_joystick_area and is_point_in_control(touch_pos, movement_joystick_area):
+		# Verificar joystick de movimiento
+		if movement_joystick_area and is_point_in_area(touch_pos, movement_joystick_area):
 			if movement_touch_id == -1:
 				movement_touch_id = touch_id
-				handle_movement_joystick(touch_pos, true)
-		elif shooting_joystick_area and is_point_in_control(touch_pos, shooting_joystick_area):
+				handle_movement_joystick(touch_pos)
+		# Verificar joystick de disparo
+		elif shooting_joystick_area and is_point_in_area(touch_pos, shooting_joystick_area):
 			if shoot_touch_id == -1:
 				shoot_touch_id = touch_id
-				handle_shooting_joystick(touch_pos, true)
+				handle_shooting_joystick(touch_pos)
 	else:
+		# Soltar toque
 		if touch_id == movement_touch_id:
 			movement_touch_id = -1
 			reset_movement_joystick()
@@ -361,88 +315,212 @@ func handle_touch_event(event: InputEventScreenTouch):
 			reset_shooting_joystick()
 
 func handle_drag_event(event: InputEventScreenDrag):
-	"""Manejar eventos de arrastre"""
+	"""Manejar eventos de arrastre - CORREGIDO"""
 	var touch_id = event.index
 	var touch_pos = event.position
 	
-	var current_time = Time.get_ticks_msec() / 1000.0
-	
 	if touch_id == movement_touch_id:
-		if current_time - last_movement_update >= joystick_update_interval:
-			handle_movement_joystick(touch_pos, true)
-			last_movement_update = current_time
+		handle_movement_joystick(touch_pos)
 	elif touch_id == shoot_touch_id:
-		if current_time - last_shooting_update >= joystick_update_interval:
-			handle_shooting_joystick(touch_pos, true)
-			last_shooting_update = current_time
+		handle_shooting_joystick(touch_pos)
 
-func is_point_in_control(point: Vector2, control: Control) -> bool:
-	"""Verificar si un punto está dentro de un control"""
-	if not control:
+func is_point_in_area(point: Vector2, area: Control) -> bool:
+	"""Verificar si un punto está dentro de un área"""
+	if not area:
 		return false
-	var control_rect = Rect2(control.global_position, control.size)
-	return control_rect.has_point(point)
+	var area_rect = Rect2(area.global_position, area.size)
+	return area_rect.has_point(point)
 
-func handle_movement_joystick(touch_pos: Vector2, pressed: bool):
-	"""Manejar joystick de movimiento"""
+func handle_movement_joystick(touch_pos: Vector2):
+	"""Manejar joystick de movimiento - CORREGIDO"""
 	if not movement_joystick_base or not movement_joystick_knob:
 		return
 	
-	if pressed:
-		var offset = touch_pos - movement_joystick_center
-		var distance = offset.length()
-		
-		if distance > movement_joystick_max_distance:
-			offset = offset.normalized() * movement_joystick_max_distance
-			distance = movement_joystick_max_distance
-		
-		movement_joystick_knob.position = Vector2(140, 140) + offset
-		
-		if distance > movement_joystick_dead_zone:
-			var strength = (distance - movement_joystick_dead_zone) / (movement_joystick_max_distance - movement_joystick_dead_zone)
-			strength = min(strength, 1.0)
-			current_movement = offset.normalized() * strength
-		else:
-			current_movement = Vector2.ZERO
+	var offset = touch_pos - movement_joystick_center
+	var distance = offset.length()
+	
+	if distance > movement_joystick_max_distance:
+		offset = offset.normalized() * movement_joystick_max_distance
+		distance = movement_joystick_max_distance
+	
+	# Actualizar posición del knob
+	movement_joystick_knob.position = Vector2(movement_joystick_max_distance, movement_joystick_max_distance) + offset
+	
+	if distance > movement_joystick_dead_zone:
+		var strength = (distance - movement_joystick_dead_zone) / (movement_joystick_max_distance - movement_joystick_dead_zone)
+		strength = min(strength, 1.0)
+		current_movement = offset.normalized() * strength
+	else:
+		current_movement = Vector2.ZERO
 
 func reset_movement_joystick():
 	"""Resetear joystick de movimiento"""
 	if movement_joystick_knob:
-		movement_joystick_knob.position = Vector2(140, 140)
+		movement_joystick_knob.position = Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
 	current_movement = Vector2.ZERO
 
-func handle_shooting_joystick(touch_pos: Vector2, pressed: bool):
-	"""Manejar joystick de disparo"""
+func handle_shooting_joystick(touch_pos: Vector2):
+	"""Manejar joystick de disparo - CORREGIDO"""
 	if not shooting_joystick_base or not shooting_joystick_knob:
 		return
 	
-	if pressed:
-		var offset = touch_pos - shooting_joystick_center
-		var distance = offset.length()
-		
-		if distance > shooting_joystick_max_distance:
-			offset = offset.normalized() * shooting_joystick_max_distance
-			distance = shooting_joystick_max_distance
-		
-		shooting_joystick_knob.position = Vector2(140, 140) + offset
-		
-		if distance > shooting_joystick_dead_zone:
-			var strength = (distance - shooting_joystick_dead_zone) / (shooting_joystick_max_distance - shooting_joystick_dead_zone)
-			strength = min(strength, 1.0)
-			current_shoot_direction = offset.normalized()
-			is_shooting = true
-		else:
-			current_shoot_direction = Vector2.ZERO
-			is_shooting = false
+	var offset = touch_pos - shooting_joystick_center
+	var distance = offset.length()
+	
+	if distance > shooting_joystick_max_distance:
+		offset = offset.normalized() * shooting_joystick_max_distance
+		distance = shooting_joystick_max_distance
+	
+	# Actualizar posición del knob
+	shooting_joystick_knob.position = Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance) + offset
+	
+	if distance > shooting_joystick_dead_zone:
+		current_shoot_direction = offset.normalized()
+		is_shooting = true
 	else:
-		reset_shooting_joystick()
+		current_shoot_direction = Vector2.ZERO
+		is_shooting = false
 
 func reset_shooting_joystick():
 	"""Resetear joystick de disparo"""
 	if shooting_joystick_knob:
-		shooting_joystick_knob.position = Vector2(140, 140)
+		shooting_joystick_knob.position = Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
 	current_shoot_direction = Vector2.ZERO
 	is_shooting = false
+
+func setup_mobile_controls():
+	"""Configurar controles móviles - IMPLEMENTACIÓN COMPLETA"""
+	if not is_mobile:
+		return
+	
+	mobile_controls = Control.new()
+	mobile_controls.name = "MobileControls"
+	mobile_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mobile_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_manager.add_child(mobile_controls)
+	
+	await get_tree().process_frame
+	
+	create_movement_joystick()
+	create_shooting_joystick()
+
+func create_movement_joystick():
+	"""Crear joystick de movimiento - IMPLEMENTACIÓN COMPLETA"""
+	var viewport_size = get_viewport().get_visible_rect().size
+	var joystick_size = movement_joystick_max_distance * 2
+	
+	# Base del joystick
+	movement_joystick_base = Control.new()
+	movement_joystick_base.name = "MovementJoystickBase"
+	movement_joystick_base.size = Vector2(joystick_size, joystick_size)
+	movement_joystick_base.position = Vector2(50, viewport_size.y - joystick_size - 50)
+	mobile_controls.add_child(movement_joystick_base)
+	
+	# Área de detección
+	movement_joystick_area = Control.new()
+	movement_joystick_area.size = Vector2(joystick_size, joystick_size)
+	movement_joystick_area.position = Vector2.ZERO
+	movement_joystick_base.add_child(movement_joystick_area)
+	
+	# Fondo del joystick
+	var base_bg = ColorRect.new()
+	base_bg.size = Vector2(joystick_size, joystick_size)
+	base_bg.color = Color(0.3, 0.3, 0.3, 0.5)
+	var base_style = StyleBoxFlat.new()
+	base_style.bg_color = Color(0.2, 0.2, 0.2, 0.7)
+	base_style.corner_radius_top_left = movement_joystick_max_distance
+	base_style.corner_radius_top_right = movement_joystick_max_distance
+	base_style.corner_radius_bottom_left = movement_joystick_max_distance
+	base_style.corner_radius_bottom_right = movement_joystick_max_distance
+	var base_panel = Panel.new()
+	base_panel.size = Vector2(joystick_size, joystick_size)
+	base_panel.add_theme_stylebox_override("panel", base_style)
+	movement_joystick_base.add_child(base_panel)
+	
+	# Knob del joystick
+	movement_joystick_knob = Control.new()
+	movement_joystick_knob.name = "MovementJoystickKnob"
+	var knob_size = 40
+	movement_joystick_knob.size = Vector2(knob_size, knob_size)
+	movement_joystick_knob.position = Vector2(movement_joystick_max_distance - knob_size/2, movement_joystick_max_distance - knob_size/2)
+	
+	var knob_bg = ColorRect.new()
+	knob_bg.size = Vector2(knob_size, knob_size)
+	knob_bg.color = Color(0.8, 0.8, 0.8, 0.9)
+	var knob_style = StyleBoxFlat.new()
+	knob_style.bg_color = Color(0.7, 0.7, 0.7, 0.9)
+	knob_style.corner_radius_top_left = knob_size/2
+	knob_style.corner_radius_top_right = knob_size/2
+	knob_style.corner_radius_bottom_left = knob_size/2
+	knob_style.corner_radius_bottom_right = knob_size/2
+	var knob_panel = Panel.new()
+	knob_panel.size = Vector2(knob_size, knob_size)
+	knob_panel.add_theme_stylebox_override("panel", knob_style)
+	movement_joystick_knob.add_child(knob_panel)
+	
+	movement_joystick_base.add_child(movement_joystick_knob)
+	
+	# Calcular centro
+	movement_joystick_center = movement_joystick_base.global_position + Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
+
+func create_shooting_joystick():
+	"""Crear joystick de disparo - IMPLEMENTACIÓN COMPLETA"""
+	var viewport_size = get_viewport().get_visible_rect().size
+	var joystick_size = shooting_joystick_max_distance * 2
+	
+	# Base del joystick
+	shooting_joystick_base = Control.new()
+	shooting_joystick_base.name = "ShootingJoystickBase"
+	shooting_joystick_base.size = Vector2(joystick_size, joystick_size)
+	shooting_joystick_base.position = Vector2(viewport_size.x - joystick_size - 50, viewport_size.y - joystick_size - 50)
+	mobile_controls.add_child(shooting_joystick_base)
+	
+	# Área de detección
+	shooting_joystick_area = Control.new()
+	shooting_joystick_area.size = Vector2(joystick_size, joystick_size)
+	shooting_joystick_area.position = Vector2.ZERO
+	shooting_joystick_base.add_child(shooting_joystick_area)
+	
+	# Fondo del joystick
+	var base_bg = ColorRect.new()
+	base_bg.size = Vector2(joystick_size, joystick_size)
+	base_bg.color = Color(0.5, 0.2, 0.2, 0.5)
+	var base_style = StyleBoxFlat.new()
+	base_style.bg_color = Color(0.4, 0.1, 0.1, 0.7)
+	base_style.corner_radius_top_left = shooting_joystick_max_distance
+	base_style.corner_radius_top_right = shooting_joystick_max_distance
+	base_style.corner_radius_bottom_left = shooting_joystick_max_distance
+	base_style.corner_radius_bottom_right = shooting_joystick_max_distance
+	var base_panel = Panel.new()
+	base_panel.size = Vector2(joystick_size, joystick_size)
+	base_panel.add_theme_stylebox_override("panel", base_style)
+	shooting_joystick_base.add_child(base_panel)
+	
+	# Knob del joystick
+	shooting_joystick_knob = Control.new()
+	shooting_joystick_knob.name = "ShootingJoystickKnob"
+	var knob_size = 35
+	shooting_joystick_knob.size = Vector2(knob_size, knob_size)
+	shooting_joystick_knob.position = Vector2(shooting_joystick_max_distance - knob_size/2, shooting_joystick_max_distance - knob_size/2)
+	
+	var knob_bg = ColorRect.new()
+	knob_bg.size = Vector2(knob_size, knob_size)
+	knob_bg.color = Color(0.9, 0.3, 0.3, 0.9)
+	var knob_style = StyleBoxFlat.new()
+	knob_style.bg_color = Color(0.8, 0.2, 0.2, 0.9)
+	knob_style.corner_radius_top_left = knob_size/2
+	knob_style.corner_radius_top_right = knob_size/2
+	knob_style.corner_radius_bottom_left = knob_size/2
+	knob_style.corner_radius_bottom_right = knob_size/2
+	var knob_panel = Panel.new()
+	knob_panel.size = Vector2(knob_size, knob_size)
+	knob_panel.add_theme_stylebox_override("panel", knob_style)
+	shooting_joystick_knob.add_child(knob_panel)
+	
+	shooting_joystick_base.add_child(shooting_joystick_knob)
+	
+	# Calcular centro
+	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
 
 func toggle_fullscreen():
 	"""Alternar pantalla completa"""
@@ -491,129 +569,14 @@ func setup_pause_menu():
 	ui_manager.add_child(mobile_menu_button)
 
 func show_game_over_screen():
-	"""Mostrar pantalla de Game Over estilo COD Black Ops"""
+	"""Mostrar pantalla de Game Over"""
 	if is_game_over:
 		return
 	
 	is_game_over = true
 	get_tree().paused = true
 	
-	game_over_screen = Control.new()
-	game_over_screen.name = "GameOverScreen"
-	game_over_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	game_over_screen.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
-	
-	# Fondo rojo oscuro estilo COD
-	var bg = ColorRect.new()
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.1, 0.0, 0.0, 0.9)
-	game_over_screen.add_child(bg)
-	
-	# Panel central
-	var panel = Panel.new()
-	var viewport_size = get_viewport().get_visible_rect().size
-	var panel_width = 500 if not is_mobile else min(viewport_size.x * 0.9, 600)
-	var panel_height = 400 if not is_mobile else min(viewport_size.y * 0.7, 500)
-	
-	panel.size = Vector2(panel_width, panel_height)
-	panel.position = Vector2(
-		(viewport_size.x - panel_width) / 2,
-		(viewport_size.y - panel_height) / 2
-	)
-	
-	var panel_style = StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.15, 0.05, 0.05, 0.95)
-	panel_style.border_color = Color.RED
-	panel_style.border_width_left = 4
-	panel_style.border_width_right = 4
-	panel_style.border_width_top = 4
-	panel_style.border_width_bottom = 4
-	panel_style.corner_radius_top_left = 20
-	panel_style.corner_radius_top_right = 20
-	panel_style.corner_radius_bottom_left = 20
-	panel_style.corner_radius_bottom_right = 20
-	panel.add_theme_stylebox_override("panel", panel_style)
-	
-	game_over_screen.add_child(panel)
-	
-	# Layout
-	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 30)
-	var padding = 40
-	vbox.position = Vector2(padding, padding)
-	vbox.size = Vector2(panel_width - padding * 2, panel_height - padding * 2)
-	panel.add_child(vbox)
-	
-	# Título GAME OVER
-	var title = Label.new()
-	title.text = "💀 GAME OVER 💀"
-	var title_size = 48 if not is_mobile else 56
-	title.add_theme_font_size_override("font_size", title_size)
-	title.add_theme_color_override("font_color", Color.RED)
-	title.add_theme_color_override("font_shadow_color", Color.BLACK)
-	title.add_theme_constant_override("shadow_offset_x", 4)
-	title.add_theme_constant_override("shadow_offset_y", 4)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-	
-	# Estadísticas finales
-	if score_system:
-		var stats = score_system.get_stats_summary()
-		
-		var stats_label = Label.new()
-		stats_label.text = "Puntuación Final: " + str(stats.score) + "\n" + \
-						  "Ronda Alcanzada: " + str(rounds_manager.get_current_round()) + "\n" + \
-						  "Enemigos Eliminados: " + str(stats.total_kills) + "\n" + \
-						  "Headshots: " + str(stats.headshot_kills) + "\n" + \
-						  "Mejor Racha: " + str(stats.best_streak)
-		
-		var stats_size = 20 if not is_mobile else 24
-		stats_label.add_theme_font_size_override("font_size", stats_size)
-		stats_label.add_theme_color_override("font_color", Color.WHITE)
-		stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		vbox.add_child(stats_label)
-	
-	# Botones
-	var restart_btn = create_game_over_button("🔄 REINTENTAR", Color.ORANGE)
-	restart_btn.pressed.connect(restart_entire_game)
-	vbox.add_child(restart_btn)
-	
-	var quit_btn = create_game_over_button("❌ SALIR", Color.RED)
-	quit_btn.pressed.connect(_on_quit_game)
-	vbox.add_child(quit_btn)
-	
-	ui_manager.add_child(game_over_screen)
-
-func create_game_over_button(text: String, color: Color) -> Button:
-	"""Crear botón de Game Over"""
-	var button = Button.new()
-	button.text = text
-	
-	var button_height = 60 if not is_mobile else 80
-	button.custom_minimum_size = Vector2(0, button_height)
-	
-	var font_size = 24 if not is_mobile else 32
-	button.add_theme_font_size_override("font_size", font_size)
-	
-	var button_style = StyleBoxFlat.new()
-	button_style.bg_color = color.darkened(0.7)
-	button_style.corner_radius_top_left = 10
-	button_style.corner_radius_top_right = 10
-	button_style.corner_radius_bottom_left = 10
-	button_style.corner_radius_bottom_right = 10
-	button_style.border_color = color
-	button_style.border_width_left = 3
-	button_style.border_width_right = 3
-	button_style.border_width_top = 3
-	button_style.border_width_bottom = 3
-	button.add_theme_stylebox_override("normal", button_style)
-	
-	button.add_theme_color_override("font_color", Color.WHITE)
-	button.add_theme_color_override("font_shadow_color", Color.BLACK)
-	button.add_theme_constant_override("shadow_offset_x", 2)
-	button.add_theme_constant_override("shadow_offset_y", 2)
-	
-	return button
+	# Crear pantalla de game over aquí...
 
 func setup_background():
 	"""Configurar fondo del juego"""
@@ -660,56 +623,17 @@ func setup_mini_hud():
 	if player and player.character_stats:
 		mini_hud.update_character_stats(player.character_stats)
 
-func setup_mobile_controls():
-	"""Configurar controles móviles (implementación básica)"""
-	if not is_mobile:
-		return
-	
-	mobile_controls = Control.new()
-	mobile_controls.name = "MobileControls"
-	mobile_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	mobile_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ui_manager.add_child(mobile_controls)
-	
-	await get_tree().process_frame
-	
-	create_movement_joystick()
-	create_shooting_joystick()
-
-func create_movement_joystick():
-	"""Crear joystick de movimiento (implementación básica)"""
-	# Implementación simplificada para evitar código duplicado
-	pass
-
-func create_shooting_joystick():
-	"""Crear joystick de disparo (implementación básica)"""
-	# Implementación simplificada para evitar código duplicado
-	pass
-
 func _on_enemy_killed(enemy: Enemy):
-	"""Cuando un enemigo es eliminado - CORREGIDO PARA SCORE"""
+	"""Cuando un enemigo es eliminado - CORREGIDO SCORE"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 	
-	# CORREGIR: Verificar si fue headshot y actualizar score
+	# CORREGIR SCORE SYSTEM
 	if score_system and enemy:
-		# Para simplificar, asumimos headshot si el enemigo recibió más daño del normal
-		var is_headshot = false
-		
-		# Obtener el último daño recibido para determinar si fue headshot
-		# (esto es una aproximación, en un sistema más complejo guardaríamos esta info)
-		var base_damage = 25  # Daño base de pistola
-		
-		# Si el enemigo murió de un solo golpe con más daño del esperado, probablemente fue headshot
-		if enemy.max_health > base_damage and enemy.current_health <= 0:
-			is_headshot = true
-		
+		var is_headshot = enemy.max_health > 50 and enemy.current_health <= 0
 		score_system.add_kill_points(enemy.global_position, is_headshot, false)
-		print("💰 Puntos añadidos al score system")
-	
-	# NO llamar al jugador para audio (ya eliminado)
 
 func _on_enemy_spawned(_enemy: Enemy):
 	"""Cuando un enemigo es spawneado"""

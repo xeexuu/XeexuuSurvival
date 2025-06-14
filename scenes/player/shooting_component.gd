@@ -113,15 +113,19 @@ func create_bullet(base_direction: Vector2, start_position: Vector2, bullet_inde
 		var final_angle = base_angle + deg_to_rad(random_offset)
 		final_direction = Vector2.from_angle(final_angle)
 	
-	# Usar estadísticas del arma o valores por defecto
+	# Usar estadísticas del arma o valores por defecto - CORREGIDO RANGO
 	var final_speed = 600.0
 	var final_damage = 1
-	var final_range = 300.0
+	var final_range = 400.0  # Rango por defecto aumentado
 	
 	if equipped_weapon:
 		final_speed = float(equipped_weapon.projectile_speed)
 		final_damage = equipped_weapon.damage
 		final_range = float(equipped_weapon.attack_range)
+		
+		# ASEGURAR QUE EL RANGO SEA CONSISTENTE
+		if final_range < 300:
+			final_range = 400.0  # Mínimo 400 de rango
 	
 	# Añadir al árbol ANTES de configurar
 	var main_scene = get_tree().current_scene
@@ -140,7 +144,7 @@ func create_bullet(base_direction: Vector2, start_position: Vector2, bullet_inde
 		bullet.has_piercing = equipped_weapon.has_piercing
 		bullet.has_explosive = equipped_weapon.has_explosive
 		bullet.knockback_force = equipped_weapon.knockback_force
-		bullet.headshot_multiplier = equipped_weapon.headshot_multiplier  # NUEVO
+		bullet.headshot_multiplier = equipped_weapon.headshot_multiplier
 	
 	# Emitir señal
 	bullet_fired.emit(bullet, final_direction)

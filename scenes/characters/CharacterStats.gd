@@ -1,4 +1,4 @@
-# scenes/characters/CharacterStats.gd
+# scenes/characters/CharacterStats.gd - SIN AUDIO DE PELAO
 extends Resource
 class_name CharacterStats
 
@@ -38,9 +38,8 @@ func ensure_weapon_exists():
 		equipped_weapon.accuracy = 0.95
 		equipped_weapon.headshot_multiplier = 1.4
 		
-		# Intentar cargar sonido de disparo para Pelao
-		if character_name.to_lower().contains("pelao") and ResourceLoader.exists("res://audio/pelao_shoot.ogg"):
-			equipped_weapon.attack_sound = load("res://audio/pelao_shoot.ogg")
+		# NO cargar sonido de pelao - usar sonido del arma
+		# El sonido se asigna en WeaponStats, no aquí
 
 # Funciones de acceso a estadísticas del arma
 func get_damage() -> int:

@@ -1,4 +1,4 @@
-# scenes/managers/ScoreSystem.gd
+# scenes/managers/ScoreSystem.gd - ACTUALIZACIÓN CORREGIDA
 extends Node
 class_name ScoreSystem
 
@@ -23,6 +23,7 @@ var round_multiplier: float = 1.0
 # UI de puntuación - ESQUINA INFERIOR DERECHA
 var score_ui: Control
 var player_camera: Camera2D
+var score_label: Label  # REFERENCIA DIRECTA
 
 # Efectos de puntuación
 var score_popup_scene: PackedScene
@@ -47,10 +48,6 @@ func setup_score_ui_on_camera(camera: Camera2D):
 	score_ui.size = ui_size
 	
 	# Fondo estilo Black Ops
-	var bg = ColorRect.new()
-	bg.size = ui_size
-	bg.color = Color(0.0, 0.0, 0.0, 0.7)
-	
 	var bg_style = StyleBoxFlat.new()
 	bg_style.bg_color = Color(0.05, 0.05, 0.1, 0.85)
 	bg_style.border_color = Color(0.8, 0.6, 0.0, 0.9)  # Dorado estilo Black Ops
@@ -87,8 +84,8 @@ func setup_score_ui_on_camera(camera: Camera2D):
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	main_container.add_child(title_label)
 	
-	# Etiqueta de puntuación grande
-	var score_label = Label.new()
+	# Etiqueta de puntuación grande - REFERENCIA DIRECTA
+	score_label = Label.new()
 	score_label.name = "ScoreLabel"
 	score_label.text = "0"
 	var score_font_size = 32 if not is_mobile else 40  # Más grande estilo Black Ops
@@ -146,7 +143,7 @@ func add_kill_points(enemy_position: Vector2, is_headshot: bool = false, is_mele
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
 	
-	# Actualizar UI
+	# Actualizar UI INMEDIATAMENTE
 	update_score_ui()
 	
 	# Mostrar popup de puntuación estilo Black Ops
@@ -269,23 +266,24 @@ func animate_score_popup(popup: Control):
 	tween.tween_callback(func(): popup.queue_free())
 
 func update_score_ui():
-	"""Actualizar la UI de puntuación estilo Black Ops"""
-	if not score_ui:
+	"""Actualizar la UI de puntuación estilo Black Ops - CORREGIDO CON REFERENCIA DIRECTA"""
+	if not score_label:
+		print("❌ No hay score_label para actualizar")
 		return
 	
-	var score_label = score_ui.find_child("ScoreLabel")
-	if score_label:
-		# Formatear puntuación con separadores de miles
-		var formatted_score = format_score(current_score)
-		score_label.text = formatted_score
-		
-		# Efecto de parpadeo dorado cuando se añaden puntos
-		var flash_tween = score_ui.create_tween()
-		score_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.0, 1.0))  # Dorado
-		flash_tween.tween_property(score_label, "modulate", Color.WHITE, 0.15)
-		flash_tween.tween_callback(func(): 
-			score_label.add_theme_color_override("font_color", Color.WHITE)
-		)
+	# Formatear puntuación con separadores de miles
+	var formatted_score = format_score(current_score)
+	score_label.text = formatted_score
+	
+	print("✅ Score actualizado a: ", formatted_score)
+	
+	# Efecto de parpadeo dorado cuando se añaden puntos
+	var flash_tween = score_ui.create_tween()
+	score_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.0, 1.0))  # Dorado
+	flash_tween.tween_property(score_label, "modulate", Color.WHITE, 0.15)
+	flash_tween.tween_callback(func(): 
+		score_label.add_theme_color_override("font_color", Color.WHITE)
+	)
 
 func format_score(score: int) -> String:
 	"""Formatear puntuación con separadores de miles estilo Black Ops"""

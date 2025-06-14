@@ -1,4 +1,4 @@
-# scenes/player/player.gd - AUDIO DE KILL ELIMINADO COMPLETAMENTE
+# scenes/player/player.gd - AUDIO ELIMINADO Y COLISIONES CORREGIDAS
 extends CharacterBody2D
 class_name Player
 
@@ -46,8 +46,9 @@ func _ready():
 	setup_camera()
 	setup_weapon_renderer()
 	
-	collision_layer = 1
-	collision_mask = 2
+	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS
+	collision_layer = 1  # Jugador en capa 1
+	collision_mask = 2 | 3  # Colisiona con enemigos (2) y estructuras (3)
 
 func setup_camera():
 	"""Configurar la cámara del jugador para COD Black Ops style"""
@@ -122,8 +123,34 @@ func _physics_process(delta):
 	
 	move_and_slide()
 	
+	# CORREGIR: Verificar colisiones con enemigos para prevenir overlapping
 	if is_alive():
-		handle_enemy_collisions()
+		handle_enemy_separation()
+
+func handle_enemy_separation():
+	"""Manejar separación de enemigos para evitar que se peguen"""
+	var space_state = get_world_2d().direct_space_state
+	var query = PhysicsShapeQueryParameters2D.new()
+	var circle_shape = CircleShape2D.new()
+	circle_shape.radius = 60.0  # Radio de separación
+	query.shape = circle_shape
+	query.transform = Transform2D(0, global_position)
+	query.collision_mask = 2  # Solo enemigos
+	query.exclude = [self]
+	
+	var results = space_state.intersect_shape(query, 5)
+	
+	for result in results:
+		var enemy = result.collider
+		if enemy and enemy.has_method("apply_knockback"):
+			var separation_vector = enemy.global_position - global_position
+			var distance = separation_vector.length()
+			
+			if distance > 0 and distance < 60:
+				# Empujar al enemigo lejos del jugador
+				var push_direction = separation_vector.normalized()
+				var push_force = (60 - distance) * 5.0  # Fuerza proporcional a la proximidad
+				enemy.apply_knockback(push_direction, push_force)
 
 func handle_movement(_delta):
 	"""Manejar movimiento del jugador estilo COD Black Ops"""
@@ -184,7 +211,7 @@ func perform_shoot(direction: Vector2):
 	var shot_fired = shooting_component.try_shoot(direction, shoot_position)
 	
 	if shot_fired:
-		play_shoot_sound()
+		# AUDIO ELIMINADO - NO reproducir sonido aquí
 		
 		if weapon_renderer:
 			weapon_renderer.start_shooting_animation()
@@ -203,19 +230,6 @@ func update_weapon_position():
 		aim_direction = Vector2.RIGHT
 	
 	weapon_renderer.update_weapon_position_and_rotation(aim_direction)
-
-func play_shoot_sound():
-	"""Reproducir sonido de disparo"""
-	if character_stats and character_stats.equipped_weapon and character_stats.equipped_weapon.attack_sound:
-		var audio_player = AudioStreamPlayer2D.new()
-		audio_player.stream = character_stats.equipped_weapon.attack_sound
-		audio_player.pitch_scale = randf_range(0.9, 1.1)
-		audio_player.volume_db = -10.0
-		
-		get_tree().current_scene.add_child(audio_player)
-		audio_player.play()
-		
-		audio_player.finished.connect(func(): audio_player.queue_free())
 
 func update_animations(movement_direction: Vector2):
 	"""Actualizar animaciones del jugador estilo COD Black Ops"""
@@ -266,12 +280,6 @@ func get_animation_name_from_direction(direction: Vector2) -> String:
 
 func update_shooting_animation(_shoot_direction: Vector2):
 	"""Actualizar animación al disparar - COD Black Ops style"""
-	pass
-
-func handle_enemy_collisions():
-	"""Manejar colisiones con enemigos estilo COD Black Ops - DESHABILITADO"""
-	# COMENTADO: Ya no manejamos daño por colisión aquí
-	# Los enemigos ahora atacan usando su propio sistema
 	pass
 
 func take_damage(amount: int):
@@ -432,8 +440,8 @@ func apply_death_screen_effect():
 	death_tween.tween_property(death_overlay, "color:a", 0.7, 2.0)
 
 func on_enemy_killed():
-	"""ELIMINADO: Sin sonido de kill, función vacía"""
-	# NO hace nada ahora - sin sonido de kill
+	"""ELIMINADO: Sin sonido de kill"""
+	# NO hace nada - audio eliminado completamente
 	pass
 
 # Funciones de recarga manual
