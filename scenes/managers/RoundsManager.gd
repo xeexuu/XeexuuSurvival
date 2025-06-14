@@ -24,6 +24,9 @@ var player_camera: Camera2D
 # Referencias
 var enemy_spawner: EnemySpawner
 
+# ❌ NUEVO: Control del inicio automático
+var auto_start_enabled: bool = false
+
 func _ready():
 	pass
 
@@ -118,8 +121,13 @@ func set_enemy_spawner(spawner: EnemySpawner):
 	if enemy_spawner:
 		enemy_spawner.round_complete.connect(_on_round_complete)
 
+func enable_auto_start():
+	"""❌ NUEVO: Habilitar inicio automático de spawning"""
+	auto_start_enabled = true
+	print("✅ Auto-start habilitado en RoundsManager")
+
 func start_round(round_number: int):
-	"""Iniciar una nueva ronda"""
+	"""Iniciar una nueva ronda - ❌ MODIFICADO: Sin auto-spawn"""
 	current_round = round_number
 	
 	# Calcular número de enemigos para esta ronda
@@ -137,10 +145,27 @@ func start_round(round_number: int):
 	# Emitir señal
 	round_changed.emit(current_round)
 	
-	# Iniciar spawn de enemigos
-	if enemy_spawner:
+	# ❌ CAMBIO CRÍTICO: Solo iniciar spawn si está habilitado
+	if auto_start_enabled and enemy_spawner:
 		var enemy_health = calculate_enemy_health_for_round(current_round)
 		enemy_spawner.start_round(enemies_this_round, enemy_health)
+		print("🎮 Ronda ", current_round, " iniciada con spawn automático")
+	else:
+		print("🎮 Ronda ", current_round, " configurada, esperando activación manual")
+
+func manually_start_spawning():
+	"""❌ NUEVO: Iniciar spawning manualmente"""
+	if not enemy_spawner:
+		print("❌ No hay enemy_spawner para iniciar spawning")
+		return
+	
+	var enemies_this_round = calculate_enemies_for_round(current_round)
+	var enemy_health = calculate_enemy_health_for_round(current_round)
+	
+	enemy_spawner.start_round(enemies_this_round, enemy_health)
+	auto_start_enabled = true  # Habilitar para siguientes rondas
+	
+	print("🎮 Spawning iniciado manualmente para ronda ", current_round)
 
 func calculate_enemies_for_round(round_num: int) -> int:
 	"""Calcular número de enemigos para una ronda específica"""

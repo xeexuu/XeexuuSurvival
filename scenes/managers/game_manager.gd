@@ -2,13 +2,6 @@
 extends Node
 class_name GameManager
 
-# Añadir estos preloads
-const Player = preload("res://scenes/player/Player.tscn")
-const Enemy = preload("res://scenes/enemies/BasicEnemy.tscn") 
-const RoundsManager = preload("res://scenes/managers/RoundsManager.gd")
-const EnemySpawner = preload("res://scenes/enemies/EnemySpawner.gd")
-const ScoreSystem = preload("res://scenes/managers/ScoreSystem.gd")
-
 @onready var level_manager = $LevelManager
 @onready var player_manager = $PlayerManager
 @onready var ui_manager = $UIManager
@@ -70,7 +63,8 @@ var game_over_screen: Control
 var is_game_over: bool = false
 
 func _process(_delta):
-	if not game_started or is_game_over:
+	# ❌ CAMBIO CRÍTICO: Solo procesar si el juego ya empezó Y no está en game over
+	if not game_started or is_game_over or game_state != "playing":
 		return
 		
 	if is_mobile and player:
@@ -111,7 +105,8 @@ func _input(event):
 	if event.is_action_pressed("toggle_fullscreen"):
 		toggle_fullscreen()
 	
-	if not is_mobile or not game_started:
+	# ❌ CAMBIO CRÍTICO: Solo procesar controles móviles si el juego empezó
+	if not is_mobile or not game_started or game_state != "playing":
 		return
 	
 	if event is InputEventScreenTouch:
@@ -119,6 +114,183 @@ func _input(event):
 	elif event is InputEventScreenDrag:
 		handle_drag_event(event)
 
+func show_character_selection():
+	var character_selection = preload("res://scenes/ui/CharacterSelection.tscn").instantiate()
+	character_selection.character_selected.connect(_on_character_selected)
+	ui_manager.add_child(character_selection)
+	
+	# ❌ CAMBIO CRÍTICO: Asegurar que el jugador esté completamente desactivado
+	if player_manager.get_child_count() > 0:
+		player = player_manager.get_child(0)
+		if player:
+			player.set_physics_process(false)
+			player.set_process(false)
+			player.visible = false  # ❌ NUEVO: Ocultar también
+
+func _on_character_selected(character_stats: CharacterStats):
+	print("🎮 Personaje seleccionado: ", character_stats.character_name)
+	selected_character_stats = character_stats
+	
+	# ❌ CAMBIO CRÍTICO: Primero cambiar el estado, LUEGO configurar todo
+	game_state = "playing"
+	
+	# ❌ NUEVO: Configurar todo en orden específico
+	setup_player_after_selection()
+	if is_mobile:
+		setup_mobile_controls()
+	setup_mini_hud()
+	
+	# ❌ CAMBIO CRÍTICO: Configurar sistemas DESPUÉS de que el jugador esté listo
+	await setup_unified_cod_system_safe()
+	
+	# ❌ NUEVO: Activar jugador AL FINAL
+	if player:
+		player.visible = true
+		player.set_physics_process(true)
+		player.set_process(true)
+		
+		# CONECTAR SEÑAL DE MUERTE DEL JUGADOR
+		player.player_died.connect(_on_player_died)
+	
+	# ❌ CAMBIO CRÍTICO: Marcar como iniciado AL FINAL
+	game_started = true
+	
+	print("✅ Juego iniciado correctamente")
+	
+	# ❌ NUEVO: Iniciar spawning después de delay más largo
+	await get_tree().create_timer(3.0).timeout  # 3 segundos de gracia
+	start_enemy_spawning_safely()
+
+func setup_player_after_selection():
+	"""❌ NUEVO: Configurar jugador DESPUÉS de la selección"""
+	if player_manager.get_child_count() > 0:
+		player = player_manager.get_child(0)
+		if player:
+			if selected_character_stats:
+				player.update_character_stats(selected_character_stats)
+			
+			player.global_position = Vector2(0, 0)
+			player.z_index = 10
+			
+			# FORZAR CARGA CORRECTA DE ANIMACIONES DESDE ATLAS
+			fix_player_animations()
+	else:
+		print("❌ No se encontró jugador en PlayerManager")
+
+# SISTEMA UNIFICADO COD ZOMBIES CON PUNTUACIÓN - ❌ NUEVO: SIN AUTO-START
+func setup_unified_cod_system_safe():
+	"""❌ CAMBIO CRÍTICO: Configurar sin iniciar spawning automáticamente"""
+	if not player:
+		print("❌ Error: No hay jugador para configurar sistemas")
+		return
+	
+	print("🎮 Configurando sistemas de combate SIN auto-start...")
+	
+	# 1. Crear ScoreSystem PRIMERO
+	score_system = ScoreSystem.new()
+	score_system.name = "ScoreSystem"
+	add_child(score_system)
+	
+	# 2. Configurar UI de puntuación en la cámara
+	if player.camera:
+		score_system.setup_score_ui_on_camera(player.camera)
+	
+	# 3. Crear RoundsManager
+	rounds_manager = RoundsManager.new()
+	rounds_manager.name = "RoundsManager"
+	add_child(rounds_manager)
+	
+	# 4. Configurar UI de rondas en la cámara
+	if player.camera:
+		rounds_manager.setup_round_ui_on_camera(player.camera)
+	
+	# 5. Crear EnemySpawner
+	enemy_spawner = EnemySpawner.new()
+	enemy_spawner.name = "EnemySpawner"
+	enemy_spawner.spawn_radius_min = 400.0
+	enemy_spawner.spawn_radius_max = 800.0
+	enemy_spawner.despawn_distance = 1200.0
+	add_child(enemy_spawner)
+	
+	# 6. Conectar sistemas
+	enemy_spawner.setup(player, rounds_manager)
+	rounds_manager.set_enemy_spawner(enemy_spawner)
+	
+	# 7. Conectar señales
+	enemy_spawner.enemy_killed.connect(_on_enemy_killed)
+	enemy_spawner.enemy_spawned.connect(_on_enemy_spawned)
+	
+	# 8. Conectar jugador con score system
+	player.set_score_system(score_system)
+	
+	# ❌ CAMBIO CRÍTICO: Configurar ronda SIN iniciar spawning
+	rounds_manager.start_round(1)  # Esto NO inicia spawning ahora
+	
+	print("✅ Sistemas de combate configurados sin spawning")
+
+func start_enemy_spawning_safely():
+	"""❌ NUEVO: Iniciar spawning de enemigos de forma segura"""
+	if not rounds_manager or not enemy_spawner:
+		print("❌ No se pueden iniciar enemigos - sistemas no configurados")
+		return
+	
+	print("🎮 Iniciando spawning de enemigos después de delay...")
+	
+	# Verificar que el jugador sigue vivo
+	if not player or not player.is_alive():
+		print("❌ Jugador no está vivo, cancelando spawning")
+		return
+	
+	# Iniciar spawning manualmente
+	rounds_manager.manually_start_spawning()
+	
+	print("✅ Spawning de enemigos iniciado")
+
+func _on_player_died():
+	print("💀 JUGADOR HA MUERTO - INICIANDO GAME OVER")
+	show_game_over_screen()
+
+func restart_entire_game():
+	# Limpiar estado
+	clear_all_enemies()
+	is_game_over = false
+	game_started = false
+	enemies_killed = 0
+	
+	# ❌ NUEVO: Resetear estado del juego
+	game_state = "character_selection"
+	
+	# Ocultar pantallas
+	if game_over_screen:
+		game_over_screen.queue_free()
+		game_over_screen = null
+	
+	if pause_menu:
+		pause_menu.hide_menu()
+	
+	# Limpiar controles móviles
+	if mobile_controls:
+		mobile_controls.queue_free()
+		mobile_controls = null
+	
+	# ❌ NUEVO: Limpiar sistemas de combate
+	if enemy_spawner:
+		enemy_spawner.queue_free()
+		enemy_spawner = null
+	if rounds_manager:
+		rounds_manager.queue_free()
+		rounds_manager = null
+	if score_system:
+		score_system.queue_free()
+		score_system = null
+	
+	# Despausar
+	get_tree().paused = false
+	
+	# Recargar escena
+	get_tree().reload_current_scene()
+
+# Los métodos de joystick permanecen sin cambios
 func handle_touch_event(event: InputEventScreenTouch):
 	var touch_pos = event.position
 	var touch_id = event.index
@@ -247,32 +419,6 @@ func _on_quit_game():
 	get_tree().paused = false
 	get_tree().quit()
 
-func restart_entire_game():
-	# Limpiar estado
-	clear_all_enemies()
-	is_game_over = false
-	game_started = false
-	enemies_killed = 0
-	
-	# Ocultar pantallas
-	if game_over_screen:
-		game_over_screen.queue_free()
-		game_over_screen = null
-	
-	if pause_menu:
-		pause_menu.hide_menu()
-	
-	# Limpiar controles móviles
-	if mobile_controls:
-		mobile_controls.queue_free()
-		mobile_controls = null
-	
-	# Despausar
-	get_tree().paused = false
-	
-	# Recargar escena
-	get_tree().reload_current_scene()
-
 func setup_pause_menu():
 	pause_menu = preload("res://scenes/ui/PauseMenu.tscn").instantiate()
 	pause_menu.resume_game.connect(_on_resume_game)
@@ -287,41 +433,6 @@ func setup_pause_menu():
 	ui_manager.add_child(mobile_menu_button)
 	
 	print("🎮 Botón de menú móvil creado y conectado")
-
-func show_character_selection():
-	var character_selection = preload("res://scenes/ui/CharacterSelection.tscn").instantiate()
-	character_selection.character_selected.connect(_on_character_selected)
-	ui_manager.add_child(character_selection)
-	
-	if player_manager.get_child_count() > 0:
-		player = player_manager.get_child(0)
-		if player:
-			player.set_physics_process(false)
-			player.set_process(false)
-
-func _on_character_selected(character_stats: CharacterStats):
-	selected_character_stats = character_stats
-	game_state = "playing"
-	
-	setup_player()
-	if is_mobile:
-		setup_mobile_controls()
-	
-	setup_mini_hud()
-	setup_unified_cod_system()
-	
-	if player:
-		player.set_physics_process(true)
-		player.set_process(true)
-		
-		# CONECTAR SEÑAL DE MUERTE DEL JUGADOR
-		player.player_died.connect(_on_player_died)
-	
-	game_started = true
-
-func _on_player_died():
-	print("💀 JUGADOR HA MUERTO - INICIANDO GAME OVER")
-	show_game_over_screen()
 
 func show_game_over_screen():
 	if is_game_over:
@@ -517,19 +628,6 @@ func update_mobile_controls_position():
 		if shooting_joystick_base:
 			shooting_joystick_base.position = Vector2(viewport_size.x - margin_horizontal - 400, viewport_size.y - margin_vertical - 400)
 			shooting_joystick_center = shooting_joystick_base.global_position + Vector2(200, 200)
-
-func setup_player():
-	if player_manager.get_child_count() > 0:
-		player = player_manager.get_child(0)
-		if player:
-			if selected_character_stats:
-				player.update_character_stats(selected_character_stats)
-			
-			player.global_position = Vector2(0, 0)
-			player.z_index = 10
-			
-			# FORZAR CARGA CORRECTA DE ANIMACIONES DESDE ATLAS
-			fix_player_animations()
 
 func fix_player_animations():
 	if not player or not player.character_stats:
@@ -850,56 +948,12 @@ func create_shooting_joystick():
 	shoot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	shooting_joystick_base.add_child(shoot_label)
 
-# SISTEMA UNIFICADO COD ZOMBIES CON PUNTUACIÓN
-func setup_unified_cod_system():
-	if not player:
-		return
-	
-	# 1. Crear ScoreSystem PRIMERO
-	score_system = ScoreSystem.new()
-	score_system.name = "ScoreSystem"
-	add_child(score_system)
-	
-	# 2. Configurar UI de puntuación en la cámara
-	if player.camera:
-		score_system.setup_score_ui_on_camera(player.camera)
-	
-	# 3. Crear RoundsManager
-	rounds_manager = RoundsManager.new()
-	rounds_manager.name = "RoundsManager"
-	add_child(rounds_manager)
-	
-	# 4. Configurar UI de rondas en la cámara
-	if player.camera:
-		rounds_manager.setup_round_ui_on_camera(player.camera)
-	
-	# 5. Crear EnemySpawner
-	enemy_spawner = EnemySpawner.new()
-	enemy_spawner.name = "EnemySpawner"
-	enemy_spawner.spawn_radius_min = 400.0
-	enemy_spawner.spawn_radius_max = 800.0
-	enemy_spawner.despawn_distance = 1200.0
-	add_child(enemy_spawner)
-	
-	# 6. Conectar sistemas
-	enemy_spawner.setup(player, rounds_manager)
-	rounds_manager.set_enemy_spawner(enemy_spawner)
-	
-	# 7. Conectar señales
-	enemy_spawner.enemy_killed.connect(_on_enemy_killed)
-	enemy_spawner.enemy_spawned.connect(_on_enemy_spawned)
-	
-	# 8. Conectar jugador con score system
-	player.set_score_system(score_system)
-	
-	# 9. Iniciar primera ronda
-	rounds_manager.start_round(1)
-
 func _on_enemy_killed(enemy: Enemy):
 	enemies_killed += 1
 	
 	# Notificar al rounds manager
-	rounds_manager.on_enemy_killed()
+	if rounds_manager:
+		rounds_manager.on_enemy_killed()
 	
 	# Añadir puntos en el score system
 	if score_system and enemy:
@@ -910,7 +964,8 @@ func _on_enemy_killed(enemy: Enemy):
 		player.on_enemy_killed()
 
 func _on_enemy_spawned(_enemy: Enemy):
-	rounds_manager.on_enemy_spawned()
+	if rounds_manager:
+		rounds_manager.on_enemy_spawned()
 
 func pause_enemy_spawning():
 	if enemy_spawner:
