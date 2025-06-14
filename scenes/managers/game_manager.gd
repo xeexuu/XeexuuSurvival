@@ -12,6 +12,9 @@ var player: CharacterBody2D
 var mobile_controls: Control
 var background_sprite: Sprite2D
 
+# ❌ NUEVO: Referencias a UI para actualizaciones
+var mini_hud: MiniHUD
+
 # MENÚ DE PAUSA
 var pause_menu: PauseMenu
 var mobile_menu_button: MobileMenuButton
@@ -79,6 +82,22 @@ func _process(_delta):
 			
 			if is_shooting and current_shoot_direction.length() > 0:
 				player.mobile_shoot(current_shoot_direction)
+	
+	# ❌ NUEVO: Actualizar UI continuamente
+	update_ui_elements()
+
+func update_ui_elements():
+	"""❌ NUEVO: Actualizar elementos de UI continuamente"""
+	if not player or not game_started:
+		return
+	
+	# Actualizar vida en MiniHUD
+	if mini_hud:
+		mini_hud.update_health(player.get_current_health(), player.get_max_health())
+	
+	# Actualizar multiplicador de puntuación según ronda
+	if score_system and rounds_manager:
+		score_system.set_round_multiplier(rounds_manager.get_current_round())
 
 func _ready():
 	is_mobile = OS.has_feature("mobile")
@@ -125,17 +144,16 @@ func show_character_selection():
 		if player:
 			player.set_physics_process(false)
 			player.set_process(false)
-			player.visible = false  # ❌ NUEVO: Ocultar también
+			player.visible = false
 
 func _on_character_selected(character_stats: CharacterStats):
 	print("🎮 Personaje seleccionado: ", character_stats.character_name)
 	selected_character_stats = character_stats
 	
-	# VERIFICAR Y CORREGIR ESTADÍSTICAS DEL PERSONAJE
-	if character_stats.max_health <= 10:
-		print("⚠ Corrigiendo vida baja del personaje")
-		character_stats.max_health = 100
-		character_stats.current_health = 100
+	# ❌ CRÍTICO: NO MODIFICAR LAS ESTADÍSTICAS DEL ARCHIVO .tres
+	print("📊 Estadísticas originales del .tres:")
+	print("  - Vida: ", character_stats.current_health, "/", character_stats.max_health)
+	print("  - Velocidad: ", character_stats.movement_speed)
 	
 	# ❌ CAMBIO CRÍTICO: Primero cambiar el estado, LUEGO configurar todo
 	game_state = "playing"
@@ -161,8 +179,9 @@ func _on_character_selected(character_stats: CharacterStats):
 		
 		# VERIFICACIÓN FINAL DE VIDA
 		if player.get_current_health() <= 0:
-			print("❌ ERROR: Restaurando vida del jugador")
-			player.current_health = player.max_health
+			print("❌ ERROR: Vida incorrecta, usando valores del .tres")
+			player.current_health = selected_character_stats.current_health
+			player.max_health = selected_character_stats.max_health
 		
 		player.set_physics_process(true)
 		player.set_process(true)
@@ -178,15 +197,15 @@ func _on_character_selected(character_stats: CharacterStats):
 	print("💚 Vida final del jugador: ", player.get_current_health(), "/", player.get_max_health())
 	
 	# ❌ NUEVO: Iniciar spawning después de delay más largo
-	await get_tree().create_timer(3.0).timeout  # 3 segundos de gracia
+	await get_tree().create_timer(3.0).timeout
 	start_enemy_spawning_safely()
 
 func setup_player_after_selection():
-	"""❌ NUEVO: Configurar jugador DESPUÉS de la selección - MEJORADO"""
+	"""❌ NUEVO: Configurar jugador DESPUÉS de la selección - SIN SOBRESCRIBIR VIDA"""
 	if player_manager.get_child_count() > 0:
 		player = player_manager.get_child(0)
 		if player:
-			# APLICAR ESTADÍSTICAS ANTES DE CUALQUIER OTRA COSA
+			# APLICAR ESTADÍSTICAS SIN MODIFICAR VIDA
 			if selected_character_stats:
 				player.update_character_stats(selected_character_stats)
 				print("✅ Estadísticas aplicadas: ", selected_character_stats.character_name)
@@ -202,10 +221,7 @@ func setup_player_after_selection():
 			# FORZAR CARGA CORRECTA DE ANIMACIONES DESDE ATLAS
 			fix_player_animations()
 			
-			# VERIFICAR QUE TODO ESTÉ BIEN ANTES DE CONTINUAR
-			if player.get_current_health() <= 0:
-				print("❌ ERROR: Jugador tiene vida 0, corrigiendo...")
-				player.current_health = player.max_health
+			# ❌ CRÍTICO: NO VERIFICAR VIDA AQUÍ, RESPETAR VALORES DEL .tres
 	else:
 		print("❌ No se encontró jugador en PlayerManager")
 
@@ -223,7 +239,7 @@ func setup_unified_cod_system_safe():
 	score_system.name = "ScoreSystem"
 	add_child(score_system)
 	
-	# 2. Configurar UI de puntuación en la cámara
+	# 2. Configurar UI de puntuación en la cámara (INFERIOR DERECHA)
 	if player.camera:
 		score_system.setup_score_ui_on_camera(player.camera)
 	
@@ -248,9 +264,13 @@ func setup_unified_cod_system_safe():
 	enemy_spawner.setup(player, rounds_manager)
 	rounds_manager.set_enemy_spawner(enemy_spawner)
 	
-	# 7. Conectar señales
+	# 7. Conectar señales ❌ CORREGIDO
 	enemy_spawner.enemy_killed.connect(_on_enemy_killed)
 	enemy_spawner.enemy_spawned.connect(_on_enemy_spawned)
+	
+	# ❌ NUEVO: Conectar señales del rounds_manager para actualizar UI
+	rounds_manager.round_changed.connect(_on_round_changed)
+	rounds_manager.enemies_remaining_changed.connect(_on_enemies_remaining_changed)
 	
 	# 8. Conectar jugador con score system
 	player.set_score_system(score_system)
@@ -259,6 +279,18 @@ func setup_unified_cod_system_safe():
 	rounds_manager.start_round(1)  # Esto NO inicia spawning ahora
 	
 	print("✅ Sistemas de combate configurados sin spawning")
+
+func _on_round_changed(new_round: int):
+	"""❌ NUEVO: Actualizar UI cuando cambia la ronda"""
+	print("🎯 Ronda cambiada a: ", new_round)
+	
+	# Actualizar multiplicador de puntuación
+	if score_system:
+		score_system.set_round_multiplier(new_round)
+
+func _on_enemies_remaining_changed(remaining: int):
+	"""❌ NUEVO: Actualizar UI cuando cambian los enemigos restantes"""
+	print("👹 Enemigos restantes: ", remaining)
 
 func start_enemy_spawning_safely():
 	"""❌ NUEVO: Iniciar spawning de enemigos de forma segura - MEJORADO"""
@@ -282,7 +314,6 @@ func start_enemy_spawning_safely():
 	rounds_manager.manually_start_spawning()
 	
 	print("✅ Spawning de enemigos iniciado")
-
 
 func _on_player_died():
 	print("💀 JUGADOR HA MUERTO - INICIANDO GAME OVER")
@@ -321,6 +352,11 @@ func restart_entire_game():
 	if score_system:
 		score_system.queue_free()
 		score_system = null
+	
+	# ❌ NUEVO: Limpiar mini HUD
+	if mini_hud:
+		mini_hud.queue_free()
+		mini_hud = null
 	
 	# Despausar
 	get_tree().paused = false
@@ -410,7 +446,127 @@ func handle_shooting_joystick(touch_pos: Vector2, pressed: bool):
 			offset = offset.normalized() * shooting_joystick_max_distance
 			distance = shooting_joystick_max_distance
 		
-		shooting_joystick_knob.position = Vector2(140, 140) + offset
+		shooting_joystick_base.add_child(shooting_bg)
+	
+	# Borde del joystick de disparo
+	var shooting_border = ColorRect.new()
+	shooting_border.name = "ShootingJoystickBorder"
+	shooting_border.size = Vector2(360, 360)
+	shooting_border.position = Vector2(20, 20)
+	shooting_border.color = Color.TRANSPARENT
+	var border_style = StyleBoxFlat.new()
+	border_style.bg_color = Color.TRANSPARENT
+	border_style.border_color = Color(1.0, 0.5, 0.5, 0.8)
+	border_style.border_width_left = 4
+	border_style.border_width_right = 4
+	border_style.border_width_top = 4
+	border_style.border_width_bottom = 4
+	border_style.corner_radius_top_left = 180
+	border_style.corner_radius_top_right = 180
+	border_style.corner_radius_bottom_left = 180
+	border_style.corner_radius_bottom_right = 180
+	shooting_border.add_theme_stylebox_override("panel", border_style)
+	shooting_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shooting_joystick_base.add_child(shooting_border)
+	
+	# Área tactil para disparo
+	shooting_joystick_area = Control.new()
+	shooting_joystick_area.name = "ShootingJoystickArea"
+	shooting_joystick_area.size = Vector2(400, 400)
+	shooting_joystick_area.position = Vector2.ZERO
+	shooting_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS
+	shooting_joystick_base.add_child(shooting_joystick_area)
+	
+	# Knob de disparo
+	shooting_joystick_knob = ColorRect.new()
+	shooting_joystick_knob.name = "ShootingJoystickKnob"
+	shooting_joystick_knob.size = Vector2(120, 120)
+	shooting_joystick_knob.position = Vector2(140, 140)
+	shooting_joystick_knob.color = Color(1.0, 0.5, 0.2, 0.9)
+	shooting_joystick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	var knob_style = StyleBoxFlat.new()
+	knob_style.bg_color = Color(1.0, 0.5, 0.2, 0.9)
+	knob_style.border_color = Color.WHITE
+	knob_style.border_width_left = 2
+	knob_style.border_width_right = 2
+	knob_style.border_width_top = 2
+	knob_style.border_width_bottom = 2
+	knob_style.corner_radius_top_left = 60
+	knob_style.corner_radius_top_right = 60
+	knob_style.corner_radius_bottom_left = 60
+	knob_style.corner_radius_bottom_right = 60
+	shooting_joystick_knob.add_theme_stylebox_override("panel", knob_style)
+	
+	shooting_joystick_base.add_child(shooting_joystick_knob)
+	
+	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(200, 200)
+	shooting_joystick_max_distance = 140.0
+	shooting_joystick_dead_zone = 20.0
+	
+	# Etiqueta
+	var shoot_label = Label.new()
+	shoot_label.text = "DISPARAR"
+	shoot_label.position = Vector2(140, 380)
+	shoot_label.add_theme_font_size_override("font_size", 24)
+	shoot_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.9))
+	shoot_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	shoot_label.add_theme_constant_override("shadow_offset_x", 2)
+	shoot_label.add_theme_constant_override("shadow_offset_y", 2)
+	shoot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	shooting_joystick_base.add_child(shoot_label)
+
+func _on_enemy_killed(enemy: Enemy):
+	enemies_killed += 1
+	
+	# Notificar al rounds manager
+	if rounds_manager:
+		rounds_manager.on_enemy_killed()
+	
+	# Añadir puntos en el score system
+	if score_system and enemy:
+		score_system.add_kill_points(enemy.global_position, false, false)
+	
+	# Notificar al jugador para sonido de kill
+	if player:
+		player.on_enemy_killed()
+
+func _on_enemy_spawned(_enemy: Enemy):
+	if rounds_manager:
+		rounds_manager.on_enemy_spawned()
+
+func pause_enemy_spawning():
+	if enemy_spawner:
+		enemy_spawner.pause_spawning()
+
+func resume_enemy_spawning():
+	if enemy_spawner:
+		enemy_spawner.resume_spawning()
+
+func clear_all_enemies():
+	if enemy_spawner:
+		enemy_spawner.clear_all_enemies()
+
+func get_active_enemy_count() -> int:
+	if enemy_spawner:
+		return enemy_spawner.get_active_enemy_count()
+	return 0
+
+func debug_player_state():
+	"""Debug del estado del jugador"""
+	if player:
+		print("=== DEBUG ESTADO JUGADOR ===")
+		print("Existe: ", player != null)
+		print("Vida: ", player.get_current_health(), "/", player.get_max_health())
+		print("Vivo: ", player.is_alive())
+		print("Inicializado: ", player.is_fully_initialized if player.has_method("is_fully_initialized") else "N/A")
+		print("Visible: ", player.visible)
+		print("Physics process: ", player.is_physics_processing())
+		print("Process: ", player.is_processing())
+		print("Posición: ", player.global_position)
+		print("=============================")
+	else:
+		print("❌ No hay jugador para debuggear")ystick_knob.position = Vector2(140, 140) + offset
 		
 		if distance > shooting_joystick_dead_zone:
 			var strength = (distance - shooting_joystick_dead_zone) / (shooting_joystick_max_distance - shooting_joystick_dead_zone)
@@ -726,9 +882,10 @@ func fix_player_animations():
 		# Asignar SpriteFrames al jugador
 		if player.animated_sprite:
 			player.animated_sprite.sprite_frames = sprite_frames
-			player.animated_sprite.scale = Vector2(2.0, 2.0)  # Escalar para 128px
+			# ❌ CORREGIDO: Escalar igual que enemigos (1.0 para 64px)
+			player.animated_sprite.scale = Vector2(1.0, 1.0)
 			player.animated_sprite.play("idle")
-			print("✅ Animaciones del jugador configuradas correctamente")
+			print("✅ Animaciones del jugador configuradas correctamente con escala 1.0")
 		else:
 			print("❌ No se encontró AnimatedSprite2D en el jugador")
 	else:
@@ -779,7 +936,8 @@ func extract_frame_from_atlas_1024x128(atlas_texture: Texture2D, frame_index: in
 	return frame
 
 func setup_mini_hud():
-	var mini_hud = preload("res://scenes/ui/MiniHUD.tscn").instantiate()
+	"""❌ CORREGIDO: Guardar referencia al mini HUD"""
+	mini_hud = preload("res://scenes/ui/MiniHUD.tscn").instantiate()
 	ui_manager.add_child(mini_hud)
 	
 	if player and player.character_stats:
@@ -916,124 +1074,4 @@ func create_shooting_joystick():
 	shooting_bg.position = Vector2(20, 20)
 	shooting_bg.color = Color(0.8, 0.3, 0.3, 0.2)
 	shooting_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shooting_joystick_base.add_child(shooting_bg)
-	
-	# Borde del joystick de disparo
-	var shooting_border = ColorRect.new()
-	shooting_border.name = "ShootingJoystickBorder"
-	shooting_border.size = Vector2(360, 360)
-	shooting_border.position = Vector2(20, 20)
-	shooting_border.color = Color.TRANSPARENT
-	var border_style = StyleBoxFlat.new()
-	border_style.bg_color = Color.TRANSPARENT
-	border_style.border_color = Color(1.0, 0.5, 0.5, 0.8)
-	border_style.border_width_left = 4
-	border_style.border_width_right = 4
-	border_style.border_width_top = 4
-	border_style.border_width_bottom = 4
-	border_style.corner_radius_top_left = 180
-	border_style.corner_radius_top_right = 180
-	border_style.corner_radius_bottom_left = 180
-	border_style.corner_radius_bottom_right = 180
-	shooting_border.add_theme_stylebox_override("panel", border_style)
-	shooting_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shooting_joystick_base.add_child(shooting_border)
-	
-	# Área tactil para disparo
-	shooting_joystick_area = Control.new()
-	shooting_joystick_area.name = "ShootingJoystickArea"
-	shooting_joystick_area.size = Vector2(400, 400)
-	shooting_joystick_area.position = Vector2.ZERO
-	shooting_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS
-	shooting_joystick_base.add_child(shooting_joystick_area)
-	
-	# Knob de disparo
-	shooting_joystick_knob = ColorRect.new()
-	shooting_joystick_knob.name = "ShootingJoystickKnob"
-	shooting_joystick_knob.size = Vector2(120, 120)
-	shooting_joystick_knob.position = Vector2(140, 140)
-	shooting_joystick_knob.color = Color(1.0, 0.5, 0.2, 0.9)
-	shooting_joystick_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	var knob_style = StyleBoxFlat.new()
-	knob_style.bg_color = Color(1.0, 0.5, 0.2, 0.9)
-	knob_style.border_color = Color.WHITE
-	knob_style.border_width_left = 2
-	knob_style.border_width_right = 2
-	knob_style.border_width_top = 2
-	knob_style.border_width_bottom = 2
-	knob_style.corner_radius_top_left = 60
-	knob_style.corner_radius_top_right = 60
-	knob_style.corner_radius_bottom_left = 60
-	knob_style.corner_radius_bottom_right = 60
-	shooting_joystick_knob.add_theme_stylebox_override("panel", knob_style)
-	
-	shooting_joystick_base.add_child(shooting_joystick_knob)
-	
-	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(200, 200)
-	shooting_joystick_max_distance = 140.0
-	shooting_joystick_dead_zone = 20.0
-	
-	# Etiqueta
-	var shoot_label = Label.new()
-	shoot_label.text = "DISPARAR"
-	shoot_label.position = Vector2(140, 380)
-	shoot_label.add_theme_font_size_override("font_size", 24)
-	shoot_label.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.9))
-	shoot_label.add_theme_color_override("font_shadow_color", Color.BLACK)
-	shoot_label.add_theme_constant_override("shadow_offset_x", 2)
-	shoot_label.add_theme_constant_override("shadow_offset_y", 2)
-	shoot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	shooting_joystick_base.add_child(shoot_label)
-
-func _on_enemy_killed(enemy: Enemy):
-	enemies_killed += 1
-	
-	# Notificar al rounds manager
-	if rounds_manager:
-		rounds_manager.on_enemy_killed()
-	
-	# Añadir puntos en el score system
-	if score_system and enemy:
-		score_system.add_kill_points(enemy.global_position, false, false)
-	
-	# Notificar al jugador para sonido de kill
-	if player:
-		player.on_enemy_killed()
-
-func _on_enemy_spawned(_enemy: Enemy):
-	if rounds_manager:
-		rounds_manager.on_enemy_spawned()
-
-func pause_enemy_spawning():
-	if enemy_spawner:
-		enemy_spawner.pause_spawning()
-
-func resume_enemy_spawning():
-	if enemy_spawner:
-		enemy_spawner.resume_spawning()
-
-func clear_all_enemies():
-	if enemy_spawner:
-		enemy_spawner.clear_all_enemies()
-
-func get_active_enemy_count() -> int:
-	if enemy_spawner:
-		return enemy_spawner.get_active_enemy_count()
-	return 0
-
-func debug_player_state():
-	"""Debug del estado del jugador"""
-	if player:
-		print("=== DEBUG ESTADO JUGADOR ===")
-		print("Existe: ", player != null)
-		print("Vida: ", player.get_current_health(), "/", player.get_max_health())
-		print("Vivo: ", player.is_alive())
-		print("Inicializado: ", player.is_fully_initialized if player.has_method("is_fully_initialized") else "N/A")
-		print("Visible: ", player.visible)
-		print("Physics process: ", player.is_physics_processing())
-		print("Process: ", player.is_processing())
-		print("Posición: ", player.global_position)
-		print("=============================")
-	else:
-		print("❌ No hay jugador para debuggear")
+	shooting_jo

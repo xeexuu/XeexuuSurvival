@@ -16,22 +16,48 @@ var weapon_attack_speed_label: Label
 var current_character: CharacterStats
 var is_mobile: bool = false
 
+# ❌ NUEVO: Timer para actualización automática
+var update_timer: Timer
+
 func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_hud()
+	setup_auto_update_timer()
+
+func setup_auto_update_timer():
+	"""❌ NUEVO: Configurar timer para actualización automática de la UI"""
+	update_timer = Timer.new()
+	update_timer.wait_time = 0.5  # Actualizar cada 0.5 segundos
+	update_timer.autostart = true
+	update_timer.timeout.connect(_on_update_timer_timeout)
+	add_child(update_timer)
+
+func _on_update_timer_timeout():
+	"""❌ NUEVO: Actualizar UI automáticamente"""
+	if current_character:
+		# Buscar el jugador actual para obtener vida actual
+		var game_manager = get_tree().get_first_node_in_group("game_manager")
+		if not game_manager:
+			# Buscar por nombre si no está en grupo
+			game_manager = get_node("/root/Main/GameManager") if get_node_or_null("/root/Main/GameManager") else null
+		
+		if game_manager and game_manager.has_method("get") and game_manager.get("player"):
+			var player = game_manager.player
+			if player and player.has_method("get_current_health"):
+				update_health(player.get_current_health(), player.get_max_health())
 
 func setup_hud():
 	# Tamaño más grande, especialmente para móvil
-	var hud_width = 320 if not is_mobile else 380  # Más ancho para móvil
-	var hud_height = 400 if not is_mobile else 450  # Más alto para móvil
+	var hud_width = 320 if not is_mobile else 380
+	var hud_height = 400 if not is_mobile else 450
 	
 	size = Vector2(hud_width, hud_height)
-	position = Vector2(15, 15)  # Más separado del borde
+	position = Vector2(15, 15)
 	
 	# Fondo semi-transparente más visible
 	var bg = ColorRect.new()
 	bg.size = size
-	bg.color = Color(0.0, 0.0, 0.0, 0.75)  # Más opaco para mejor legibilidad
+	bg.color = Color(0.0, 0.0, 0.0, 0.75)
 	add_child(bg)
 	
 	# Contenedor vertical para las etiquetas con más espacio
@@ -39,7 +65,7 @@ func setup_hud():
 	var padding = 15 if not is_mobile else 18
 	vbox.size = Vector2(hud_width - padding * 2, hud_height - padding * 2)
 	vbox.position = Vector2(padding, padding)
-	vbox.add_theme_constant_override("separation", 8 if not is_mobile else 10)  # Más espacio entre elementos
+	vbox.add_theme_constant_override("separation", 8 if not is_mobile else 10)
 	add_child(vbox)
 	
 	# Título del HUD
@@ -83,7 +109,7 @@ func setup_hud():
 func create_title_label(text: String) -> Label:
 	var label = Label.new()
 	label.text = text
-	var title_size = 20 if not is_mobile else 24  # Más grande para móvil
+	var title_size = 20 if not is_mobile else 24
 	
 	# Usar métodos compatibles con todas las versiones de Godot
 	if label.has_method("add_theme_font_size_override"):
@@ -105,7 +131,7 @@ func create_separator() -> Control:
 func create_stat_label(text: String, color: Color = Color.WHITE) -> Label:
 	var label = Label.new()
 	label.text = text
-	var stat_size = 16 if not is_mobile else 20  # Mucho más grande para móvil
+	var stat_size = 16 if not is_mobile else 20
 	
 	# Usar métodos compatibles
 	if label.has_method("add_theme_font_size_override"):
@@ -113,7 +139,6 @@ func create_stat_label(text: String, color: Color = Color.WHITE) -> Label:
 	
 	if label.has_method("add_theme_color_override"):
 		label.add_theme_color_override("font_color", color)
-		# Añadir sombra para mejor legibilidad si está disponible
 		label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	
 	if label.has_method("add_theme_constant_override"):
@@ -123,8 +148,12 @@ func create_stat_label(text: String, color: Color = Color.WHITE) -> Label:
 	return label
 
 func update_character_stats(character: CharacterStats):
+	"""❌ CORREGIDO: Actualizar estadísticas del personaje CON VERIFICACIÓN"""
 	current_character = character
-	if character and name_label:  # Verificar que las etiquetas existan
+	if character and name_label:
+		print("📊 Actualizando MiniHUD con: ", character.character_name)
+		print("  - Vida original: ", character.current_health, "/", character.max_health)
+		
 		# Actualizar estadísticas del personaje
 		if name_label:
 			name_label.text = "Personaje: " + character.character_name
@@ -155,7 +184,9 @@ func update_character_stats(character: CharacterStats):
 				weapon_range_label.text = "🎯 Rango: ---"
 			if weapon_attack_speed_label:
 				weapon_attack_speed_label.text = "⏱ Vel.Ataque: ---"
-	elif name_label:  # Solo resetear si las etiquetas existen
+		
+		print("✅ MiniHUD actualizado correctamente")
+	elif name_label:
 		# Resetear todo si no hay personaje
 		if name_label:
 			name_label.text = "Personaje: ---"
@@ -175,9 +206,22 @@ func update_character_stats(character: CharacterStats):
 			weapon_attack_speed_label.text = "⏱ Vel.Ataque: ---"
 
 func update_health(current_health: int, max_health: int):
-	"""Función para actualizar solo la vida sin cambiar el resto"""
+	"""❌ CORREGIDO: Función para actualizar solo la vida SIN PRINT SPAM"""
 	if health_label:
-		health_label.text = "❤ Vida: " + str(current_health) + "/" + str(max_health)
+		var new_text = "❤ Vida: " + str(current_health) + "/" + str(max_health)
+		
+		# Solo actualizar si cambió
+		if health_label.text != new_text:
+			health_label.text = new_text
+			
+			# Efecto visual cuando la vida cambia
+			if current_health < max_health:
+				health_label.add_theme_color_override("font_color", Color.ORANGE)
+				var tween = create_tween()
+				tween.tween_property(health_label, "modulate", Color.WHITE, 0.3)
+				tween.tween_callback(func(): 
+					health_label.add_theme_color_override("font_color", Color.LIGHT_GREEN)
+				)
 
 func update_weapon_ammo(current_ammo: int, max_ammo: int):
 	"""Función para actualizar munición si el arma la tiene"""

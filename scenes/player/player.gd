@@ -12,8 +12,8 @@ signal player_died
 @onready var camera = $Camera2D
 
 # Variables de movimiento estilo COD
-var current_health: int = 100
-var max_health: int = 100
+var current_health: int = 4  # ❌ CORREGIDO: Iniciar con 4 por defecto
+var max_health: int = 4      # ❌ CORREGIDO: Iniciar con 4 por defecto
 var move_speed: float = 300.0
 var is_mobile: bool = false
 
@@ -45,7 +45,7 @@ func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_camera()
 	setup_weapon_renderer()
-	setup_kill_sound_system()  # ❌ NUEVO
+	setup_kill_sound_system()
 	
 	# Configurar collision layers
 	collision_layer = 1  # Capa del jugador
@@ -54,10 +54,10 @@ func _ready():
 	print("🎮 Jugador inicializado")
 
 func setup_camera():
-	"""Configurar la cámara del jugador"""
+	"""Configurar la cámara del jugador - SIN ZOOM"""
 	if camera:
 		camera.enabled = true
-		camera.zoom = Vector2(1.5, 1.5)  # Zoom más cercano estilo COD
+		camera.zoom = Vector2(1.0, 1.0)  # ❌ CORREGIDO: Sin zoom
 		camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		camera.position_smoothing_enabled = true
 		camera.position_smoothing_speed = 8.0
@@ -82,19 +82,18 @@ func update_character_stats(new_stats: CharacterStats):
 	apply_character_stats()
 
 func apply_character_stats():
-	"""Aplicar estadísticas del personaje - CORREGIDO"""
+	"""Aplicar estadísticas del personaje - RESPETANDO ARCHIVO .tres"""
 	if not character_stats:
 		print("❌ No hay character_stats para aplicar")
 		return
 	
-	# APLICAR CORRECTAMENTE LA VIDA
-	max_health = character_stats.max_health
-	current_health = character_stats.max_health  # CAMBIO: Usar max_health en lugar de current_health
+	# ❌ CORREGIDO: RESPETAR los valores del archivo .tres
+	max_health = character_stats.max_health  # Usar el valor del .tres (4)
+	current_health = character_stats.current_health  # Usar el valor del .tres (4)
 	move_speed = float(character_stats.movement_speed)
 	
-	# Asegurarse de que la vida esté en rango válido
-	if current_health <= 0:
-		current_health = max_health
+	# NO SOBRESCRIBIR con 100, mantener los valores originales
+	print("✅ Vida respetada del .tres: ", current_health, "/", max_health)
 	
 	# Configurar el componente de disparo
 	if shooting_component:
@@ -126,13 +125,12 @@ func setup_pelao_kill_sound():
 			var kill_sound = load("res://audio/pelao_shoot.ogg")
 			if kill_sound and kill_sound_player:
 				kill_sound_player.stream = kill_sound
-				kill_sound_player.volume_db = -5.0  # Volumen más alto para feedback
-				kill_sound_player.pitch_scale = 1.2  # Pitch más alto para diferenciarlo del disparo
+				kill_sound_player.volume_db = -5.0
+				kill_sound_player.pitch_scale = 1.2
 				print("🔊 Sonido de kill configurado para Pelao")
 		else:
 			print("❌ No se encontró audio/pelao_shoot.ogg")
 	else:
-		# Para otros personajes, limpiar el sonido
 		if kill_sound_player:
 			kill_sound_player.stream = null
 		print("🔇 Sin sonido de kill para: ", char_name)
@@ -253,8 +251,8 @@ func play_shoot_sound():
 		# Crear AudioStreamPlayer2D temporal
 		var audio_player = AudioStreamPlayer2D.new()
 		audio_player.stream = character_stats.equipped_weapon.attack_sound
-		audio_player.pitch_scale = randf_range(0.9, 1.1)  # Variación en el pitch
-		audio_player.volume_db = -10.0  # Volumen moderado
+		audio_player.pitch_scale = randf_range(0.9, 1.1)
+		audio_player.volume_db = -10.0
 		
 		get_tree().current_scene.add_child(audio_player)
 		audio_player.play()
@@ -316,8 +314,6 @@ func get_animation_name_from_direction(direction: Vector2) -> String:
 
 func update_shooting_animation(_shoot_direction: Vector2):
 	"""Actualizar animación al disparar"""
-	# Aquí se podría añadir lógica específica para animaciones de disparo del jugador
-	# Por ejemplo, cambiar temporalmente a un sprite de disparo
 	pass
 
 func handle_enemy_collisions():
@@ -447,7 +443,7 @@ func on_enemy_killed():
 	# Solo reproducir sonido para Pelao
 	if char_name == "pelao" and kill_sound_player and kill_sound_player.stream:
 		# Reproducir sonido de kill con variación
-		kill_sound_player.pitch_scale = randf_range(1.1, 1.3)  # Pitch más alto que el disparo
+		kill_sound_player.pitch_scale = randf_range(1.1, 1.3)
 		kill_sound_player.play()
 		print("🔊 Pelao: Sonido de kill reproducido")
 	else:

@@ -155,20 +155,22 @@ func setup_enemy():
 		attack_timer.one_shot = true
 		attack_timer.timeout.connect(_on_attack_timer_timeout)
 
-func apply_dynamic_scaling_128px(animated_sprite: AnimatedSprite2D, reference_texture: Texture2D):
-	"""Aplicar escalado dinámico para que el enemigo tenga 128px de alto"""
+func apply_dynamic_scaling_64px(animated_sprite: AnimatedSprite2D, reference_texture: Texture2D):
+	"""❌ CORREGIDO: Aplicar escalado dinámico para que el enemigo tenga 64px de alto igual que jugador"""
 	if not reference_texture:
-		animated_sprite.scale = Vector2(2.0, 2.0)
+		animated_sprite.scale = Vector2(1.0, 1.0)  # Escala normal
 		return
 	
 	var current_height = reference_texture.get_size().y
-	var target_height = 128.0
+	var target_height = 64.0  # Mismo tamaño que personajes
 	
 	var scale_factor = target_height / float(current_height)
 	animated_sprite.scale = Vector2(scale_factor, scale_factor)
+	
+	print("👹 Enemigo escalado a 64px: ", scale_factor)
 
 func load_enemy_sprite_from_atlas():
-	"""Cargar sprite del enemigo desde atlas - ESCALADO DINÁMICO A 128px"""
+	"""Cargar sprite del enemigo desde atlas - ESCALADO DINÁMICO A 64px"""
 	var atlas_path = "res://sprites/enemies/" + enemy_type + "/walk_Right_Down.png"
 	var atlas_texture = try_load_texture_safe(atlas_path)
 	
@@ -207,7 +209,8 @@ func load_enemy_sprite_from_atlas():
 				
 				animated_sprite.play("idle")
 				
-				apply_dynamic_scaling_128px(animated_sprite, first_frame)
+				# ❌ CORREGIDO: Escalar a 64px igual que jugador
+				apply_dynamic_scaling_64px(animated_sprite, first_frame)
 				
 				is_sprite_loaded = true
 				return
@@ -241,27 +244,27 @@ func load_frames_from_enemy_atlas(sprite_frames: SpriteFrames, anim_name: String
 		sprite_frames.add_frame(anim_name, atlas_frame)
 
 func create_default_enemy_sprite():
-	"""Crear sprite por defecto del enemigo - ESCALADO DINÁMICO A 128px"""
-	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
+	"""Crear sprite por defecto del enemigo - ESCALADO DINÁMICO A 64px"""
+	var image = Image.create(64, 64, false, Image.FORMAT_RGBA8)  # ❌ CORREGIDO: 64px por defecto
 	image.fill(Color.DARK_RED)
 	
-	for x in range(128):
-		for y in range(128):
-			var dist = Vector2(x - 64, y - 64).length()
-			if dist < 20:
+	for x in range(64):
+		for y in range(64):
+			var dist = Vector2(x - 32, y - 32).length()  # ❌ CORREGIDO: Centro en 32,32
+			if dist < 10:  # ❌ CORREGIDO: Radios más pequeños
 				image.set_pixel(x, y, Color.DARK_RED.darkened(0.3))
-			elif dist < 30:
+			elif dist < 15:
 				image.set_pixel(x, y, Color.RED.darkened(0.2))
 	
-	var eye_size = 8
-	for x in range(64 - 20, 64 - 20 + eye_size):
-		for y in range(64 - 20, 64 - 20 + eye_size):
-			if x >= 0 and x < 128 and y >= 0 and y < 128:
+	var eye_size = 4  # ❌ CORREGIDO: Ojos más pequeños
+	for x in range(32 - 10, 32 - 10 + eye_size):  # ❌ CORREGIDO: Posiciones ajustadas
+		for y in range(32 - 10, 32 - 10 + eye_size):
+			if x >= 0 and x < 64 and y >= 0 and y < 64:
 				image.set_pixel(x, y, Color.RED)
 	
-	for x in range(64 + 12, 64 + 12 + eye_size):
-		for y in range(64 - 20, 64 - 20 + eye_size):
-			if x >= 0 and x < 128 and y >= 0 and y < 128:
+	for x in range(32 + 6, 32 + 6 + eye_size):
+		for y in range(32 - 10, 32 - 10 + eye_size):
+			if x >= 0 and x < 64 and y >= 0 and y < 64:
 				image.set_pixel(x, y, Color.RED)
 	
 	var default_texture = ImageTexture.create_from_image(image)
@@ -270,7 +273,7 @@ func create_default_enemy_sprite():
 		if sprite is Sprite2D:
 			var normal_sprite = sprite as Sprite2D
 			normal_sprite.texture = default_texture
-			normal_sprite.scale = Vector2(1.0, 1.0)
+			normal_sprite.scale = Vector2(1.0, 1.0)  # ❌ CORREGIDO: Escala normal
 		elif sprite is AnimatedSprite2D:
 			var basic_frames = SpriteFrames.new()
 			basic_frames.add_animation("idle")
@@ -279,7 +282,7 @@ func create_default_enemy_sprite():
 			var animated_sprite = sprite as AnimatedSprite2D
 			animated_sprite.sprite_frames = basic_frames
 			animated_sprite.play("idle")
-			animated_sprite.scale = Vector2(1.0, 1.0)
+			animated_sprite.scale = Vector2(1.0, 1.0)  # ❌ CORREGIDO: Escala normal
 	
 	original_color = Color.WHITE
 
@@ -369,7 +372,200 @@ func reset_for_pool():
 	
 	# Limpiar efecto de zarpazo si existe
 	if claw_effect_node:
+		claw_effect_node.add_child(particle)
+		
+		# Animar partícula
+		var particle_tween = claw_effect_node.create_tween()
+		particle_tween.parallel().tween_property(particle, "position", offset * 2, 0.5)
+		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
+		particle_tween.parallel().tween_property(particle, "scale", Vector2.ZERO, 0.5)
+	
+	# Limpiar efecto después de un tiempo
+	var cleanup_timer = Timer.new()
+	cleanup_timer.wait_time = 1.0
+	cleanup_timer.one_shot = true
+	cleanup_timer.timeout.connect(func(): 
+		if claw_effect_node:
+			claw_effect_node.queue_free()
+			claw_effect_node = null
+	)
+	claw_effect_node.add_child(cleanup_timer)
+	cleanup_timer.start()
+
+func _on_attack_timer_timeout():
+	"""Cuando termina el cooldown de ataque"""
+	is_attacking = false
+	print("💀 Cooldown de ataque terminado, enemigo puede atacar de nuevo")
+
+func apply_knockback(direction: Vector2, force: float):
+	"""Aplicar knockback al enemigo"""
+	if direction.length() > 0:
+		velocity += direction.normalized() * force
+
+func take_damage(amount: int, is_headshot: bool = false):
+	"""Recibir daño con comportamiento COD"""
+	if is_dead:
+		return
+	
+	current_health -= amount
+	current_health = max(current_health, 0)
+	
+	current_state = EnemyState.STUNNED
+	var stun_timer = Timer.new()
+	stun_timer.wait_time = 0.3
+	stun_timer.one_shot = true
+	stun_timer.timeout.connect(func(): 
+		if current_state == EnemyState.STUNNED:
+			current_state = EnemyState.CHASING
+		stun_timer.queue_free()
+	)
+	add_child(stun_timer)
+	stun_timer.start()
+	
+	aggression_level += 0.1
+	aggression_level = min(aggression_level, 2.0)
+	
+	if is_headshot:
+		flash_headshot_effect()
+	else:
+		flash_damage_effect()
+	
+	update_health_bar()
+	damaged.emit(self, amount)
+	
+	if current_health <= 0:
+		die()
+
+func flash_damage_effect():
+	"""Efecto visual al recibir daño normal"""
+	if sprite:
+		sprite.modulate = Color.WHITE
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", original_color, 0.2)
+
+func flash_headshot_effect():
+	"""Efecto visual especial para headshots"""
+	if sprite:
+		sprite.modulate = Color.YELLOW
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+		tween.tween_property(sprite, "modulate", original_color, 0.1)
+
+func die():
+	"""Manejar la muerte del enemigo"""
+	if is_dead:
+		return
+	
+	is_dead = true
+	current_state = EnemyState.DEAD
+	is_in_attack_animation = false
+	
+	velocity = Vector2.ZERO
+	set_physics_process(false)
+	
+	# Limpiar efecto de zarpazo
+	if claw_effect_node:
 		claw_effect_node.queue_free()
+		claw_effect_node = null
+	
+	if sprite:
+		sprite.modulate = Color.GRAY
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate:a", 1.0, 1.0)
+	
+	if health_bar:
+		health_bar.visible = false
+	
+	died.emit(self)
+	
+	if player and player.has_method("on_enemy_killed"):
+		player.on_enemy_killed()
+
+func update_health_bar():
+	"""Actualizar la barra de vida"""
+	if health_bar:
+		health_bar.value = current_health
+		health_bar.max_value = max_health
+		
+		var health_percentage = float(current_health) / float(max_health)
+		
+		var style_fill = StyleBoxFlat.new()
+		if health_percentage > 0.6:
+			style_fill.bg_color = Color.GREEN
+		elif health_percentage > 0.3:
+			style_fill.bg_color = Color.YELLOW
+		else:
+			style_fill.bg_color = Color.RED
+		
+		health_bar.add_theme_stylebox_override("fill", style_fill)
+
+# Funciones adicionales para completar el archivo
+func get_current_health() -> int:
+	"""Obtener la vida actual del enemigo"""
+	return current_health
+
+func get_max_health() -> int:
+	"""Obtener la vida máxima del enemigo"""
+	return max_health
+
+func is_alive() -> bool:
+	"""Verificar si el enemigo está vivo"""
+	return current_health > 0 and not is_dead
+
+func get_damage() -> int:
+	"""Obtener el daño que hace el enemigo"""
+	return damage
+
+func get_enemy_type() -> String:
+	"""Obtener el tipo de enemigo"""
+	return enemy_type
+
+func get_aggression_level() -> float:
+	"""Obtener el nivel de agresión del enemigo"""
+	return aggression_level
+
+func set_aggression_level(new_level: float):
+	"""Establecer el nivel de agresión del enemigo"""
+	aggression_level = clamp(new_level, 0.1, 3.0)
+
+func is_in_range_of_player() -> bool:
+	"""Verificar si el jugador está en rango de detección"""
+	if not player:
+		return false
+	return global_position.distance_to(player.global_position) <= detection_range
+
+func is_in_attack_range() -> bool:
+	"""Verificar si el jugador está en rango de ataque"""
+	if not player:
+		return false
+	return global_position.distance_to(player.global_position) <= attack_range
+
+func force_attack_player():
+	"""Forzar ataque al jugador (para testing)"""
+	if not is_attacking and not is_in_attack_animation:
+		current_state = EnemyState.ATTACKING
+		perform_claw_attack_cod_waw()
+
+func debug_enemy_info():
+	"""Mostrar información de debug del enemigo"""
+	print("=== DEBUG ENEMIGO ===")
+	print("Tipo: ", enemy_type)
+	print("Vida: ", current_health, "/", max_health)
+	print("Daño: ", damage)
+	print("Estado: ", EnemyState.keys()[current_state])
+	print("Posición: ", global_position)
+	print("Distancia al jugador: ", global_position.distance_to(player.global_position) if player else "N/A")
+	print("En rango de ataque: ", is_in_attack_range())
+	print("Atacando: ", is_attacking)
+	print("En animación de ataque: ", is_in_attack_animation)
+	print("Nivel de agresión: ", aggression_level)
+	print("====================")
+
+func _exit_tree():
+	"""Limpiar recursos al salir del árbol"""
+	if claw_effect_node and is_instance_valid(claw_effect_node):
+		claw_effect_node.queue_free()
+		claw_effect_node = nullqueue_free()
 		claw_effect_node = null
 	
 	set_physics_process(false)
@@ -714,129 +910,4 @@ func create_intense_claw_effect():
 		var offset = Vector2.from_angle(angle) * randf_range(20, 40)
 		particle.position = offset
 		
-		claw_effect_node.add_child(particle)
-		
-		# Animar partícula
-		var particle_tween = claw_effect_node.create_tween()
-		particle_tween.parallel().tween_property(particle, "position", offset * 2, 0.5)
-		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
-		particle_tween.parallel().tween_property(particle, "scale", Vector2.ZERO, 0.5)
-	
-	# Limpiar efecto después de un tiempo
-	var cleanup_timer = Timer.new()
-	cleanup_timer.wait_time = 1.0
-	cleanup_timer.one_shot = true
-	cleanup_timer.timeout.connect(func(): 
-		if claw_effect_node:
-			claw_effect_node.queue_free()
-			claw_effect_node = null
-	)
-	claw_effect_node.add_child(cleanup_timer)
-	cleanup_timer.start()
-
-func _on_attack_timer_timeout():
-	"""Cuando termina el cooldown de ataque"""
-	is_attacking = false
-	print("💀 Cooldown de ataque terminado, enemigo puede atacar de nuevo")
-
-func apply_knockback(direction: Vector2, force: float):
-	"""Aplicar knockback al enemigo"""
-	if direction.length() > 0:
-		velocity += direction.normalized() * force
-
-func take_damage(amount: int, is_headshot: bool = false):
-	"""Recibir daño con comportamiento COD"""
-	if is_dead:
-		return
-	
-	current_health -= amount
-	current_health = max(current_health, 0)
-	
-	current_state = EnemyState.STUNNED
-	var stun_timer = Timer.new()
-	stun_timer.wait_time = 0.3
-	stun_timer.one_shot = true
-	stun_timer.timeout.connect(func(): 
-		if current_state == EnemyState.STUNNED:
-			current_state = EnemyState.CHASING
-		stun_timer.queue_free()
-	)
-	add_child(stun_timer)
-	stun_timer.start()
-	
-	aggression_level += 0.1
-	aggression_level = min(aggression_level, 2.0)
-	
-	if is_headshot:
-		flash_headshot_effect()
-	else:
-		flash_damage_effect()
-	
-	update_health_bar()
-	damaged.emit(self, amount)
-	
-	if current_health <= 0:
-		die()
-
-func flash_damage_effect():
-	"""Efecto visual al recibir daño normal"""
-	if sprite:
-		sprite.modulate = Color.WHITE
-		var tween = create_tween()
-		tween.tween_property(sprite, "modulate", original_color, 0.2)
-
-func flash_headshot_effect():
-	"""Efecto visual especial para headshots"""
-	if sprite:
-		sprite.modulate = Color.YELLOW
-		var tween = create_tween()
-		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
-		tween.tween_property(sprite, "modulate", original_color, 0.1)
-
-func die():
-	"""Manejar la muerte del enemigo"""
-	if is_dead:
-		return
-	
-	is_dead = true
-	current_state = EnemyState.DEAD
-	is_in_attack_animation = false
-	
-	velocity = Vector2.ZERO
-	set_physics_process(false)
-	
-	# Limpiar efecto de zarpazo
-	if claw_effect_node:
-		claw_effect_node.queue_free()
-		claw_effect_node = null
-	
-	if sprite:
-		sprite.modulate = Color.GRAY
-		var tween = create_tween()
-		tween.tween_property(sprite, "modulate:a", 0.0, 1.0)
-	
-	if health_bar:
-		health_bar.visible = false
-	
-	died.emit(self)
-	
-	if player and player.has_method("on_enemy_killed"):
-		player.on_enemy_killed()
-
-func update_health_bar():
-	"""Actualizar la barra de vida"""
-	if health_bar:
-		health_bar.value = current_health
-		health_bar.max_value = max_health
-		
-		var health_percentage = float(current_health) / float(max_health)
-		
-		var style_fill = StyleBoxFlat.new()
-		if health_percentage > 0.6:
-			style_fill.bg_color = Color.GREEN
-		elif health_percentage > 0.3:
-			style_fill.bg_color = Color.YELLOW
-		else:
-			style_fill.bg_color = Color.RED
-		
-		health_bar.add_theme_stylebox_override("fill", style_fill)
+		claw_effect_node.

@@ -3,8 +3,8 @@ extends Resource
 class_name CharacterStats
 
 @export var character_name: String = "Personaje"
-@export var max_health: int = 100  # CAMBIO: Aumentado de 4 a 100
-@export var current_health: int = 100  # CAMBIO: Aumentado de 4 a 100
+@export var max_health: int = 4  # ❌ RESPETADO: Mantener valor original
+@export var current_health: int = 4  # ❌ RESPETADO: Mantener valor original
 @export var movement_speed: int = 300
 @export var luck: int = 5
 
@@ -24,14 +24,7 @@ var ability2_ready: bool = true
 func _init():
 	# Solo crear arma por defecto si no existe
 	call_deferred("ensure_weapon_exists")
-	call_deferred("ensure_valid_health")
-
-func ensure_valid_health():
-	"""Asegurar que la vida sea válida"""
-	if max_health <= 10:  # Si la vida máxima es muy baja
-		max_health = 100
-		current_health = 100
-		print("⚠ Vida corregida para ", character_name, ": ", max_health)
+	# ❌ REMOVIDO: No forzar vida a 100
 
 func ensure_weapon_exists():
 	if not equipped_weapon:
@@ -124,7 +117,7 @@ func print_character_info():
 		print("Arma: Ninguna")
 	print("==================================")
 
-# Función para obtener el sprite idle escalado dinámicamente a 128px
+# ❌ CORREGIDO: Función de escalado respeta tamaño de enemigos (128)
 func get_idle_texture_scaled_128px() -> Texture2D:
 	var base_texture = get_idle_texture()
 	if not base_texture:
@@ -133,14 +126,14 @@ func get_idle_texture_scaled_128px() -> Texture2D:
 	return scale_texture_to_128px(base_texture)
 
 func scale_texture_to_128px(original_texture: Texture2D) -> Texture2D:
-	"""Escalar cualquier textura a 128px de alto manteniendo proporción"""
+	"""Escalar cualquier textura a 128px de alto para igualar enemigos"""
 	if not original_texture:
 		return create_default_character_texture_128px()
 	
 	var original_size = original_texture.get_size()
 	
 	# Si ya tiene 128px de alto, retornar original
-	if original_size.y == 128:
+	if original_size.y == 12864:
 		return original_texture
 	
 	# Calcular nueva escala manteniendo proporción
@@ -170,26 +163,26 @@ func create_default_character_texture_128px() -> Texture2D:
 	image.fill(character_color)
 	
 	# Agregar detalles básicos
-	var center = Vector2(64, 64)
+	var center = Vector2(32, 32)
 	for x in range(128):
 		for y in range(128):
 			var dist = Vector2(x, y).distance_to(center)
-			if dist < 20:
+			if dist < 10:
 				image.set_pixel(x, y, Color.WHITE)
-			elif dist < 30:
+			elif dist < 15:
 				image.set_pixel(x, y, character_color.darkened(0.3))
-			elif dist < 40:
+			elif dist < 20:
 				image.set_pixel(x, y, character_color.darkened(0.1))
 	
-	# Ojos
-	var eye_size = 8
-	for x in range(64 - 15, 64 - 15 + eye_size):
-		for y in range(64 - 15, 64 - 15 + eye_size):
+	# Ojos más pequeños
+	var eye_size = 4
+	for x in range(32 - 8, 32 - 8 + eye_size):
+		for y in range(32 - 8, 32 - 8 + eye_size):
 			if x >= 0 and x < 128 and y >= 0 and y < 128:
 				image.set_pixel(x, y, Color.BLACK)
 	
-	for x in range(64 + 7, 64 + 7 + eye_size):
-		for y in range(64 - 15, 64 - 15 + eye_size):
+	for x in range(32 + 4, 32 + 4 + eye_size):
+		for y in range(32 - 8, 32 - 8 + eye_size):
 			if x >= 0 and x < 128 and y >= 0 and y < 128:
 				image.set_pixel(x, y, Color.BLACK)
 	
