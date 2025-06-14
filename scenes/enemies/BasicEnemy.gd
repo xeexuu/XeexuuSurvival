@@ -8,7 +8,7 @@ signal damaged(enemy: Enemy, damage: int)
 @export var max_health: int = 150
 @export var current_health: int = 150
 @export var move_speed: float = 50.0
-@export var damage: int = 15
+@export var damage: int = 1  # ❌ CORREGIDO: Solo 1 de daño
 @export var attack_range: float = 40.0
 @export var detection_range: float = 500.0
 
@@ -21,7 +21,7 @@ var player: Player = null
 var is_dead: bool = false
 var is_attacking: bool = false
 var last_attack_time: float = 0.0
-var attack_cooldown: float = 1.0  # Reducido para ataques más frecuentes
+var attack_cooldown: float = 2.0  # ❌ CORREGIDO: 2 segundos entre ataques como COD WAW
 
 # NUEVO: Variables para ataque de zarpazo estilo COD WAW
 var attack_animation_duration: float = 0.8
@@ -125,6 +125,10 @@ func setup_enemy():
 	is_dead = false
 	is_attacking = false
 	current_state = EnemyState.IDLE
+	
+	# ❌ FORZAR DAÑO A 1
+	damage = 1
+	print("💀 Enemigo configurado con ", damage, " de daño")
 	
 	last_position = global_position
 	wander_target = global_position + Vector2(randf_range(-200, 200), randf_range(-200, 200))
@@ -323,6 +327,9 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	
+	# ❌ FORZAR DAÑO A 1 SIEMPRE
+	damage = 1
+	
 	aggression_level = randf_range(0.8, 1.2)
 	search_timer = 0.0
 	stuck_timer = 0.0
@@ -335,16 +342,17 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 		sprite.visible = true
 	
 	update_health_bar()
-	randomize_stats()
+	
+	print("💀 Enemigo spawneado con ", damage, " de daño y ", current_health, " de vida")
 
 func randomize_stats():
-	"""Añadir variación aleatoria estilo COD"""
-	damage += randi_range(-3, 8)
+	"""NO randomizar daño - mantener siempre en 1"""
+	# ❌ REMOVIDO: No cambiar el daño
 	var speed_variation = randf_range(-10.0, 15.0)
 	move_speed += speed_variation
 	
 	move_speed = max(move_speed, 30.0)
-	damage = max(damage, 8)
+	damage = 1  # ❌ FORZAR SIEMPRE A 1
 
 func reset_for_pool():
 	"""Resetear enemigo para el pool"""
@@ -353,6 +361,7 @@ func reset_for_pool():
 	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	current_health = max_health
+	damage = 1  # ❌ RESETEAR DAÑO A 1
 	
 	if sprite:
 		sprite.modulate = original_color
@@ -566,9 +575,11 @@ func update_sprite_animation(animation: String, direction: Vector2):
 			animated_sprite.play("idle")
 
 func handle_combat_cod_style():
-	"""Manejo de combate estilo COD"""
+	"""Manejo de combate estilo COD - CON COOLDOWN CORRECTO"""
 	if current_state == EnemyState.ATTACKING and not is_attacking and not is_in_attack_animation:
 		var current_time = Time.get_ticks_msec() / 1000.0
+		
+		# ❌ VERIFICAR COOLDOWN CORRECTAMENTE
 		if current_time - last_attack_time >= attack_cooldown:
 			perform_claw_attack_cod_waw()
 
@@ -580,6 +591,8 @@ func perform_claw_attack_cod_waw():
 	is_attacking = true
 	is_in_attack_animation = true
 	last_attack_time = Time.get_ticks_msec() / 1000.0
+	
+	print("💀 Enemigo iniciando ataque con ", damage, " de daño")
 	
 	# Efecto visual de preparación del ataque
 	if sprite:
@@ -607,9 +620,6 @@ func perform_claw_attack_cod_waw():
 		
 		# Efecto de zarpazo más intenso
 		create_intense_claw_effect()
-		
-		# Sonido de zarpazo (si tienes audio)
-		# play_claw_sound()
 	)
 	attack_tween.tween_interval(0.3)
 	
@@ -626,16 +636,20 @@ func perform_claw_attack_cod_waw():
 	)
 
 func apply_damage_to_player():
-	"""Aplicar daño al jugador con efectos estilo COD WAW"""
+	"""Aplicar daño al jugador con efectos estilo COD WAW - SOLO 1 DE DAÑO"""
 	if not player:
 		return
 	
 	# Verificar si el jugador sigue en rango de ataque
 	var distance_to_player = global_position.distance_to(player.global_position)
 	if distance_to_player > attack_range * 1.5:  # Un poco más de rango para el zarpazo
+		print("💀 Jugador fuera de rango, no se aplica daño")
 		return
 	
-	var final_damage = max(1, int(float(damage) * aggression_level))
+	# ❌ DAÑO FIJO DE 1
+	var final_damage = 1
+	
+	print("💀 Aplicando ", final_damage, " de daño al jugador")
 	
 	# Aplicar daño
 	if player.has_method("take_damage"):
@@ -649,8 +663,6 @@ func apply_damage_to_player():
 	if player and player.has_method("apply_knockback"):
 		var push_direction = (player.global_position - global_position).normalized()
 		player.apply_knockback(push_direction, 150.0)  # Knockback más fuerte
-	
-	print("🧟 Zombi ataca con zarpazo: ", final_damage, " de daño")
 
 func create_claw_slash_effect():
 	"""Crear efecto visual de zarpazo"""
@@ -725,6 +737,7 @@ func create_intense_claw_effect():
 func _on_attack_timer_timeout():
 	"""Cuando termina el cooldown de ataque"""
 	is_attacking = false
+	print("💀 Cooldown de ataque terminado, enemigo puede atacar de nuevo")
 
 func apply_knockback(direction: Vector2, force: float):
 	"""Aplicar knockback al enemigo"""

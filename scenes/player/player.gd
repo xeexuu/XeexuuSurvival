@@ -38,12 +38,14 @@ var weapon_renderer: WeaponRenderer
 # NUEVO: Variable para verificar si está configurado completamente
 var is_fully_initialized: bool = false
 
+# ❌ NUEVO: Sistema de sonido de kill SOLO para Pelao
+var kill_sound_player: AudioStreamPlayer2D
+
 func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_camera()
 	setup_weapon_renderer()
-	
-	# NO aplicar stats hasta que se asignen
+	setup_kill_sound_system()  # ❌ NUEVO
 	
 	# Configurar collision layers
 	collision_layer = 1  # Capa del jugador
@@ -67,6 +69,12 @@ func setup_weapon_renderer():
 	weapon_renderer.name = "WeaponRenderer"
 	weapon_renderer.set_player_reference(self)
 	add_child(weapon_renderer)
+
+func setup_kill_sound_system():
+	"""❌ NUEVO: Configurar sistema de sonido de kill SOLO para Pelao"""
+	kill_sound_player = AudioStreamPlayer2D.new()
+	kill_sound_player.name = "KillSoundPlayer"
+	add_child(kill_sound_player)
 
 func update_character_stats(new_stats: CharacterStats):
 	"""Actualizar estadísticas del personaje"""
@@ -96,11 +104,38 @@ func apply_character_stats():
 	if weapon_renderer and character_stats.equipped_weapon:
 		weapon_renderer.set_weapon_stats(character_stats.equipped_weapon)
 	
+	# ❌ NUEVO: Configurar sonido de kill para Pelao
+	setup_pelao_kill_sound()
+	
 	# Marcar como completamente inicializado
 	is_fully_initialized = true
 	
 	print("✅ Estadísticas aplicadas: ", character_stats.character_name)
 	print("💚 Vida configurada: ", current_health, "/", max_health)
+
+func setup_pelao_kill_sound():
+	"""❌ NUEVO: Configurar sonido específico para Pelao"""
+	if not character_stats:
+		return
+	
+	var char_name = character_stats.character_name.to_lower().replace(" ", "")
+	
+	# Solo cargar sonido para Pelao
+	if char_name == "pelao":
+		if ResourceLoader.exists("res://audio/pelao_shoot.ogg"):
+			var kill_sound = load("res://audio/pelao_shoot.ogg")
+			if kill_sound and kill_sound_player:
+				kill_sound_player.stream = kill_sound
+				kill_sound_player.volume_db = -5.0  # Volumen más alto para feedback
+				kill_sound_player.pitch_scale = 1.2  # Pitch más alto para diferenciarlo del disparo
+				print("🔊 Sonido de kill configurado para Pelao")
+		else:
+			print("❌ No se encontró audio/pelao_shoot.ogg")
+	else:
+		# Para otros personajes, limpiar el sonido
+		if kill_sound_player:
+			kill_sound_player.stream = null
+		print("🔇 Sin sonido de kill para: ", char_name)
 
 func set_score_system(score_sys: ScoreSystem):
 	"""Establecer referencia al sistema de puntuación"""
@@ -403,9 +438,20 @@ func die():
 	player_died.emit()
 
 func on_enemy_killed():
-	"""Llamar cuando el jugador mata un enemigo"""
-	# Reproducir sonido de kill confirmation o efectos adicionales
-	pass
+	"""❌ NUEVO: Llamar cuando el jugador mata un enemigo - SOLO SONIDO PARA PELAO"""
+	if not character_stats:
+		return
+	
+	var char_name = character_stats.character_name.to_lower().replace(" ", "")
+	
+	# Solo reproducir sonido para Pelao
+	if char_name == "pelao" and kill_sound_player and kill_sound_player.stream:
+		# Reproducir sonido de kill con variación
+		kill_sound_player.pitch_scale = randf_range(1.1, 1.3)  # Pitch más alto que el disparo
+		kill_sound_player.play()
+		print("🔊 Pelao: Sonido de kill reproducido")
+	else:
+		print("🔇 ", char_name, ": Sin sonido de kill")
 
 # Funciones de recarga manual
 func start_manual_reload():
