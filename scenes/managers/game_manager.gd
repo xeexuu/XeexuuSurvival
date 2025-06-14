@@ -131,11 +131,23 @@ func _on_character_selected(character_stats: CharacterStats):
 	print("🎮 Personaje seleccionado: ", character_stats.character_name)
 	selected_character_stats = character_stats
 	
+	# VERIFICAR Y CORREGIR ESTADÍSTICAS DEL PERSONAJE
+	if character_stats.max_health <= 10:
+		print("⚠ Corrigiendo vida baja del personaje")
+		character_stats.max_health = 100
+		character_stats.current_health = 100
+	
 	# ❌ CAMBIO CRÍTICO: Primero cambiar el estado, LUEGO configurar todo
 	game_state = "playing"
 	
 	# ❌ NUEVO: Configurar todo en orden específico
 	setup_player_after_selection()
+	
+	# VERIFICAR QUE EL JUGADOR ESTÉ VIVO ANTES DE CONTINUAR
+	if not player or player.get_current_health() <= 0:
+		print("❌ ERROR CRÍTICO: Jugador sin vida después de configuración")
+		return
+	
 	if is_mobile:
 		setup_mobile_controls()
 	setup_mini_hud()
@@ -143,37 +155,57 @@ func _on_character_selected(character_stats: CharacterStats):
 	# ❌ CAMBIO CRÍTICO: Configurar sistemas DESPUÉS de que el jugador esté listo
 	await setup_unified_cod_system_safe()
 	
-	# ❌ NUEVO: Activar jugador AL FINAL
+	# ❌ NUEVO: Activar jugador AL FINAL Y VERIFICAR VIDA
 	if player:
 		player.visible = true
+		
+		# VERIFICACIÓN FINAL DE VIDA
+		if player.get_current_health() <= 0:
+			print("❌ ERROR: Restaurando vida del jugador")
+			player.current_health = player.max_health
+		
 		player.set_physics_process(true)
 		player.set_process(true)
 		
 		# CONECTAR SEÑAL DE MUERTE DEL JUGADOR
-		player.player_died.connect(_on_player_died)
+		if not player.player_died.is_connected(_on_player_died):
+			player.player_died.connect(_on_player_died)
 	
 	# ❌ CAMBIO CRÍTICO: Marcar como iniciado AL FINAL
 	game_started = true
 	
 	print("✅ Juego iniciado correctamente")
+	print("💚 Vida final del jugador: ", player.get_current_health(), "/", player.get_max_health())
 	
 	# ❌ NUEVO: Iniciar spawning después de delay más largo
 	await get_tree().create_timer(3.0).timeout  # 3 segundos de gracia
 	start_enemy_spawning_safely()
 
 func setup_player_after_selection():
-	"""❌ NUEVO: Configurar jugador DESPUÉS de la selección"""
+	"""❌ NUEVO: Configurar jugador DESPUÉS de la selección - MEJORADO"""
 	if player_manager.get_child_count() > 0:
 		player = player_manager.get_child(0)
 		if player:
+			# APLICAR ESTADÍSTICAS ANTES DE CUALQUIER OTRA COSA
 			if selected_character_stats:
 				player.update_character_stats(selected_character_stats)
+				print("✅ Estadísticas aplicadas: ", selected_character_stats.character_name)
+				print("💚 Vida del jugador: ", player.get_current_health(), "/", player.get_max_health())
 			
+			# Posicionar jugador en lugar seguro
 			player.global_position = Vector2(0, 0)
 			player.z_index = 10
 			
+			# ASEGURAR QUE ESTÉ COMPLETAMENTE CONFIGURADO ANTES DE ACTIVAR
+			player.velocity = Vector2.ZERO
+			
 			# FORZAR CARGA CORRECTA DE ANIMACIONES DESDE ATLAS
 			fix_player_animations()
+			
+			# VERIFICAR QUE TODO ESTÉ BIEN ANTES DE CONTINUAR
+			if player.get_current_health() <= 0:
+				print("❌ ERROR: Jugador tiene vida 0, corrigiendo...")
+				player.current_health = player.max_health
 	else:
 		print("❌ No se encontró jugador en PlayerManager")
 
@@ -229,22 +261,28 @@ func setup_unified_cod_system_safe():
 	print("✅ Sistemas de combate configurados sin spawning")
 
 func start_enemy_spawning_safely():
-	"""❌ NUEVO: Iniciar spawning de enemigos de forma segura"""
+	"""❌ NUEVO: Iniciar spawning de enemigos de forma segura - MEJORADO"""
 	if not rounds_manager or not enemy_spawner:
 		print("❌ No se pueden iniciar enemigos - sistemas no configurados")
 		return
 	
 	print("🎮 Iniciando spawning de enemigos después de delay...")
 	
-	# Verificar que el jugador sigue vivo
-	if not player or not player.is_alive():
-		print("❌ Jugador no está vivo, cancelando spawning")
+	# Verificar que el jugador sigue vivo Y está completamente inicializado
+	if not player or not player.is_alive() or not player.is_fully_initialized:
+		print("❌ Jugador no está listo, cancelando spawning")
+		print("  - Jugador existe: ", player != null)
+		if player:
+			print("  - Jugador vivo: ", player.is_alive())
+			print("  - Jugador inicializado: ", player.is_fully_initialized)
+			print("  - Vida actual: ", player.get_current_health())
 		return
 	
 	# Iniciar spawning manualmente
 	rounds_manager.manually_start_spawning()
 	
 	print("✅ Spawning de enemigos iniciado")
+
 
 func _on_player_died():
 	print("💀 JUGADOR HA MUERTO - INICIANDO GAME OVER")
@@ -983,3 +1021,19 @@ func get_active_enemy_count() -> int:
 	if enemy_spawner:
 		return enemy_spawner.get_active_enemy_count()
 	return 0
+
+func debug_player_state():
+	"""Debug del estado del jugador"""
+	if player:
+		print("=== DEBUG ESTADO JUGADOR ===")
+		print("Existe: ", player != null)
+		print("Vida: ", player.get_current_health(), "/", player.get_max_health())
+		print("Vivo: ", player.is_alive())
+		print("Inicializado: ", player.is_fully_initialized if player.has_method("is_fully_initialized") else "N/A")
+		print("Visible: ", player.visible)
+		print("Physics process: ", player.is_physics_processing())
+		print("Process: ", player.is_processing())
+		print("Posición: ", player.global_position)
+		print("=============================")
+	else:
+		print("❌ No hay jugador para debuggear")

@@ -35,13 +35,15 @@ var damage_flash_duration: float = 0.1
 # Renderer de arma
 var weapon_renderer: WeaponRenderer
 
+# NUEVO: Variable para verificar si está configurado completamente
+var is_fully_initialized: bool = false
+
 func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_camera()
 	setup_weapon_renderer()
 	
-	if character_stats:
-		apply_character_stats()
+	# NO aplicar stats hasta que se asignen
 	
 	# Configurar collision layers
 	collision_layer = 1  # Capa del jugador
@@ -72,13 +74,19 @@ func update_character_stats(new_stats: CharacterStats):
 	apply_character_stats()
 
 func apply_character_stats():
-	"""Aplicar estadísticas del personaje"""
+	"""Aplicar estadísticas del personaje - CORREGIDO"""
 	if not character_stats:
+		print("❌ No hay character_stats para aplicar")
 		return
 	
+	# APLICAR CORRECTAMENTE LA VIDA
 	max_health = character_stats.max_health
-	current_health = character_stats.current_health
+	current_health = character_stats.max_health  # CAMBIO: Usar max_health en lugar de current_health
 	move_speed = float(character_stats.movement_speed)
+	
+	# Asegurarse de que la vida esté en rango válido
+	if current_health <= 0:
+		current_health = max_health
 	
 	# Configurar el componente de disparo
 	if shooting_component:
@@ -88,13 +96,21 @@ func apply_character_stats():
 	if weapon_renderer and character_stats.equipped_weapon:
 		weapon_renderer.set_weapon_stats(character_stats.equipped_weapon)
 	
+	# Marcar como completamente inicializado
+	is_fully_initialized = true
+	
 	print("✅ Estadísticas aplicadas: ", character_stats.character_name)
+	print("💚 Vida configurada: ", current_health, "/", max_health)
 
 func set_score_system(score_sys: ScoreSystem):
 	"""Establecer referencia al sistema de puntuación"""
 	score_system = score_sys
 
 func _physics_process(delta):
+	# NUEVO: Solo procesar si está completamente inicializado
+	if not is_fully_initialized:
+		return
+		
 	handle_movement(delta)
 	handle_shooting()
 	
@@ -104,8 +120,9 @@ func _physics_process(delta):
 	# Mover y manejar colisiones
 	move_and_slide()
 	
-	# Manejar colisiones con enemigos
-	handle_enemy_collisions()
+	# Manejar colisiones con enemigos SOLO si está vivo
+	if is_alive():
+		handle_enemy_collisions()
 
 func handle_movement(_delta):
 	"""Manejar movimiento del jugador"""
@@ -269,8 +286,8 @@ func update_shooting_animation(_shoot_direction: Vector2):
 	pass
 
 func handle_enemy_collisions():
-	"""Manejar colisiones con enemigos"""
-	if is_invulnerable:
+	"""Manejar colisiones con enemigos - MEJORADO"""
+	if is_invulnerable or not is_alive():
 		return
 	
 	# Verificar colisiones con enemigos
@@ -291,8 +308,13 @@ func handle_enemy_collisions():
 				break
 
 func take_damage(amount: int):
-	"""Recibir daño"""
-	if is_invulnerable:
+	"""Recibir daño - MEJORADO CON VALIDACIONES"""
+	if is_invulnerable or not is_alive():
+		return
+	
+	# VALIDACIÓN EXTRA: Asegurarse de que está inicializado
+	if not is_fully_initialized:
+		print("⚠ Intentando hacer daño a jugador no inicializado")
 		return
 	
 	current_health -= amount
@@ -409,7 +431,7 @@ func get_max_health() -> int:
 
 func is_alive() -> bool:
 	"""Verificar si el jugador está vivo"""
-	return current_health > 0
+	return current_health > 0 and is_fully_initialized
 
 func get_weapon_stats() -> WeaponStats:
 	"""Obtener estadísticas del arma equipada"""
@@ -432,6 +454,7 @@ func debug_player_info():
 	print("Velocidad: ", move_speed)
 	print("Móvil: ", is_mobile)
 	print("Invulnerable: ", is_invulnerable)
+	print("Inicializado: ", is_fully_initialized)
 	if character_stats:
 		print("Personaje: ", character_stats.character_name)
 		if character_stats.equipped_weapon:

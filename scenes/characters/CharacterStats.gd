@@ -3,14 +3,10 @@ extends Resource
 class_name CharacterStats
 
 @export var character_name: String = "Personaje"
-@export var max_health: int = 100
-@export var current_health: int = 100
+@export var max_health: int = 100  # CAMBIO: Aumentado de 4 a 100
+@export var current_health: int = 100  # CAMBIO: Aumentado de 4 a 100
 @export var movement_speed: int = 300
 @export var luck: int = 5
-
-# YA NO HAY SPRITES DEL PERSONAJE - SE USAN LOS ATLAS
-# @export var sprite_normal: Texture2D  # ELIMINADO
-# @export var sprite_shooting: Texture2D  # ELIMINADO
 
 # Arma equipada - NUEVO SISTEMA
 @export var equipped_weapon: WeaponStats
@@ -28,6 +24,14 @@ var ability2_ready: bool = true
 func _init():
 	# Solo crear arma por defecto si no existe
 	call_deferred("ensure_weapon_exists")
+	call_deferred("ensure_valid_health")
+
+func ensure_valid_health():
+	"""Asegurar que la vida sea válida"""
+	if max_health <= 10:  # Si la vida máxima es muy baja
+		max_health = 100
+		current_health = 100
+		print("⚠ Vida corregida para ", character_name, ": ", max_health)
 
 func ensure_weapon_exists():
 	if not equipped_weapon:
