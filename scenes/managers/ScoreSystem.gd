@@ -1,4 +1,4 @@
-# scenes/managers/ScoreSystem.gd - ACTUALIZACIÓN CORREGIDA
+# scenes/managers/ScoreSystem.gd - PUNTUACIÓN ESTILO COD BLACK OPS ZOMBIES
 extends Node
 class_name ScoreSystem
 
@@ -11,7 +11,7 @@ var headshot_kills: int = 0
 var current_kill_streak: int = 0
 var best_kill_streak: int = 0
 
-# Puntuaciones estilo COD Black Ops
+# Puntuaciones estilo COD Black Ops Zombies
 var base_kill_points: int = 50
 var headshot_bonus: int = 100
 var melee_kill_bonus: int = 130
@@ -23,7 +23,7 @@ var round_multiplier: float = 1.0
 # UI de puntuación - ESQUINA INFERIOR DERECHA
 var score_ui: Control
 var player_camera: Camera2D
-var score_label: Label  # REFERENCIA DIRECTA
+var score_label: Label
 
 # Efectos de puntuación
 var score_popup_scene: PackedScene
@@ -34,7 +34,7 @@ func _ready():
 		score_popup_scene = load("res://scenes/ui/ScorePopup.tscn")
 
 func setup_score_ui_on_camera(camera: Camera2D):
-	"""Configurar la UI de puntuación en la esquina INFERIOR DERECHA estilo Black Ops"""
+	"""Configurar la UI de puntuación estilo COD Black Ops"""
 	player_camera = camera
 	if not player_camera:
 		return
@@ -50,7 +50,7 @@ func setup_score_ui_on_camera(camera: Camera2D):
 	# Fondo estilo Black Ops
 	var bg_style = StyleBoxFlat.new()
 	bg_style.bg_color = Color(0.05, 0.05, 0.1, 0.85)
-	bg_style.border_color = Color(0.8, 0.6, 0.0, 0.9)  # Dorado estilo Black Ops
+	bg_style.border_color = Color(0.8, 0.6, 0.0, 0.9)
 	bg_style.border_width_left = 2
 	bg_style.border_width_right = 2
 	bg_style.border_width_top = 2
@@ -77,18 +77,18 @@ func setup_score_ui_on_camera(camera: Camera2D):
 	title_label.text = "PUNTOS"
 	var title_size = 16 if not is_mobile else 20
 	title_label.add_theme_font_size_override("font_size", title_size)
-	title_label.add_theme_color_override("font_color", Color(0.9, 0.7, 0.0, 1.0))  # Dorado
+	title_label.add_theme_color_override("font_color", Color(0.9, 0.7, 0.0, 1.0))
 	title_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	title_label.add_theme_constant_override("shadow_offset_x", 2)
 	title_label.add_theme_constant_override("shadow_offset_y", 2)
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	main_container.add_child(title_label)
 	
-	# Etiqueta de puntuación grande - REFERENCIA DIRECTA
+	# Etiqueta de puntuación grande
 	score_label = Label.new()
 	score_label.name = "ScoreLabel"
 	score_label.text = "0"
-	var score_font_size = 32 if not is_mobile else 40  # Más grande estilo Black Ops
+	var score_font_size = 32 if not is_mobile else 40
 	score_label.add_theme_font_size_override("font_size", score_font_size)
 	score_label.add_theme_color_override("font_color", Color.WHITE)
 	score_label.add_theme_color_override("font_shadow_color", Color.BLACK)
@@ -99,8 +99,6 @@ func setup_score_ui_on_camera(camera: Camera2D):
 	
 	# Añadir a la cámara
 	player_camera.add_child(score_ui)
-	
-	print("✅ UI de puntuación configurada estilo Black Ops en esquina inferior derecha")
 
 func _process(_delta):
 	"""Actualizar posición de la UI relativa a la cámara - INFERIOR DERECHA"""
@@ -110,14 +108,14 @@ func _process(_delta):
 		
 		# Calcular posición en la esquina INFERIOR DERECHA
 		var ui_offset = Vector2(
-			(viewport_size.x / camera_zoom.x) / 2 - score_ui.size.x - 20,  # Derecha - ancho - margen
-			(viewport_size.y / camera_zoom.y) / 2 - score_ui.size.y - 20   # Abajo - alto - margen
+			(viewport_size.x / camera_zoom.x) / 2 - score_ui.size.x - 20,
+			(viewport_size.y / camera_zoom.y) / 2 - score_ui.size.y - 20
 		)
 		
 		score_ui.position = ui_offset
 
 func add_kill_points(enemy_position: Vector2, is_headshot: bool = false, is_melee: bool = false):
-	"""Añadir puntos por matar enemigo estilo COD Black Ops"""
+	"""Añadir puntos por matar enemigo estilo COD Black Ops Zombies"""
 	var points = base_kill_points
 	var popup_type = "kill"
 	
@@ -152,8 +150,6 @@ func add_kill_points(enemy_position: Vector2, is_headshot: bool = false, is_mele
 	# Emitir señales
 	score_changed.emit(current_score)
 	score_popup.emit(points, enemy_position, popup_type)
-	
-	print("💀 +", points, " puntos | Score total: ", current_score)
 
 func add_repair_points(repair_position: Vector2, repair_amount: int):
 	"""Añadir puntos por reparar ventanas/barricadas"""
@@ -191,7 +187,7 @@ func set_round_multiplier(round_number: int):
 		round_multiplier = 2.0
 
 func show_score_popup(points: int, world_position: Vector2, popup_type: String):
-	"""Mostrar popup de puntuación en la posición del mundo estilo Black Ops"""
+	"""Mostrar popup de puntuación estilo Black Ops"""
 	var popup = create_score_popup(points, popup_type)
 	
 	# Añadir al mundo
@@ -266,16 +262,13 @@ func animate_score_popup(popup: Control):
 	tween.tween_callback(func(): popup.queue_free())
 
 func update_score_ui():
-	"""Actualizar la UI de puntuación estilo Black Ops - CORREGIDO CON REFERENCIA DIRECTA"""
+	"""Actualizar la UI de puntuación estilo Black Ops"""
 	if not score_label:
-		print("❌ No hay score_label para actualizar")
 		return
 	
 	# Formatear puntuación con separadores de miles
 	var formatted_score = format_score(current_score)
 	score_label.text = formatted_score
-	
-	print("✅ Score actualizado a: ", formatted_score)
 	
 	# Efecto de parpadeo dorado cuando se añaden puntos
 	var flash_tween = score_ui.create_tween()

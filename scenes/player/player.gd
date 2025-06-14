@@ -1,4 +1,4 @@
-# scenes/player/player.gd - AUDIO ELIMINADO Y COLISIONES CORREGIDAS
+# scenes/player/player.gd - AUDIO CORREGIDO Y VISTA DESDE ARRIBA
 extends CharacterBody2D
 class_name Player
 
@@ -28,6 +28,11 @@ var last_shot_direction: Vector2 = Vector2.RIGHT
 var score_system: ScoreSystem
 var weapon_renderer: WeaponRenderer
 
+# AUDIO SIN SOLAPAMIENTO
+var audio_player: AudioStreamPlayer2D
+var last_audio_time: float = 0.0
+var audio_cooldown: float = 0.1
+
 # Efectos de daño estilo COD Black Ops
 var is_invulnerable: bool = false
 var invulnerability_duration: float = 1.0
@@ -45,16 +50,23 @@ func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_camera()
 	setup_weapon_renderer()
+	setup_audio_player()
 	
 	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS
-	collision_layer = 1  # Jugador en capa 1
-	collision_mask = 2 | 3  # Colisiona con enemigos (2) y estructuras (3)
+	collision_layer = 1
+	collision_mask = 2 | 3
+
+func setup_audio_player():
+	"""Configurar reproductor de audio sin solapamiento"""
+	audio_player = AudioStreamPlayer2D.new()
+	audio_player.name = "AudioPlayer"
+	add_child(audio_player)
 
 func setup_camera():
-	"""Configurar la cámara del jugador para COD Black Ops style"""
+	"""Configurar la cámara para vista desde arriba"""
 	if camera:
 		camera.enabled = true
-		camera.zoom = Vector2(1.0, 1.0)
+		camera.zoom = Vector2(1.5, 1.5)  # Zoom para mejor vista
 		camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		camera.position_smoothing_enabled = true
 		camera.position_smoothing_speed = 8.0
@@ -73,11 +85,11 @@ func update_character_stats(new_stats: CharacterStats):
 	apply_character_stats()
 
 func apply_character_stats():
-	"""Aplicar estadísticas del personaje respetando valores originales"""
+	"""Aplicar estadísticas del personaje"""
 	if not character_stats:
 		return
 	
-	# Respetar valores del archivo .tres
+	# RESPETAR VALORES ORIGINALES DEL ARCHIVO
 	max_health = character_stats.max_health
 	current_health = character_stats.current_health
 	move_speed = float(character_stats.movement_speed)
@@ -90,13 +102,13 @@ func apply_character_stats():
 	if weapon_renderer and character_stats.equipped_weapon:
 		weapon_renderer.set_weapon_stats(character_stats.equipped_weapon)
 	
-	# Cargar sprites usando el sistema separado
+	# Cargar sprites
 	load_character_sprites()
 	
 	is_fully_initialized = true
 
 func load_character_sprites():
-	"""Cargar sprites del personaje usando el sistema separado"""
+	"""Cargar sprites del personaje"""
 	if not character_stats or not animated_sprite:
 		return
 	
@@ -105,7 +117,6 @@ func load_character_sprites():
 		animated_sprite.sprite_frames = sprite_frames
 		animated_sprite.play("idle")
 		
-		# Escalar a 128px usando el sistema separado
 		var reference_texture = sprite_frames.get_frame_texture("idle", 0)
 		SpriteEffectsHandler.scale_sprite_to_128px(animated_sprite, reference_texture)
 
@@ -123,19 +134,18 @@ func _physics_process(delta):
 	
 	move_and_slide()
 	
-	# CORREGIR: Verificar colisiones con enemigos para prevenir overlapping
 	if is_alive():
 		handle_enemy_separation()
 
 func handle_enemy_separation():
-	"""Manejar separación de enemigos para evitar que se peguen"""
+	"""Separación de enemigos para evitar overlapping"""
 	var space_state = get_world_2d().direct_space_state
 	var query = PhysicsShapeQueryParameters2D.new()
 	var circle_shape = CircleShape2D.new()
-	circle_shape.radius = 60.0  # Radio de separación
+	circle_shape.radius = 60.0
 	query.shape = circle_shape
 	query.transform = Transform2D(0, global_position)
-	query.collision_mask = 2  # Solo enemigos
+	query.collision_mask = 2
 	query.exclude = [self]
 	
 	var results = space_state.intersect_shape(query, 5)
@@ -147,13 +157,12 @@ func handle_enemy_separation():
 			var distance = separation_vector.length()
 			
 			if distance > 0 and distance < 60:
-				# Empujar al enemigo lejos del jugador
 				var push_direction = separation_vector.normalized()
-				var push_force = (60 - distance) * 5.0  # Fuerza proporcional a la proximidad
+				var push_force = (60 - distance) * 5.0
 				enemy.apply_knockback(push_direction, push_force)
 
 func handle_movement(_delta):
-	"""Manejar movimiento del jugador estilo COD Black Ops"""
+	"""Manejar movimiento del jugador"""
 	var input_direction = Vector2.ZERO
 	
 	if is_mobile:
@@ -165,7 +174,6 @@ func handle_movement(_delta):
 	if input_direction.length() > 1.0:
 		input_direction = input_direction.normalized()
 	
-	# Aplicar efecto de agarre si está siendo agarrado
 	var final_speed = move_speed
 	if is_grabbed:
 		final_speed *= grab_slowdown_factor
@@ -211,8 +219,6 @@ func perform_shoot(direction: Vector2):
 	var shot_fired = shooting_component.try_shoot(direction, shoot_position)
 	
 	if shot_fired:
-		# AUDIO ELIMINADO - NO reproducir sonido aquí
-		
 		if weapon_renderer:
 			weapon_renderer.start_shooting_animation()
 		
@@ -232,7 +238,7 @@ func update_weapon_position():
 	weapon_renderer.update_weapon_position_and_rotation(aim_direction)
 
 func update_animations(movement_direction: Vector2):
-	"""Actualizar animaciones del jugador estilo COD Black Ops"""
+	"""Actualizar animaciones del jugador para vista desde arriba"""
 	if not animated_sprite or not animated_sprite.sprite_frames:
 		return
 	
@@ -248,7 +254,7 @@ func update_animations(movement_direction: Vector2):
 			elif animated_sprite.sprite_frames.has_animation("idle"):
 				animated_sprite.play("idle")
 		
-		# Voltear sprite según dirección horizontal
+		# Para vista desde arriba: voltear según dirección horizontal
 		if movement_direction.x < 0:
 			animated_sprite.flip_h = true
 		elif movement_direction.x > 0:
@@ -256,13 +262,12 @@ func update_animations(movement_direction: Vector2):
 		
 		last_movement_direction = movement_direction
 	else:
-		# Idle
 		if animated_sprite.sprite_frames.has_animation("idle"):
 			if animated_sprite.animation != "idle":
 				animated_sprite.play("idle")
 
 func get_animation_name_from_direction(direction: Vector2) -> String:
-	"""Obtener nombre de animación basado en la dirección"""
+	"""Obtener nombre de animación para vista desde arriba"""
 	var angle = direction.angle()
 	var degrees = rad_to_deg(angle)
 	
@@ -279,7 +284,7 @@ func get_animation_name_from_direction(direction: Vector2) -> String:
 		return "walk_Up"
 
 func update_shooting_animation(_shoot_direction: Vector2):
-	"""Actualizar animación al disparar - COD Black Ops style"""
+	"""Actualizar animación al disparar"""
 	pass
 
 func take_damage(amount: int):
@@ -290,42 +295,33 @@ func take_damage(amount: int):
 	if not is_fully_initialized:
 		return
 	
-	print("💔 Jugador recibiendo ", amount, " de daño")
-	
 	current_health -= amount
 	current_health = max(current_health, 0)
 	
-	# Efectos visuales de daño
 	flash_damage_effect()
-	
-	# Activar invulnerabilidad temporal
 	start_invulnerability()
 	
-	# Resetear racha de kills en score system
 	if score_system:
 		score_system.reset_kill_streak()
 	
-	# Screen shake effect (COD Black Ops style)
 	apply_screen_shake()
 	
 	if current_health <= 0:
 		die()
 
 func apply_grab_effect(duration: float):
-	"""Aplicar efecto de agarre de zombie estilo COD Black Ops"""
+	"""Aplicar efecto de agarre de zombie"""
 	if is_grabbed:
 		return
 	
 	is_grabbed = true
 	
-	# Efecto visual de agarre
 	if animated_sprite:
 		var grab_tween = create_tween()
 		grab_tween.set_loops(int(duration * 4))
 		grab_tween.tween_property(animated_sprite, "modulate", Color.PURPLE, 0.125)
 		grab_tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.125)
 	
-	# Timer para quitar el efecto
 	var grab_timer = Timer.new()
 	grab_timer.wait_time = duration
 	grab_timer.one_shot = true
@@ -343,7 +339,7 @@ func end_grab_effect():
 		animated_sprite.modulate = Color.WHITE
 
 func apply_screen_shake():
-	"""Aplicar efecto de screen shake estilo COD Black Ops"""
+	"""Aplicar efecto de screen shake"""
 	if not camera:
 		return
 	
@@ -361,21 +357,19 @@ func apply_screen_shake():
 	shake_tween.tween_property(camera, "offset", Vector2.ZERO, shake_duration / 6.0)
 
 func flash_damage_effect():
-	"""Efecto visual al recibir daño estilo COD Black Ops"""
+	"""Efecto visual al recibir daño"""
 	if not animated_sprite:
 		return
 	
-	# Flash rojo más intenso
 	animated_sprite.modulate = Color(2.0, 0.3, 0.3, 1.0)
 	
 	var tween = create_tween()
 	tween.tween_property(animated_sprite, "modulate", Color.WHITE, damage_flash_duration)
 
 func start_invulnerability():
-	"""Iniciar periodo de invulnerabilidad estilo COD Black Ops"""
+	"""Iniciar periodo de invulnerabilidad"""
 	is_invulnerable = true
 	
-	# Efecto de parpadeo más visible
 	if animated_sprite:
 		var blink_tween = create_tween()
 		blink_tween.set_loops(int(invulnerability_duration * 6))
@@ -408,28 +402,24 @@ func heal(amount: int):
 	current_health = min(current_health + amount, max_health)
 
 func die():
-	"""Manejar muerte del jugador estilo COD Black Ops"""
+	"""Manejar muerte del jugador"""
 	velocity = Vector2.ZERO
 	set_physics_process(false)
 	
-	# Efectos visuales de muerte más dramáticos
 	if animated_sprite:
 		animated_sprite.modulate = Color.RED
 		var death_tween = create_tween()
 		death_tween.tween_property(animated_sprite, "modulate", Color.BLACK, 1.0)
 		death_tween.tween_property(animated_sprite, "modulate:a", 0.1, 1.0)
 	
-	# Screen fade effect
 	apply_death_screen_effect()
-	
 	player_died.emit()
 
 func apply_death_screen_effect():
-	"""Aplicar efecto de pantalla de muerte estilo COD Black Ops"""
+	"""Aplicar efecto de pantalla de muerte"""
 	if not camera:
 		return
 	
-	# Crear overlay rojo de muerte
 	var death_overlay = ColorRect.new()
 	death_overlay.color = Color(0.8, 0.0, 0.0, 0.0)
 	death_overlay.size = get_viewport().get_visible_rect().size * 2
@@ -440,13 +430,18 @@ func apply_death_screen_effect():
 	death_tween.tween_property(death_overlay, "color:a", 0.7, 2.0)
 
 func on_enemy_killed():
-	"""ELIMINADO: Sin sonido de kill"""
-	# NO hace nada - audio eliminado completamente
-	pass
+	"""Reproducir audio SIN SOLAPAMIENTO cuando mata enemigo"""
+	var current_time = Time.get_ticks_msec() / 1000.0
+	
+	if current_time - last_audio_time >= audio_cooldown:
+		if character_stats and character_stats.equipped_weapon and character_stats.equipped_weapon.attack_sound:
+			if audio_player and not audio_player.playing:
+				audio_player.stream = character_stats.equipped_weapon.attack_sound
+				audio_player.play()
+				last_audio_time = current_time
 
-# Funciones de recarga manual
 func start_manual_reload():
-	"""Iniciar recarga manual cuando el jugador presiona R"""
+	"""Iniciar recarga manual"""
 	if shooting_component:
 		return shooting_component.start_manual_reload()
 	return false

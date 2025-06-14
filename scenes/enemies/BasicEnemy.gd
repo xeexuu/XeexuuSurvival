@@ -1,4 +1,4 @@
-# scenes/enemies/BasicEnemy.gd - ATAQUE Y COLISIONES CORREGIDOS
+# scenes/enemies/BasicEnemy.gd - DAÑO CORREGIDO Y DESTRUCCIÓN COMPLETA
 extends CharacterBody2D
 class_name Enemy
 
@@ -9,7 +9,7 @@ signal damaged(enemy: Enemy, damage: int)
 @export var current_health: int = 150
 @export var move_speed: float = 50.0
 @export var damage: int = 1
-@export var attack_range: float = 40.0
+@export var attack_range: float = 50.0  # AUMENTADO PARA MEJOR DETECCIÓN
 @export var detection_range: float = 500.0
 
 @onready var sprite = $Sprite2D
@@ -21,28 +21,23 @@ var player: Player = null
 var is_dead: bool = false
 var is_attacking: bool = false
 var last_attack_time: float = 0.0
-var attack_cooldown: float = 2.0
+var attack_cooldown: float = 1.5  # MÁS RÁPIDO
 
-# Variables para ataque estilo COD Black Ops
-var attack_animation_duration: float = 0.8
-var is_in_attack_animation: bool = false
-var grab_damage: int = 1
-
-# Control de proximidad al jugador - CORREGIDO
-var proximity_distance: float = 50.0  # Distancia que mantiene del jugador
+# Control de proximidad al jugador - MEJORADO
+var proximity_distance: float = 40.0
 var separation_force_strength: float = 300.0
-var push_back_force: float = 150.0  # Nueva fuerza para separarse
+var push_back_force: float = 150.0
 
-# NUEVO: Variables para prevenir spam de ataques
+# Variables para prevenir spam de ataques
 var can_damage_player: bool = true
-var damage_cooldown: float = 1.5
+var damage_cooldown: float = 1.0  # MÁS RÁPIDO
 
 # Variables para sprites
 var enemy_sprite_frames: SpriteFrames
 var enemy_type: String = "zombie"
 var is_sprite_loaded: bool = false
 
-# Estados del enemigo estilo COD
+# Estados del enemigo
 enum EnemyState {
 	IDLE,
 	CHASING,
@@ -66,7 +61,7 @@ var wander_target: Vector2
 # Separación entre enemigos
 var nearby_enemies: Array[Enemy] = []
 var separation_force: Vector2 = Vector2.ZERO
-var separation_radius: float = 80.0  # Aumentado para mejor separación
+var separation_radius: float = 80.0
 
 # Zona de headshot
 var head_area: Area2D
@@ -77,7 +72,7 @@ func _ready():
 	setup_attack_system()
 
 func setup_attack_system():
-	"""Configurar sistema de ataque COD Black Ops"""
+	"""Configurar sistema de ataque"""
 	var damage_cooldown_timer = Timer.new()
 	damage_cooldown_timer.name = "DamageCooldownTimer"
 	damage_cooldown_timer.wait_time = damage_cooldown
@@ -129,7 +124,6 @@ func setup_enemy():
 	current_health = max_health
 	is_dead = false
 	is_attacking = false
-	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	damage = 1
 	can_damage_player = true
@@ -137,9 +131,9 @@ func setup_enemy():
 	last_position = global_position
 	wander_target = global_position + Vector2(randf_range(-200, 200), randf_range(-200, 200))
 	
-	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS - CORREGIDO
-	collision_layer = 2  # Enemigos en capa 2
-	collision_mask = 1 | 3  # Colisiona con jugador (1) y estructuras (3)
+	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS
+	collision_layer = 2
+	collision_mask = 1 | 3
 	
 	if not is_sprite_loaded:
 		load_enemy_sprite_from_atlas()
@@ -165,7 +159,7 @@ func has_valid_sprite() -> bool:
 	return false
 
 func load_enemy_sprite_from_atlas():
-	"""Cargar sprite del enemigo desde atlas escalado a 128px"""
+	"""Cargar sprite del enemigo desde atlas"""
 	var atlas_path = "res://sprites/enemies/" + enemy_type + "/walk_Right_Down.png"
 	var atlas_texture = try_load_texture_safe(atlas_path)
 	
@@ -208,7 +202,7 @@ func load_enemy_sprite_from_atlas():
 				is_sprite_loaded = true
 
 func extract_first_frame_from_atlas(atlas_texture: Texture2D) -> Texture2D:
-	"""Extraer el primer frame de un atlas de enemigo"""
+	"""Extraer el primer frame de un atlas"""
 	var texture_size = atlas_texture.get_size()
 	var frame_width = float(texture_size.x) / 8.0
 	var frame_height = float(texture_size.y)
@@ -220,7 +214,7 @@ func extract_first_frame_from_atlas(atlas_texture: Texture2D) -> Texture2D:
 	return first_frame
 
 func load_frames_from_atlas(sprite_frames: SpriteFrames, anim_name: String, atlas_texture: Texture2D, h_frames: int, v_frames: int):
-	"""Cargar frames desde un atlas de enemigo"""
+	"""Cargar frames desde un atlas"""
 	var texture_size = atlas_texture.get_size()
 	var frame_width = float(texture_size.x) / float(h_frames)
 	var frame_height = float(texture_size.y) / float(v_frames)
@@ -248,7 +242,7 @@ func scale_sprite_to_128px(animated_sprite: AnimatedSprite2D, reference_texture:
 	animated_sprite.scale = Vector2(scale_factor, scale_factor)
 
 func create_default_enemy_sprite():
-	"""Crear sprite por defecto del enemigo escalado a 128px"""
+	"""Crear sprite por defecto del enemigo"""
 	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
 	image.fill(Color.DARK_RED)
 	
@@ -344,7 +338,6 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	current_health = max_health
 	is_dead = false
 	is_attacking = false
-	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	damage = 1
 	can_damage_player = true
@@ -360,14 +353,16 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	update_health_bar()
 
 func reset_for_pool():
-	"""Resetear enemigo para el pool"""
+	"""Resetear enemigo para el pool - DESTRUCCIÓN COMPLETA"""
 	is_dead = false
 	is_attacking = false
-	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	current_health = max_health
 	damage = 1
 	can_damage_player = true
+	
+	# ASEGURAR QUE NO BLOQUEE EL PASO
+	collision_shape.disabled = true
 	
 	if sprite:
 		sprite.modulate = original_color
@@ -386,7 +381,7 @@ func apply_knockback(direction: Vector2, force: float):
 		velocity += direction.normalized() * force
 
 func take_damage(amount: int, is_headshot: bool = false):
-	"""Recibir daño con comportamiento COD"""
+	"""Recibir daño"""
 	if is_dead:
 		return
 	
@@ -435,13 +430,15 @@ func flash_headshot_effect():
 		tween.tween_property(sprite, "modulate", original_color, 0.1)
 
 func die():
-	"""Manejar la muerte del enemigo"""
+	"""Manejar la muerte del enemigo - DESTRUCCIÓN COMPLETA"""
 	if is_dead:
 		return
 	
 	is_dead = true
 	current_state = EnemyState.DEAD
-	is_in_attack_animation = false
+	
+	# DESACTIVAR COLISIÓN INMEDIATAMENTE
+	collision_shape.disabled = true
 	
 	velocity = Vector2.ZERO
 	set_physics_process(false)
@@ -449,7 +446,7 @@ func die():
 	if sprite:
 		sprite.modulate = Color.GRAY
 		var tween = create_tween()
-		tween.tween_property(sprite, "modulate:a", 1.0, 1.0)
+		tween.tween_property(sprite, "modulate:a", 0.3, 1.0)
 	
 	if health_bar:
 		health_bar.visible = false
@@ -488,7 +485,7 @@ func _physics_process(delta):
 	handle_combat_cod_style()
 
 func update_nearby_enemies():
-	"""Actualizar lista de enemigos cercanos para evitar solapamiento"""
+	"""Actualizar lista de enemigos cercanos"""
 	nearby_enemies.clear()
 	separation_force = Vector2.ZERO
 	
@@ -516,7 +513,7 @@ func update_nearby_enemies():
 				separation_force += separation_vector.normalized() * force_magnitude * 80.0
 
 func update_timers(delta):
-	"""Actualizar timers del comportamiento COD"""
+	"""Actualizar timers del comportamiento"""
 	search_timer += delta
 	
 	if global_position.distance_to(last_position) < 10.0:
@@ -537,7 +534,7 @@ func update_state():
 		last_player_position = player.global_position
 		search_timer = 0.0
 	
-	if distance_to_player <= attack_range and not is_attacking and not is_in_attack_animation:
+	if distance_to_player <= attack_range and not is_attacking:
 		current_state = EnemyState.ATTACKING
 	elif distance_to_player <= detection_range:
 		current_state = EnemyState.CHASING
@@ -547,13 +544,8 @@ func update_state():
 		current_state = EnemyState.IDLE
 
 func handle_movement_cod_style(delta):
-	"""Manejo de movimiento estilo COD Zombies - CORREGIDO PARA EVITAR OVERLAPPING"""
+	"""Manejo de movimiento estilo COD Zombies"""
 	var movement_direction = Vector2.ZERO
-	
-	if is_in_attack_animation:
-		velocity = Vector2.ZERO
-		move_and_slide()
-		return
 	
 	match current_state:
 		EnemyState.CHASING:
@@ -565,16 +557,15 @@ func handle_movement_cod_style(delta):
 		EnemyState.STUNNED:
 			movement_direction = velocity.move_toward(Vector2.ZERO, move_speed * delta * 2)
 	
-	# NUEVO: Aplicar separación fuerte para evitar que se peguen
+	# Aplicar separación
 	if separation_force.length() > 0:
 		movement_direction += separation_force.normalized() * 0.8
 	
-	# NUEVO: Mantener distancia mínima del jugador - CORREGIDO
+	# Mantener distancia mínima del jugador
 	if player:
 		var distance_to_player = global_position.distance_to(player.global_position)
 		if distance_to_player < proximity_distance and distance_to_player > 0:
 			var separation_from_player = (global_position - player.global_position).normalized()
-			# Aplicar fuerza de separación más fuerte
 			movement_direction += separation_from_player * push_back_force * delta
 	
 	if movement_direction != Vector2.ZERO:
@@ -585,19 +576,17 @@ func handle_movement_cod_style(delta):
 	move_and_slide()
 
 func get_movement_towards_player() -> Vector2:
-	"""Obtener dirección de movimiento hacia el jugador - CORREGIDO"""
+	"""Obtener dirección de movimiento hacia el jugador"""
 	if not player:
 		return Vector2.ZERO
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	# Si está muy cerca, NO moverse más hacia el jugador
 	if distance_to_player <= proximity_distance:
 		return Vector2.ZERO
 	
 	var direction = (player.global_position - global_position).normalized()
 	
-	# Añadir algo de aleatoriedad
 	if randf() < 0.1:
 		direction = direction.rotated(randf_range(-0.3, 0.3))
 	
@@ -606,7 +595,7 @@ func get_movement_towards_player() -> Vector2:
 	return direction
 
 func get_wander_movement() -> Vector2:
-	"""Comportamiento de deambulación cuando no ve al jugador"""
+	"""Comportamiento de deambulación"""
 	var to_wander_target = wander_target - global_position
 	
 	if to_wander_target.length() < 50.0:
@@ -635,7 +624,7 @@ func update_sprite_animation(animation: String, direction: Vector2):
 			animated_sprite.play("idle")
 
 func handle_combat_cod_style():
-	"""Manejo de combate estilo COD Black Ops Zombies - CORREGIDO"""
+	"""Manejo de combate estilo COD Black Ops Zombies - DAÑO REAL"""
 	if current_state == EnemyState.ATTACKING and can_damage_player:
 		var current_time = Time.get_ticks_msec() / 1000.0
 		
@@ -645,7 +634,7 @@ func handle_combat_cod_style():
 				perform_zombie_grab_attack()
 
 func perform_zombie_grab_attack():
-	"""Realizar ataque de agarre estilo COD Black Ops Zombies - CORREGIDO"""
+	"""Realizar ataque de agarre - DAÑO REAL APLICADO"""
 	if not player or not can_damage_player:
 		return
 	
@@ -653,10 +642,7 @@ func perform_zombie_grab_attack():
 	if distance_to_player > attack_range:
 		return
 	
-	print("⚔️ Enemigo atacando jugador a distancia: ", distance_to_player)
-	
 	is_attacking = true
-	is_in_attack_animation = true
 	can_damage_player = false
 	last_attack_time = Time.get_ticks_msec() / 1000.0
 	
@@ -664,62 +650,11 @@ func perform_zombie_grab_attack():
 	if sprite:
 		sprite.modulate = Color.ORANGE_RED
 	
-	# Secuencia de ataque
-	var attack_tween = create_tween()
-	
-	# Fase 1: Preparación (0.2s)
-	attack_tween.tween_callback(func(): 
-		if sprite:
-			var prep_tween = create_tween()
-			prep_tween.tween_property(sprite, "scale", Vector2(1.2, 1.2), 0.1)
-			prep_tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.1)
-	)
-	attack_tween.tween_interval(0.2)
-	
-	# Fase 2: Agarre y daño (0.4s)
-	attack_tween.tween_callback(func():
-		var final_distance = global_position.distance_to(player.global_position)
-		if final_distance <= attack_range * 1.5:
-			apply_grab_damage_to_player()
-			create_grab_effect()
-	)
-	attack_tween.tween_interval(0.4)
-	
-	# Fase 3: Recuperación (0.2s)
-	attack_tween.tween_callback(func():
-		if sprite:
-			sprite.modulate = original_color
-		
-		is_in_attack_animation = false
-		
-		# Iniciar cooldown de ataque
-		if attack_timer:
-			attack_timer.start()
-		
-		# Iniciar cooldown de daño
-		var damage_timer = get_node("DamageCooldownTimer")
-		if damage_timer:
-			damage_timer.start()
-	)
-
-func apply_grab_damage_to_player():
-	"""Aplicar daño de agarre al jugador estilo COD Black Ops"""
-	if not player:
-		return
-	
-	var distance_to_player = global_position.distance_to(player.global_position)
-	if distance_to_player > attack_range * 1.5:
-		return
-	
-	var final_damage = grab_damage
-	
-	print("💀 Aplicando ", final_damage, " de daño al jugador")
-	
-	# APLICAR DAÑO DIRECTAMENTE AL JUGADOR
+	# APLICAR DAÑO INMEDIATAMENTE AL JUGADOR
 	if player.has_method("take_damage"):
-		player.take_damage(final_damage)
+		player.take_damage(damage)
 	
-	# Aplicar efecto de agarre (slow)
+	# Aplicar efecto de agarre
 	if player and player.has_method("apply_grab_effect"):
 		player.apply_grab_effect(1.0)
 	
@@ -727,14 +662,29 @@ func apply_grab_damage_to_player():
 	if player and player.has_method("apply_knockback"):
 		var push_direction = (player.global_position - global_position).normalized()
 		player.apply_knockback(push_direction, 75.0)
+	
+	create_grab_effect()
+	
+	# Restaurar color y estados
+	if sprite:
+		var color_tween = create_tween()
+		color_tween.tween_property(sprite, "modulate", original_color, 0.3)
+	
+	# Iniciar cooldown de ataque
+	if attack_timer:
+		attack_timer.start()
+	
+	# Iniciar cooldown de daño
+	var damage_timer = get_node("DamageCooldownTimer")
+	if damage_timer:
+		damage_timer.start()
 
 func create_grab_effect():
-	"""Crear efecto visual de agarre estilo COD Black Ops"""
+	"""Crear efecto visual de agarre"""
 	var effect = Node2D.new()
 	effect.position = global_position
 	get_tree().current_scene.add_child(effect)
 	
-	# Crear partículas de agarre
 	for i in range(6):
 		var particle = Sprite2D.new()
 		var particle_image = Image.create(6, 6, false, Image.FORMAT_RGBA8)
@@ -747,13 +697,11 @@ func create_grab_effect():
 		
 		effect.add_child(particle)
 		
-		# Animar partícula
 		var particle_tween = effect.create_tween()
 		particle_tween.parallel().tween_property(particle, "position", offset * 2, 0.5)
 		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
 		particle_tween.parallel().tween_property(particle, "scale", Vector2.ZERO, 0.5)
 	
-	# Limpiar efecto después de un tiempo
 	var cleanup_timer = Timer.new()
 	cleanup_timer.wait_time = 1.0
 	cleanup_timer.one_shot = true
