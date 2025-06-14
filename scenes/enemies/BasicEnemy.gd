@@ -1,4 +1,4 @@
-# scenes/enemies/BasicEnemy.gd
+# scenes/enemies/BasicEnemy.gd - ATAQUE CORREGIDO ESTILO COD BLACK OPS
 extends CharacterBody2D
 class_name Enemy
 
@@ -23,11 +23,17 @@ var is_attacking: bool = false
 var last_attack_time: float = 0.0
 var attack_cooldown: float = 2.0
 
-# Variables para ataque estilo COD Black Ops Zombies
+# Variables para ataque estilo COD Black Ops Zombies - CORREGIDAS
 var attack_animation_duration: float = 0.8
 var is_in_attack_animation: bool = false
 var lunge_force: float = 200.0
 var grab_damage: int = 1
+
+# NUEVO: Variables para prevenir spam de ataques
+var can_damage_player: bool = true
+var damage_cooldown: float = 1.5  # Cooldown entre ataques exitosos
+var attack_hitbox: Area2D  # Area de ataque separada
+var is_attack_ready: bool = true
 
 # Variables para sprites
 var enemy_sprite_frames: SpriteFrames
@@ -66,6 +72,52 @@ var head_area: Area2D
 func _ready():
 	setup_enemy()
 	setup_head_collision()
+	setup_attack_system()  # NUEVO: Sistema de ataque mejorado
+
+func setup_attack_system():
+	"""NUEVO: Configurar sistema de ataque mejorado estilo COD Black Ops"""
+	# Crear área de ataque separada
+	attack_hitbox = Area2D.new()
+	attack_hitbox.name = "AttackHitbox"
+	attack_hitbox.collision_layer = 0
+	attack_hitbox.collision_mask = 1  # Solo el jugador
+	
+	var attack_shape = CollisionShape2D.new()
+	var attack_circle = CircleShape2D.new()
+	attack_circle.radius = attack_range * 1.2  # Ligeramente más grande que el rango
+	attack_shape.shape = attack_circle
+	
+	attack_hitbox.add_child(attack_shape)
+	add_child(attack_hitbox)
+	
+	# Conectar señales del área de ataque
+	attack_hitbox.body_entered.connect(_on_attack_area_entered)
+	attack_hitbox.body_exited.connect(_on_attack_area_exited)
+	
+	# Configurar timer de cooldown de daño
+	var damage_cooldown_timer = Timer.new()
+	damage_cooldown_timer.name = "DamageCooldownTimer"
+	damage_cooldown_timer.wait_time = damage_cooldown
+	damage_cooldown_timer.one_shot = true
+	damage_cooldown_timer.timeout.connect(_on_damage_cooldown_finished)
+	add_child(damage_cooldown_timer)
+	
+	print("✅ Sistema de ataque COD Black Ops configurado para enemigo")
+
+func _on_attack_area_entered(body):
+	"""Cuando el jugador entra en el área de ataque"""
+	if body is Player and not is_dead:
+		print("🎯 Jugador entró en área de ataque del enemigo")
+
+func _on_attack_area_exited(body):
+	"""Cuando el jugador sale del área de ataque"""
+	if body is Player and not is_dead:
+		print("🎯 Jugador salió del área de ataque del enemigo")
+
+func _on_damage_cooldown_finished():
+	"""Cuando termina el cooldown de daño"""
+	can_damage_player = true
+	print("✅ Enemigo puede volver a atacar")
 
 func setup_head_collision():
 	"""Configurar área de colisión para headshots"""
@@ -107,8 +159,11 @@ func setup_enemy():
 	current_health = max_health
 	is_dead = false
 	is_attacking = false
+	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	damage = 1
+	can_damage_player = true
+	is_attack_ready = true
 	
 	last_position = global_position
 	wander_target = global_position + Vector2(randf_range(-200, 200), randf_range(-200, 200))
@@ -199,7 +254,7 @@ func load_frames_from_atlas(sprite_frames: SpriteFrames, anim_name: String, atla
 	
 	for i in range(h_frames * v_frames):
 		var x = float(i % h_frames) * frame_width
-		var y = float(i / h_frames) * frame_height
+		var y = (i / h_frames) * frame_height
 		
 		var atlas_frame = AtlasTexture.new()
 		atlas_frame.atlas = atlas_texture
@@ -319,6 +374,8 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	is_in_attack_animation = false
 	current_state = EnemyState.IDLE
 	damage = 1
+	can_damage_player = true
+	is_attack_ready = true
 	
 	aggression_level = randf_range(0.8, 1.2)
 	search_timer = 0.0
@@ -338,6 +395,8 @@ func reset_for_pool():
 	current_state = EnemyState.IDLE
 	current_health = max_health
 	damage = 1
+	can_damage_player = true
+	is_attack_ready = true
 	
 	if sprite:
 		sprite.modulate = original_color
@@ -349,6 +408,7 @@ func reset_for_pool():
 func _on_attack_timer_timeout():
 	"""Cuando termina el cooldown de ataque"""
 	is_attacking = false
+	is_attack_ready = true
 
 func apply_knockback(direction: Vector2, force: float):
 	"""Aplicar knockback al enemigo"""
@@ -589,20 +649,33 @@ func update_sprite_animation(animation: String, direction: Vector2):
 			animated_sprite.play("idle")
 
 func handle_combat_cod_style():
-	"""Manejo de combate estilo COD Black Ops Zombies"""
-	if current_state == EnemyState.ATTACKING and not is_attacking and not is_in_attack_animation:
+	"""Manejo de combate estilo COD Black Ops Zombies - CORREGIDO"""
+	if current_state == EnemyState.ATTACKING and is_attack_ready and can_damage_player:
 		var current_time = Time.get_ticks_msec() / 1000.0
 		
 		if current_time - last_attack_time >= attack_cooldown:
-			perform_zombie_grab_attack()
+			# VERIFICAR DISTANCIA REAL AL JUGADOR ANTES DE ATACAR
+			var distance_to_player = global_position.distance_to(player.global_position)
+			if distance_to_player <= attack_range:
+				perform_zombie_grab_attack()
 
 func perform_zombie_grab_attack():
-	"""Realizar ataque de agarre estilo COD Black Ops Zombies"""
-	if not player or is_attacking or is_in_attack_animation:
+	"""Realizar ataque de agarre estilo COD Black Ops Zombies - CORREGIDO"""
+	if not player or not is_attack_ready or not can_damage_player:
 		return
+	
+	# VERIFICACIÓN DOBLE DE DISTANCIA
+	var distance_to_player = global_position.distance_to(player.global_position)	
+	if distance_to_player > attack_range:
+		print("🚫 Ataque cancelado - jugador fuera de rango: ", distance_to_player)
+		return
+	
+	print("⚔️ Enemigo iniciando ataque contra jugador a distancia: ", distance_to_player)
 	
 	is_attacking = true
 	is_in_attack_animation = true
+	is_attack_ready = false
+	can_damage_player = false
 	last_attack_time = Time.get_ticks_msec() / 1000.0
 	
 	# Efecto visual de preparación del ataque
@@ -625,10 +698,16 @@ func perform_zombie_grab_attack():
 	)
 	attack_tween.tween_interval(0.2)
 	
-	# Fase 2: Agarre y daño (0.4s)
+	# Fase 2: Agarre y daño (0.4s) - CON VERIFICACIÓN DE DISTANCIA
 	attack_tween.tween_callback(func():
-		apply_grab_damage_to_player()
-		create_grab_effect()
+		# VERIFICAR NUEVAMENTE LA DISTANCIA ANTES DE APLICAR DAÑO
+		var final_distance = global_position.distance_to(player.global_position)
+		if final_distance <= attack_range * 1.5:  # Dar un poco más de margen
+			apply_grab_damage_to_player()
+			create_grab_effect()
+			print("💥 Daño aplicado al jugador - distancia final: ", final_distance)
+		else:
+			print("🚫 Daño no aplicado - jugador se alejó: ", final_distance)
 	)
 	attack_tween.tween_interval(0.4)
 	
@@ -639,20 +718,31 @@ func perform_zombie_grab_attack():
 		
 		is_in_attack_animation = false
 		
+		# Iniciar cooldown de ataque
 		if attack_timer:
 			attack_timer.start()
+		
+		# Iniciar cooldown de daño
+		var damage_timer = get_node("DamageCooldownTimer")
+		if damage_timer:
+			damage_timer.start()
+		
+		print("✅ Ataque del enemigo completado, cooldowns iniciados")
 	)
 
 func apply_grab_damage_to_player():
-	"""Aplicar daño de agarre al jugador estilo COD Black Ops"""
+	"""Aplicar daño de agarre al jugador estilo COD Black Ops - CONTROLADO"""
 	if not player:
 		return
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
 	if distance_to_player > attack_range * 1.5:
+		print("🚫 Daño cancelado - jugador muy lejos: ", distance_to_player)
 		return
 	
 	var final_damage = grab_damage
+	
+	print("💀 Aplicando ", final_damage, " de daño al jugador")
 	
 	# Aplicar daño
 	if player.has_method("take_damage"):

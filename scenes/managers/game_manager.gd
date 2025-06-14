@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd
+# scenes/managers/game_manager.gd - COLISIONES Y LAYERS CORREGIDOS
 extends Node
 class_name GameManager
 
@@ -97,12 +97,29 @@ func update_ui_elements():
 
 func _ready():
 	is_mobile = OS.has_feature("mobile")
+	setup_collision_layers()  # NUEVO: Configurar layers de colisión
 	setup_background()
 	setup_window()
 	setup_pause_menu()
 	
 	await get_tree().process_frame
 	show_character_selection()
+
+func setup_collision_layers():
+	"""NUEVO: Configurar las capas de colisión correctamente estilo COD Black Ops"""
+	# Configurar las capas del proyecto
+	# Capa 1: Jugador
+	# Capa 2: Enemigos  
+	# Capa 3: Estructuras/Paredes
+	# Capa 4: Proyectiles/Balas
+	# Capa 5: Areas especiales (headshots, etc.)
+	
+	print("🎯 Configurando sistema de colisiones estilo COD Black Ops")
+	print("  - Capa 1: Jugador")
+	print("  - Capa 2: Enemigos")
+	print("  - Capa 3: Estructuras")
+	print("  - Capa 4: Proyectiles")
+	print("  - Capa 5: Areas especiales")
 
 func _input(event):
 	# Detección del menú para todas las plataformas
@@ -164,6 +181,9 @@ func _on_character_selected(character_stats: CharacterStats):
 			player.current_health = selected_character_stats.current_health
 			player.max_health = selected_character_stats.max_health
 		
+		# CONFIGURAR LAYERS DE COLISIÓN DEL JUGADOR
+		setup_player_collision_layers()
+		
 		player.set_physics_process(true)
 		player.set_process(true)
 		
@@ -174,6 +194,19 @@ func _on_character_selected(character_stats: CharacterStats):
 	
 	await get_tree().create_timer(3.0).timeout
 	start_enemy_spawning_safely()
+
+func setup_player_collision_layers():
+	"""NUEVO: Configurar las capas de colisión del jugador"""
+	if not player:
+		return
+	
+	# Jugador en capa 1, colisiona con enemigos (capa 2) y estructuras (capa 3)
+	player.collision_layer = 1
+	player.collision_mask = 2 | 3  # Colisiona con enemigos y estructuras
+	
+	print("✅ Capas de colisión del jugador configuradas")
+	print("  - Layer: 1 (Jugador)")
+	print("  - Mask: 2|3 (Enemigos + Estructuras)")
 
 func setup_player_after_selection():
 	"""Configurar jugador después de la selección"""
@@ -250,7 +283,7 @@ func _on_round_changed(new_round: int):
 	if score_system:
 		score_system.set_round_multiplier(new_round)
 
-func _on_enemies_remaining_changed(remaining: int):
+func _on_enemies_remaining_changed(_remaining: int):
 	"""Actualizar cuando cambian enemigos restantes"""
 	pass
 
@@ -654,15 +687,18 @@ func create_shooting_joystick():
 	pass
 
 func _on_enemy_killed(enemy: Enemy):
-	"""Cuando un enemigo es eliminado"""
+	"""Cuando un enemigo es eliminado - MEJORADO"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 	
 	if score_system and enemy:
-		score_system.add_kill_points(enemy.global_position, false, false)
+		# DETECTAR SI FUE HEADSHOT BASADO EN LA POSICIÓN DE LA BALA
+		var is_headshot = enemy.has_method("was_headshot_kill") and enemy.was_headshot_kill()
+		score_system.add_kill_points(enemy.global_position, is_headshot, false)
 	
+	# NOTIFICAR AL JUGADOR PARA SONIDO DE KILL (SOLO PELAO)
 	if player:
 		player.on_enemy_killed()
 

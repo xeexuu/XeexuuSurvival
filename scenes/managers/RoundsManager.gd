@@ -17,9 +17,11 @@ var enemies_multiplier_per_round: float = 1.25
 # Sistema de salud de enemigos estilo COD
 var base_enemy_health: int = 150
 
-# UI de rondas - CORREGIDA PARA MOSTRAR CORRECTAMENTE
+# UI de rondas - CORREGIDA
 var round_ui: Control
 var player_camera: Camera2D
+var round_label: Label  # Referencias directas
+var enemies_label: Label
 
 # Referencias
 var enemy_spawner: EnemySpawner
@@ -31,9 +33,10 @@ func _ready():
 	pass
 
 func setup_round_ui_on_camera(camera: Camera2D):
-	"""Configurar la UI de rondas en la esquina INFERIOR IZQUIERDA"""
+	"""Configurar la UI de rondas en la esquina INFERIOR IZQUIERDA - CORREGIDA"""
 	player_camera = camera
 	if not player_camera:
+		print("❌ No se puede configurar UI sin cámara")
 		return
 	
 	round_ui = Control.new()
@@ -54,8 +57,8 @@ func setup_round_ui_on_camera(camera: Camera2D):
 	vbox.size = Vector2(ui_size.x - 30, ui_size.y - 30)
 	round_ui.add_child(vbox)
 	
-	# Etiqueta de ronda - NÚMEROS ROMANOS
-	var round_label = Label.new()
+	# Etiqueta de ronda - NÚMEROS ROMANOS - REFERENCIAS DIRECTAS
+	round_label = Label.new()
 	round_label.name = "RoundLabel"
 	round_label.text = "RONDA I"
 	var round_font_size = 28 if not is_mobile else 32
@@ -67,8 +70,8 @@ func setup_round_ui_on_camera(camera: Camera2D):
 	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	vbox.add_child(round_label)
 	
-	# Etiqueta de enemigos restantes
-	var enemies_label = Label.new()
+	# Etiqueta de enemigos restantes - REFERENCIAS DIRECTAS
+	enemies_label = Label.new()
 	enemies_label.name = "EnemiesLabel"
 	enemies_label.text = "Zombies: 0"
 	var enemies_font_size = 20 if not is_mobile else 24
@@ -83,7 +86,7 @@ func setup_round_ui_on_camera(camera: Camera2D):
 	# Añadir a la cámara
 	player_camera.add_child(round_ui)
 	
-	print("✅ UI de rondas configurada correctamente")
+	print("✅ UI de rondas configurada correctamente con referencias directas")
 
 func _process(_delta):
 	"""Actualizar posición de la UI relativa a la cámara - INFERIOR IZQUIERDA"""
@@ -100,7 +103,7 @@ func _process(_delta):
 		round_ui.position = ui_offset
 
 func int_to_roman(num: int) -> String:
-	"""Convertir número entero a números romanos - MEJORADO"""
+	"""Convertir número entero a números romanos"""
 	if num <= 0:
 		return "I"
 	
@@ -264,47 +267,39 @@ func show_message(message: Control):
 	get_tree().current_scene.add_child(message)
 
 func update_round_ui():
-	"""Actualizar toda la UI de ronda - CORREGIDO"""
-	if not round_ui:
-		print("❌ No hay round_ui para actualizar")
+	"""Actualizar toda la UI de ronda - CORREGIDO CON REFERENCIAS DIRECTAS"""
+	if not round_label:
+		print("❌ No hay round_label para actualizar")
 		return
 	
-	var round_label = round_ui.find_child("RoundLabel")
-	if round_label:
-		var roman_round = int_to_roman(current_round)
-		round_label.text = "RONDA " + roman_round
-		print("✅ Ronda actualizada a: ", round_label.text)
-	else:
-		print("❌ No se encontró RoundLabel")
+	var roman_round = int_to_roman(current_round)
+	round_label.text = "RONDA " + roman_round
+	print("✅ Ronda actualizada a: ", round_label.text)
 	
 	update_enemies_ui()
 
 func update_enemies_ui():
-	"""Actualizar solo la UI de enemigos restantes - CORREGIDO"""
-	if not round_ui:
-		print("❌ No hay round_ui para actualizar enemigos")
+	"""Actualizar solo la UI de enemigos restantes - CORREGIDO CON REFERENCIAS DIRECTAS"""
+	if not enemies_label:
+		print("❌ No hay enemies_label para actualizar")
 		return
 	
-	var enemies_label = round_ui.find_child("EnemiesLabel")
-	if enemies_label:
-		# Calcular enemigos restantes correctamente
-		var active_count = enemy_spawner.get_active_enemy_count() if enemy_spawner else 0
-		var to_spawn = enemy_spawner.get_enemies_remaining_to_spawn() if enemy_spawner else 0
-		var total_remaining = active_count + to_spawn
-		
-		enemies_label.text = "Zombies: " + str(total_remaining)
-		
-		print("✅ Enemigos actualizados: ", enemies_label.text, " (Activos: ", active_count, ", Por spawn: ", to_spawn, ")")
-		
-		# Cambiar color según enemigos restantes
-		if total_remaining <= 1:
-			enemies_label.add_theme_color_override("font_color", Color.GREEN)
-		elif total_remaining <= 5:
-			enemies_label.add_theme_color_override("font_color", Color.YELLOW)
-		else:
-			enemies_label.add_theme_color_override("font_color", Color.RED)
+	# Calcular enemigos restantes correctamente
+	var active_count = enemy_spawner.get_active_enemy_count() if enemy_spawner else 0
+	var to_spawn = enemy_spawner.get_enemies_remaining_to_spawn() if enemy_spawner else 0
+	var total_remaining = active_count + to_spawn
+	
+	enemies_label.text = "Zombies: " + str(total_remaining)
+	
+	print("✅ Enemigos actualizados: ", enemies_label.text, " (Activos: ", active_count, ", Por spawn: ", to_spawn, ")")
+	
+	# Cambiar color según enemigos restantes
+	if total_remaining <= 1:
+		enemies_label.add_theme_color_override("font_color", Color.GREEN)
+	elif total_remaining <= 5:
+		enemies_label.add_theme_color_override("font_color", Color.YELLOW)
 	else:
-		print("❌ No se encontró EnemiesLabel")
+		enemies_label.add_theme_color_override("font_color", Color.RED)
 
 func get_current_round() -> int:
 	"""Obtener la ronda actual"""

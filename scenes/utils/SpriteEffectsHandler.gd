@@ -32,7 +32,7 @@ static func load_enemy_sprite_atlas(enemy_type: String) -> SpriteFrames:
 	else:
 		return create_default_enemy_sprite_frames(enemy_type)
 
-static func create_sprite_frames_from_atlas(atlas_texture: Texture2D, entity_type: String) -> SpriteFrames:
+static func create_sprite_frames_from_atlas(atlas_texture: Texture2D, _entity_type: String) -> SpriteFrames:
 	"""Crear SpriteFrames desde un atlas"""
 	var sprite_frames = SpriteFrames.new()
 	
@@ -74,7 +74,7 @@ static func extract_frame_from_atlas(atlas_texture: Texture2D, frame_index: int,
 	var frame_height = float(texture_size.y) / float(total_v_frames)
 	
 	var x = float(frame_index % total_h_frames) * frame_width
-	var y = float(frame_index / total_h_frames) * frame_height
+	var y = (frame_index / total_h_frames) * frame_height
 	
 	var atlas_frame = AtlasTexture.new()
 	atlas_frame.atlas = atlas_texture
@@ -135,7 +135,7 @@ static func create_default_character_texture(character_name: String) -> Texture2
 	
 	return ImageTexture.create_from_image(image)
 
-static func create_default_enemy_texture(enemy_type: String) -> Texture2D:
+static func create_default_enemy_texture(_enemy_type: String) -> Texture2D:
 	"""Crear textura por defecto para enemigo escalada a 128px"""
 	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
 	image.fill(Color.DARK_RED)
@@ -430,7 +430,7 @@ static func create_muzzle_flash_sprite() -> Texture2D:
 	
 	return ImageTexture.create_from_image(image)
 
-static func create_weapon_sprite(weapon_name: String) -> Texture2D:
+static func create_weapon_sprite(_weapon_name: String) -> Texture2D:
 	"""Crear sprite básico de arma"""
 	var image = Image.create(24, 8, false, Image.FORMAT_RGBA8)
 	image.fill(Color.TRANSPARENT)
