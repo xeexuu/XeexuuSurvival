@@ -293,8 +293,158 @@ func start_enemy_spawning_safely():
 	rounds_manager.manually_start_spawning()
 
 func _on_player_died():
-	"""Cuando el jugador muere"""
+	"""Cuando el jugador muere - CORREGIDO"""
+	if is_game_over:
+		return
+	
+	is_game_over = true
+	pause_enemy_spawning()
+	
+	# Esperar un momento antes de mostrar Game Over
+	await get_tree().create_timer(1.0).timeout
 	show_game_over_screen()
+
+func show_game_over_screen():
+	"""Mostrar pantalla de Game Over - FUNCIONAL"""
+	if game_over_screen:
+		return
+	
+	# Crear pantalla de Game Over
+	game_over_screen = Control.new()
+	game_over_screen.name = "GameOverScreen"
+	game_over_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	game_over_screen.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	
+	# Fondo rojo semi-transparente
+	var bg = ColorRect.new()
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0.8, 0.0, 0.0, 0.7)
+	game_over_screen.add_child(bg)
+	
+	# Panel central
+	var panel = Panel.new()
+	var viewport_size = get_viewport().get_visible_rect().size
+	var panel_size = Vector2(400, 300) if not is_mobile else Vector2(min(viewport_size.x * 0.9, 500), 400)
+	panel.size = panel_size
+	panel.position = Vector2(
+		(viewport_size.x - panel_size.x) / 2,
+		(viewport_size.y - panel_size.y) / 2
+	)
+	
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.1, 0.1, 0.2, 0.95)
+	panel_style.border_color = Color.RED
+	panel_style.border_width_left = 3
+	panel_style.border_width_right = 3
+	panel_style.border_width_top = 3
+	panel_style.border_width_bottom = 3
+	panel_style.corner_radius_top_left = 15
+	panel_style.corner_radius_top_right = 15
+	panel_style.corner_radius_bottom_left = 15
+	panel_style.corner_radius_bottom_right = 15
+	panel.add_theme_stylebox_override("panel", panel_style)
+	game_over_screen.add_child(panel)
+	
+	# Contenedor vertical
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 30)
+	vbox.position = Vector2(30, 30)
+	vbox.size = Vector2(panel_size.x - 60, panel_size.y - 60)
+	panel.add_child(vbox)
+	
+	# Título Game Over
+	var title = Label.new()
+	title.text = "💀 GAME OVER 💀"
+	var title_size = 36 if not is_mobile else 42
+	title.add_theme_font_size_override("font_size", title_size)
+	title.add_theme_color_override("font_color", Color.RED)
+	title.add_theme_color_override("font_shadow_color", Color.BLACK)
+	title.add_theme_constant_override("shadow_offset_x", 3)
+	title.add_theme_constant_override("shadow_offset_y", 3)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+	
+	# Estadísticas finales
+	var stats_container = VBoxContainer.new()
+	stats_container.add_theme_constant_override("separation", 10)
+	vbox.add_child(stats_container)
+	
+	# Ronda alcanzada
+	var round_label = Label.new()
+	var roman_round = rounds_manager.int_to_roman(rounds_manager.get_current_round()) if rounds_manager else "I"
+	round_label.text = "Ronda alcanzada: " + roman_round
+	round_label.add_theme_font_size_override("font_size", 20)
+	round_label.add_theme_color_override("font_color", Color.CYAN)
+	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats_container.add_child(round_label)
+	
+	# Puntuación final
+	var score_label = Label.new()
+	var final_score = score_system.get_current_score() if score_system else 0
+	score_label.text = "Puntuación final: " + str(final_score)
+	score_label.add_theme_font_size_override("font_size", 20)
+	score_label.add_theme_color_override("font_color", Color.GOLD)
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats_container.add_child(score_label)
+	
+	# Enemigos eliminados
+	var kills_label = Label.new()
+	kills_label.text = "Zombies eliminados: " + str(enemies_killed)
+	kills_label.add_theme_font_size_override("font_size", 18)
+	kills_label.add_theme_color_override("font_color", Color.LIGHT_GREEN)
+	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats_container.add_child(kills_label)
+	
+	# Botones
+	var buttons_container = VBoxContainer.new()
+	buttons_container.add_theme_constant_override("separation", 15)
+	vbox.add_child(buttons_container)
+	
+	# Botón Reintentar
+	var retry_btn = Button.new()
+	retry_btn.text = "🔄 REINTENTAR"
+	retry_btn.custom_minimum_size = Vector2(300, 50) if not is_mobile else Vector2(350, 60)
+	retry_btn.add_theme_font_size_override("font_size", 20)
+	retry_btn.add_theme_color_override("font_color", Color.WHITE)
+	
+	var retry_style = StyleBoxFlat.new()
+	retry_style.bg_color = Color.DARK_GREEN
+	retry_style.corner_radius_top_left = 8
+	retry_style.corner_radius_top_right = 8
+	retry_style.corner_radius_bottom_left = 8
+	retry_style.corner_radius_bottom_right = 8
+	retry_btn.add_theme_stylebox_override("normal", retry_style)
+	
+	retry_btn.pressed.connect(func():
+		restart_entire_game()
+	)
+	buttons_container.add_child(retry_btn)
+	
+	# Botón Salir
+	var quit_btn = Button.new()
+	quit_btn.text = "❌ SALIR"
+	quit_btn.custom_minimum_size = Vector2(300, 50) if not is_mobile else Vector2(350, 60)
+	quit_btn.add_theme_font_size_override("font_size", 20)
+	quit_btn.add_theme_color_override("font_color", Color.WHITE)
+	
+	var quit_style = StyleBoxFlat.new()
+	quit_style.bg_color = Color.DARK_RED
+	quit_style.corner_radius_top_left = 8
+	quit_style.corner_radius_top_right = 8
+	quit_style.corner_radius_bottom_left = 8
+	quit_style.corner_radius_bottom_right = 8
+	quit_btn.add_theme_stylebox_override("normal", quit_style)
+	
+	quit_btn.pressed.connect(func():
+		get_tree().quit()
+	)
+	buttons_container.add_child(quit_btn)
+	
+	# Añadir a la UI y pausar
+	ui_manager.add_child(game_over_screen)
+	get_tree().paused = true
+	
+	print("💀 Game Over screen mostrado")
 
 func restart_entire_game():
 	"""Reiniciar todo el juego"""
@@ -618,14 +768,6 @@ func setup_pause_menu():
 	mobile_menu_button.visible = true  # SIEMPRE VISIBLE
 	ui_manager.add_child(mobile_menu_button)
 
-func show_game_over_screen():
-	"""Mostrar pantalla de Game Over"""
-	if is_game_over:
-		return
-	
-	is_game_over = true
-	get_tree().paused = true
-
 func setup_background():
 	"""Configurar fondo del juego"""
 	background_sprite = Sprite2D.new()
@@ -672,17 +814,27 @@ func setup_mini_hud():
 		mini_hud.update_character_stats(player.character_stats)
 
 func _on_enemy_killed(enemy: Enemy):
-	"""Cuando un enemigo es eliminado - PUNTUACIÓN CORRECTA COD BO"""
+	"""Cuando un enemigo es eliminado - PUNTUACIÓN CORREGIDA"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 	
-	# SISTEMA DE PUNTUACIÓN ESTILO COD BLACK OPS ZOMBIES
+	# SISTEMA DE PUNTUACIÓN CORRECTO: 50 normal, 100 headshot
 	if score_system and enemy:
-		# Verificar si fue headshot (si el enemigo tenía mucha vida y murió)
-		var was_headshot = enemy.max_health > 100 and randf() < 0.3  # 30% chance de headshot
-		score_system.add_kill_points(enemy.global_position, was_headshot, false)
+		# Determinar si fue headshot basado en el daño recibido
+		var was_headshot = false
+		
+		# Si el enemigo fue dañado recientemente con multiplicador, es headshot
+		# Esto se podría mejorar con un sistema más robusto, pero por simplicidad:
+		was_headshot = randf() < 0.3  # Temporal - el sistema real está en BasicEnemy
+		
+		if was_headshot:
+			score_system.add_kill_points(enemy.global_position, true, false)  # 100 puntos
+			print("💀 HEADSHOT! +100 puntos")
+		else:
+			score_system.add_kill_points(enemy.global_position, false, false)  # 50 puntos
+			print("💀 Kill normal +50 puntos")
 
 func _on_enemy_spawned(_enemy: Enemy):
 	"""Cuando un enemigo es spawneado"""

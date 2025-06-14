@@ -1,4 +1,4 @@
-# scenes/enemies/BasicEnemy.gd - DAÑO CORREGIDO Y DESTRUCCIÓN COMPLETA
+# scenes/enemies/BasicEnemy.gd - COLISIÓN Y HEADSHOT CORREGIDOS
 extends CharacterBody2D
 class_name Enemy
 
@@ -9,7 +9,7 @@ signal damaged(enemy: Enemy, damage: int)
 @export var current_health: int = 150
 @export var move_speed: float = 50.0
 @export var damage: int = 1
-@export var attack_range: float = 50.0  # AUMENTADO PARA MEJOR DETECCIÓN
+@export var attack_range: float = 50.0
 @export var detection_range: float = 500.0
 
 @onready var sprite = $Sprite2D
@@ -21,16 +21,16 @@ var player: Player = null
 var is_dead: bool = false
 var is_attacking: bool = false
 var last_attack_time: float = 0.0
-var attack_cooldown: float = 1.5  # MÁS RÁPIDO
+var attack_cooldown: float = 1.5
 
-# Control de proximidad al jugador - MEJORADO
+# Control de proximidad al jugador
 var proximity_distance: float = 40.0
 var separation_force_strength: float = 300.0
 var push_back_force: float = 150.0
 
 # Variables para prevenir spam de ataques
 var can_damage_player: bool = true
-var damage_cooldown: float = 1.0  # MÁS RÁPIDO
+var damage_cooldown: float = 1.0
 
 # Variables para sprites
 var enemy_sprite_frames: SpriteFrames
@@ -63,7 +63,7 @@ var nearby_enemies: Array[Enemy] = []
 var separation_force: Vector2 = Vector2.ZERO
 var separation_radius: float = 80.0
 
-# Zona de headshot
+# Zona de headshot - CORREGIDA
 var head_area: Area2D
 
 func _ready():
@@ -85,33 +85,36 @@ func _on_damage_cooldown_finished():
 	can_damage_player = true
 
 func setup_head_collision():
-	"""Configurar área de colisión para headshots"""
+	"""Configurar área de colisión para headshots - CORREGIDA"""
 	head_area = Area2D.new()
 	head_area.name = "HeadArea"
 	head_area.collision_layer = 0
-	head_area.collision_mask = 4
+	head_area.collision_mask = 4  # Solo balas
 	
 	var head_shape = CollisionShape2D.new()
 	var head_circle = CircleShape2D.new()
-	head_circle.radius = 20.0
+	head_circle.radius = 25.0  # Área más grande para headshots
 	head_shape.shape = head_circle
-	head_shape.position = Vector2(0, -40)
+	head_shape.position = Vector2(0, -35)  # Más arriba en la cabeza
 	
 	head_area.add_child(head_shape)
 	add_child(head_area)
 	
+	# CONEXIÓN DIRECTA SIN DEFER
 	head_area.area_entered.connect(_on_head_area_entered)
 
 func _on_head_area_entered(area):
-	"""Cuando una bala entra en el área de la cabeza"""
+	"""Cuando una bala entra en el área de la cabeza - HEADSHOT REAL"""
+	if is_dead:
+		return
+		
 	if area.is_in_group("bullets") or area.name.contains("Bullet"):
 		var bullet = area as Bullet
 		if bullet and bullet.damage > 0:
-			var headshot_damage = bullet.damage
-			if bullet.has_method("get") and bullet.get("headshot_multiplier"):
-				headshot_damage = int(float(bullet.damage) * bullet.headshot_multiplier)
-			else:
-				headshot_damage = int(float(bullet.damage) * 1.4)
+			# HEADSHOT REAL - NO ALEATORIO
+			var headshot_damage = int(float(bullet.damage) * bullet.headshot_multiplier)
+			
+			print("💀 HEADSHOT! Daño: ", headshot_damage, " (", bullet.damage, " x ", bullet.headshot_multiplier, ")")
 			
 			take_damage(headshot_damage, true)
 			
@@ -346,14 +349,22 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	search_timer = 0.0
 	stuck_timer = 0.0
 	
+	# REACTIVAR COLISIONES CORRECTAMENTE
+	call_deferred("_reactivate_collision")
+	
 	if sprite:
 		sprite.modulate = original_color
 		sprite.visible = true
 	
 	update_health_bar()
 
+func _reactivate_collision():
+	"""Reactivar colisión de forma segura"""
+	if collision_shape and is_instance_valid(collision_shape):
+		collision_shape.disabled = false
+
 func reset_for_pool():
-	"""Resetear enemigo para el pool - DESTRUCCIÓN COMPLETA"""
+	"""Resetear enemigo para el pool"""
 	is_dead = false
 	is_attacking = false
 	current_state = EnemyState.IDLE
@@ -361,8 +372,8 @@ func reset_for_pool():
 	damage = 1
 	can_damage_player = true
 	
-	# ASEGURAR QUE NO BLOQUEE EL PASO
-	collision_shape.disabled = true
+	# DESACTIVAR COLISIONES USANDO DEFERRED
+	call_deferred("_deactivate_collision")
 	
 	if sprite:
 		sprite.modulate = original_color
@@ -370,6 +381,11 @@ func reset_for_pool():
 	
 	set_physics_process(false)
 	set_process(false)
+
+func _deactivate_collision():
+	"""Desactivar colisión de forma segura"""
+	if collision_shape and is_instance_valid(collision_shape):
+		collision_shape.disabled = true
 
 func _on_attack_timer_timeout():
 	"""Cuando termina el cooldown de ataque"""
@@ -430,15 +446,15 @@ func flash_headshot_effect():
 		tween.tween_property(sprite, "modulate", original_color, 0.1)
 
 func die():
-	"""Manejar la muerte del enemigo - DESTRUCCIÓN COMPLETA"""
+	"""Manejar la muerte del enemigo - COLISIÓN CORREGIDA"""
 	if is_dead:
 		return
 	
 	is_dead = true
 	current_state = EnemyState.DEAD
 	
-	# DESACTIVAR COLISIÓN INMEDIATAMENTE
-	collision_shape.disabled = true
+	# DESACTIVAR COLISIÓN USANDO DEFERRED PARA EVITAR ERROR
+	call_deferred("_deactivate_collision")
 	
 	velocity = Vector2.ZERO
 	set_physics_process(false)
@@ -624,7 +640,7 @@ func update_sprite_animation(animation: String, direction: Vector2):
 			animated_sprite.play("idle")
 
 func handle_combat_cod_style():
-	"""Manejo de combate estilo COD Black Ops Zombies - DAÑO REAL"""
+	"""Manejo de combate estilo COD Black Ops Zombies"""
 	if current_state == EnemyState.ATTACKING and can_damage_player:
 		var current_time = Time.get_ticks_msec() / 1000.0
 		
@@ -634,7 +650,7 @@ func handle_combat_cod_style():
 				perform_zombie_grab_attack()
 
 func perform_zombie_grab_attack():
-	"""Realizar ataque de agarre - DAÑO REAL APLICADO"""
+	"""Realizar ataque de agarre"""
 	if not player or not can_damage_player:
 		return
 	

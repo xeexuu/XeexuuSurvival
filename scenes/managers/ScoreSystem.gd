@@ -114,24 +114,32 @@ func _process(_delta):
 		
 		score_ui.position = ui_offset
 
+# Corrección para ScoreSystem.gd
+# Reemplazar la función add_kill_points:
+
 func add_kill_points(enemy_position: Vector2, is_headshot: bool = false, is_melee: bool = false):
-	"""Añadir puntos por matar enemigo estilo COD Black Ops Zombies"""
-	var points = base_kill_points
+	"""Añadir puntos por matar enemigo - PUNTOS FIJOS 50/100"""
+	var points = 0
 	var popup_type = "kill"
 	
-	# Bonus por headshot más generoso estilo Black Ops
+	# PUNTOS FIJOS SIN MODIFICADORES
 	if is_headshot:
-		points += headshot_bonus
+		points = 100  # HEADSHOT SIEMPRE 100 PUNTOS
 		popup_type = "headshot"
 		headshot_kills += 1
+		print("🎯 HEADSHOT! +100 puntos")
+	else:
+		points = 50   # KILL NORMAL SIEMPRE 50 PUNTOS
+		popup_type = "kill"
+		print("💥 Kill normal +50 puntos")
 	
-	# Bonus por melee kill
+	# Bonus por melee kill (adicional)
 	if is_melee:
-		points += melee_kill_bonus
+		points += 50  # 50 puntos extra por melee
 		popup_type = "melee"
+		print("👊 Melee bonus +50 puntos adicionales")
 	
-	# Aplicar multiplicador de ronda estilo Black Ops
-	points = int(float(points) * round_multiplier)
+	# NO APLICAR MULTIPLICADOR DE RONDA - PUNTOS FIJOS
 	
 	# Añadir puntos
 	current_score += points
@@ -144,7 +152,7 @@ func add_kill_points(enemy_position: Vector2, is_headshot: bool = false, is_mele
 	# Actualizar UI INMEDIATAMENTE
 	update_score_ui()
 	
-	# Mostrar popup de puntuación estilo Black Ops
+	# Mostrar popup de puntuación
 	show_score_popup(points, enemy_position, popup_type)
 	
 	# Emitir señales
