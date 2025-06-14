@@ -25,16 +25,17 @@ var is_mobile: bool = false
 # Joystick de movimiento - MUCHO MÁS GRANDE
 var movement_joystick_base: Control
 var movement_joystick_knob: Control
-var movement_joystick_area: Control
+var movement_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
 var movement_joystick_center: Vector2
 
 var current_movement = Vector2.ZERO
 var movement_touch_id: int = -1
 
 # Joystick de disparo - MUCHO MÁS GRANDE
+# Joystick de disparo - TIPOS CORRECTOS
 var shooting_joystick_base: Control
 var shooting_joystick_knob: Control
-var shooting_joystick_area: Control
+var shooting_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
 var shooting_joystick_center: Vector2
 
 var current_shoot_direction = Vector2.ZERO
@@ -102,16 +103,18 @@ func _input(event):
 		handle_drag_event(event)
 
 func _physics_process(_delta):
-	"""APLICAR MOVIMIENTO MÓVIL AL JUGADOR - CON PARADA INMEDIATA"""
+	"""APLICAR MOVIMIENTO Y DISPARO MÓVIL AL JUGADOR"""
 	if is_mobile and player:
-		# APLICAR MOVIMIENTO O PARARLO INMEDIATAMENTE
+		# APLICAR MOVIMIENTO
 		player.mobile_movement_direction = current_movement
 		
-		# APLICAR DISPARO O PARARLO INMEDIATAMENTE
-		if is_shooting and current_shoot_direction.length() > 0:
-			player.mobile_shoot(current_shoot_direction)
+		# APLICAR DISPARO - SIMPLIFICADO
+		if is_shooting:
+			player.mobile_shoot_direction = current_shoot_direction
+			player.mobile_is_shooting = true
 		else:
 			player.mobile_is_shooting = false
+			player.mobile_shoot_direction = Vector2.ZERO
 
 func show_character_selection():
 	"""Mostrar pantalla de selección de personaje"""
@@ -314,7 +317,7 @@ func handle_drag_event(event: InputEventScreenDrag):
 	elif touch_id == shoot_touch_id:
 		handle_shooting_joystick(touch_pos)
 
-func is_point_in_expanded_area(point: Vector2, area: Control) -> bool:
+func is_point_in_expanded_area(point: Vector2, area: TouchScreenButton) -> bool:
 	"""Verificar si un punto está dentro de un área MUCHO MÁS EXPANDIDA"""
 	if not area:
 		return false
@@ -361,8 +364,9 @@ func reset_movement_joystick():
 		player.mobile_movement_direction = Vector2.ZERO
 		player.velocity = Vector2.ZERO
 
+
 func handle_shooting_joystick(touch_pos: Vector2):
-	"""Manejar joystick de disparo - SIN PEGARSE"""
+	"""Manejar joystick de disparo - CORREGIDO"""
 	if not shooting_joystick_base or not shooting_joystick_knob:
 		return
 	
@@ -378,12 +382,18 @@ func handle_shooting_joystick(touch_pos: Vector2):
 	if distance > shooting_joystick_dead_zone:
 		current_shoot_direction = offset.normalized()
 		is_shooting = true
+		# APLICAR DISPARO INMEDIATAMENTE
+		if player:
+			player.mobile_shoot_direction = current_shoot_direction
+			player.mobile_is_shooting = true
 	else:
 		current_shoot_direction = Vector2.ZERO
 		is_shooting = false
 		# FORZAR PARADA INMEDIATA DEL DISPARO
 		if player:
 			player.mobile_is_shooting = false
+			player.mobile_shoot_direction = Vector2.ZERO
+
 
 func reset_shooting_joystick():
 	"""Resetear joystick de disparo - PARADA INMEDIATA"""
@@ -427,7 +437,7 @@ func create_movement_joystick_large():
 	)
 	mobile_controls.add_child(movement_joystick_base)
 	
-	movement_joystick_area = Control.new()
+	movement_joystick_area = TouchScreenButton.new()
 	movement_joystick_area.size = Vector2(joystick_size, joystick_size)
 	movement_joystick_area.position = Vector2.ZERO
 	movement_joystick_base.add_child(movement_joystick_area)
@@ -480,6 +490,8 @@ func create_movement_joystick_large():
 	movement_joystick_base.add_child(movement_joystick_knob)
 	movement_joystick_center = movement_joystick_base.global_position + Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
 
+
+
 func create_shooting_joystick_large():
 	"""Crear joystick de disparo GIGANTE"""
 	var viewport_size = get_viewport().get_visible_rect().size
@@ -494,9 +506,14 @@ func create_shooting_joystick_large():
 	)
 	mobile_controls.add_child(shooting_joystick_base)
 	
-	shooting_joystick_area = Control.new()
+	# USAR TouchScreenButton CORRECTAMENTE
+	shooting_joystick_area = TouchScreenButton.new()  # CORRECTO
+	shooting_joystick_area.name = "ShootingJoystickArea"
 	shooting_joystick_area.size = Vector2(joystick_size, joystick_size)
 	shooting_joystick_area.position = Vector2.ZERO
+	# Hacer el botón invisible pero funcional
+	shooting_joystick_area.modulate = Color(1, 1, 1, 0)  # Completamente transparente
+	shooting_joystick_area.action = "shooting_joystick"  # Nombre de acción
 	shooting_joystick_base.add_child(shooting_joystick_area)
 	
 	# Base roja más visible
