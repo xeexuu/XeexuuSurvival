@@ -1,4 +1,4 @@
-# scenes/utils/SpriteEffectsHandler.gd
+# scenes/utils/SpriteEffectsHandler.gd - ERRORES CORREGIDOS
 extends Node
 class_name SpriteEffectsHandler
 
@@ -74,7 +74,7 @@ static func extract_frame_from_atlas(atlas_texture: Texture2D, frame_index: int,
 	var frame_height = float(texture_size.y) / float(total_v_frames)
 	
 	var x = float(frame_index % total_h_frames) * frame_width
-	var y = (frame_index / total_h_frames) * frame_height
+	var y = float(frame_index / total_h_frames) * frame_height  # CORREGIDO: float division
 	
 	var atlas_frame = AtlasTexture.new()
 	atlas_frame.atlas = atlas_texture
@@ -119,10 +119,10 @@ static func create_default_character_texture(character_name: String) -> Texture2
 	image.fill(character_color)
 	
 	# Detalles básicos
-	var center = Vector2(64, 64)
+	var _center = Vector2(64, 64)  # CORREGIDO: variable prefijada con _
 	for x in range(128):
 		for y in range(128):
-			var dist = Vector2(x, y).distance_to(center)
+			var dist = Vector2(x, y).distance_to(Vector2(64, 64))
 			if dist < 15:
 				image.set_pixel(x, y, Color.WHITE)
 			elif dist < 25:
@@ -140,7 +140,7 @@ static func create_default_enemy_texture(_enemy_type: String) -> Texture2D:
 	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
 	image.fill(Color.DARK_RED)
 	
-	var center = Vector2(64, 64)
+	var _center = Vector2(64, 64)  # CORREGIDO: variable prefijada con _
 	for x in range(128):
 		for y in range(128):
 			var dist = Vector2(x - 64, y - 64).length()

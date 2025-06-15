@@ -1,4 +1,4 @@
-# scenes/player/player.gd - ROTACIÓN DEL JUGADOR Y ARMA HACIA DIRECCIÓN DE APUNTADO
+# scenes/player/player.gd - INTEGRADO CON ANIMATIONCONTROLLER
 extends CharacterBody2D
 class_name Player
 
@@ -17,7 +17,7 @@ var max_health: int = 4
 var move_speed: float = 300.0
 var is_mobile: bool = false
 
-# Control de movimiento móvil - VARIABLES CONECTADAS
+# Control de movimiento móvil
 var mobile_movement_direction: Vector2 = Vector2.ZERO
 var mobile_shoot_direction: Vector2 = Vector2.ZERO
 var mobile_is_shooting: bool = false
@@ -25,13 +25,14 @@ var mobile_is_shooting: bool = false
 # Direcciones para animaciones y disparos
 var last_movement_direction: Vector2 = Vector2.ZERO
 var last_shot_direction: Vector2 = Vector2.RIGHT
-var current_aim_direction: Vector2 = Vector2.RIGHT  # NUEVA: Dirección actual de apuntado
+var current_aim_direction: Vector2 = Vector2.RIGHT
 
 # Referencias a sistemas
 var score_system: ScoreSystem
 var weapon_renderer: WeaponRenderer
+var animation_controller: AnimationController  # NUEVO: Controlador de animaciones
 
-# AUDIO SIN SOLAPAMIENTO
+# Audio sin solapamiento
 var audio_player: AudioStreamPlayer2D
 var last_audio_time: float = 0.0
 var audio_cooldown: float = 0.1
@@ -50,7 +51,7 @@ var grab_slowdown_factor: float = 0.3
 var grab_effect_duration: float = 1.0
 
 # LÍMITES DEL MAPA
-var map_bounds: Rect2 = Rect2(-800, -800, 1600, 1600)  # Mapa de 1600x1600 centrado en (0,0)
+var map_bounds: Rect2 = Rect2(-800, -800, 1600, 1600)
 
 func _ready():
 	is_mobile = OS.has_feature("mobile")
@@ -60,7 +61,7 @@ func _ready():
 	
 	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS
 	collision_layer = 1
-	collision_mask = 2 | 3
+	collision_mask = 2 | 3  # Enemigos y paredes
 	
 	print("🎮 Player inicializado - Es móvil: ", is_mobile)
 
@@ -74,7 +75,7 @@ func setup_camera():
 	"""Configurar la cámara para vista desde arriba"""
 	if camera:
 		camera.enabled = true
-		camera.zoom = Vector2(1.5, 1.5)  # Zoom para mejor vista
+		camera.zoom = Vector2(1.5, 1.5)
 		camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		camera.position_smoothing_enabled = true
 		camera.position_smoothing_speed = 8.0
@@ -97,37 +98,22 @@ func apply_character_stats():
 	if not character_stats:
 		return
 	
-	# RESPETAR VALORES ORIGINALES DEL ARCHIVO
 	max_health = character_stats.max_health
 	current_health = character_stats.current_health
 	move_speed = float(character_stats.movement_speed)
 	
-	# Configurar componente de disparo
 	if shooting_component:
 		shooting_component.update_stats_from_player()
 	
-	# Configurar renderer del arma
 	if weapon_renderer and character_stats.equipped_weapon:
 		weapon_renderer.set_weapon_stats(character_stats.equipped_weapon)
-	
-	# Cargar sprites
-	load_character_sprites()
 	
 	is_fully_initialized = true
 	print("🎮 Character stats aplicadas - Velocidad: ", move_speed)
 
-func load_character_sprites():
-	"""Cargar sprites del personaje"""
-	if not character_stats or not animated_sprite:
-		return
-	
-	var sprite_frames = SpriteEffectsHandler.load_character_sprite_atlas(character_stats.character_name)
-	if sprite_frames:
-		animated_sprite.sprite_frames = sprite_frames
-		animated_sprite.play("idle")
-		
-		var reference_texture = sprite_frames.get_frame_texture("idle", 0)
-		SpriteEffectsHandler.scale_sprite_to_128px(animated_sprite, reference_texture)
+func set_animation_controller(controller: AnimationController):
+	"""Establecer controlador de animaciones"""
+	animation_controller = controller
 
 func set_score_system(score_sys: ScoreSystem):
 	"""Establecer referencia al sistema de puntuación"""
@@ -140,7 +126,7 @@ func _physics_process(delta):
 	handle_movement(delta)
 	handle_shooting()
 	update_weapon_position()
-	update_rotation()  # NUEVA: Actualizar rotación del jugador
+	update_rotation()
 	
 	move_and_slide()
 	
@@ -172,14 +158,12 @@ func handle_enemy_separation():
 				enemy.apply_knockback(push_direction, push_force)
 
 func handle_movement(_delta):
-	"""Manejar movimiento del jugador - CORREGIDO PARA MÓVIL CON LÍMITES"""
+	"""Manejar movimiento del jugador"""
 	var input_direction = Vector2.ZERO
 	
 	if is_mobile:
-		# USAR DIRECTAMENTE EL MOVIMIENTO MÓVIL
 		input_direction = mobile_movement_direction
 	else:
-		# Movimiento con teclado
 		input_direction.x = Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
 		input_direction.y = Input.get_action_strength("move_down") - Input.get_action_strength("move_up")
 	
@@ -192,71 +176,60 @@ func handle_movement(_delta):
 	
 	velocity = input_direction * final_speed
 	
-	# APLICAR LÍMITES DEL MAPA
 	apply_map_bounds()
-	
 	update_animations(input_direction)
 
 func apply_map_bounds():
 	"""Aplicar límites del mapa para que el jugador no se salga"""
 	var next_position = global_position + velocity * get_physics_process_delta_time()
 	
-	# Verificar límites y ajustar velocidad si es necesario
 	if next_position.x < map_bounds.position.x:
-		velocity.x = max(0, velocity.x)  # Solo permitir movimiento hacia la derecha
+		velocity.x = max(0, velocity.x)
 		global_position.x = map_bounds.position.x
 	elif next_position.x > map_bounds.position.x + map_bounds.size.x:
-		velocity.x = min(0, velocity.x)  # Solo permitir movimiento hacia la izquierda
+		velocity.x = min(0, velocity.x)
 		global_position.x = map_bounds.position.x + map_bounds.size.x
 	
 	if next_position.y < map_bounds.position.y:
-		velocity.y = max(0, velocity.y)  # Solo permitir movimiento hacia abajo
+		velocity.y = max(0, velocity.y)
 		global_position.y = map_bounds.position.y
 	elif next_position.y > map_bounds.position.y + map_bounds.size.y:
-		velocity.y = min(0, velocity.y)  # Solo permitir movimiento hacia arriba
+		velocity.y = min(0, velocity.y)
 		global_position.y = map_bounds.position.y + map_bounds.size.y
 
 func handle_shooting():
-	"""Manejar disparo del jugador - CORREGIDO PARA MÓVIL"""
+	"""Manejar disparo del jugador"""
 	if not shooting_component or is_grabbed:
 		return
 	
 	var shoot_direction = Vector2.ZERO
 	
 	if is_mobile:
-		# USAR DIRECTAMENTE EL DISPARO MÓVIL
 		if mobile_is_shooting and mobile_shoot_direction.length() > 0:
 			shoot_direction = mobile_shoot_direction
 	else:
-		# Disparo con teclado
 		shoot_direction.x = Input.get_action_strength("shoot_right") - Input.get_action_strength("shoot_left")
 		shoot_direction.y = Input.get_action_strength("shoot_down") - Input.get_action_strength("shoot_up")
 	
 	if shoot_direction.length() > 0:
-		current_aim_direction = shoot_direction.normalized()  # ACTUALIZAR DIRECCIÓN DE APUNTADO
+		current_aim_direction = shoot_direction.normalized()
 		perform_shoot(current_aim_direction)
 	elif last_movement_direction.length() > 0:
-		# Si no está disparando, usar dirección de movimiento como dirección de apuntado
 		current_aim_direction = last_movement_direction.normalized()
 
 func update_rotation():
-	"""NUEVA: Rotar SOLO el sprite del jugador hacia la dirección de apuntado (NO la cámara)"""
+	"""Rotar SOLO el sprite del jugador hacia la dirección de apuntado"""
 	if current_aim_direction.length() > 0 and animated_sprite:
-		# Rotar SOLO el sprite del jugador hacia la dirección de apuntado
 		var target_rotation = current_aim_direction.angle()
-		
-		# Aplicar rotación suave SOLO al sprite
-		var rotation_speed = 10.0  # Velocidad de rotación
+		var rotation_speed = 10.0
 		animated_sprite.rotation = lerp_angle(animated_sprite.rotation, target_rotation, rotation_speed * get_physics_process_delta_time())
 
 func mobile_shoot(direction: Vector2):
-	"""Función para disparar desde controles móviles - MEJORADA"""
+	"""Función para disparar desde controles móviles"""
 	if direction.length() > 0 and not is_grabbed:
 		mobile_shoot_direction = direction.normalized()
 		mobile_is_shooting = true
-		current_aim_direction = mobile_shoot_direction  # ACTUALIZAR DIRECCIÓN DE APUNTADO
-		
-		# Disparar inmediatamente
+		current_aim_direction = mobile_shoot_direction
 		perform_shoot(mobile_shoot_direction)
 	else:
 		mobile_is_shooting = false
@@ -268,7 +241,7 @@ func perform_shoot(direction: Vector2):
 		return
 	
 	last_shot_direction = direction
-	current_aim_direction = direction  # ASEGURAR QUE LA DIRECCIÓN DE APUNTADO SE ACTUALICE
+	current_aim_direction = direction
 	
 	var shoot_position = global_position
 	if weapon_renderer:
@@ -290,15 +263,24 @@ func update_weapon_position():
 	if not weapon_renderer:
 		return
 	
-	# Usar la dirección de apuntado actual
 	var aim_direction = current_aim_direction
 	if aim_direction == Vector2.ZERO:
-		aim_direction = Vector2.RIGHT  # Dirección por defecto
+		aim_direction = Vector2.RIGHT
 	
 	weapon_renderer.update_weapon_position_and_rotation(aim_direction)
 
 func update_animations(movement_direction: Vector2):
-	"""Actualizar animaciones del jugador para vista desde arriba"""
+	"""Actualizar animaciones usando el AnimationController"""
+	if animation_controller:
+		# USAR EL SISTEMA DE ANIMACIONES MEJORADO
+		animation_controller.update_animation(movement_direction, current_aim_direction)
+		last_movement_direction = movement_direction
+	else:
+		# FALLBACK: Sistema de animaciones básico
+		update_animations_fallback(movement_direction)
+
+func update_animations_fallback(movement_direction: Vector2):
+	"""Sistema de animaciones fallback si no hay AnimationController"""
 	if not animated_sprite or not animated_sprite.sprite_frames:
 		return
 	
@@ -484,7 +466,7 @@ func apply_death_screen_effect():
 	death_tween.tween_property(death_overlay, "color:a", 0.7, 2.0)
 
 func on_enemy_killed():
-	"""Reproducir audio SIN SOLAPAMIENTO cuando mata enemigo"""
+	"""Reproducir audio sin solapamiento cuando mata enemigo"""
 	var current_time = Time.get_ticks_msec() / 1000.0
 	
 	if current_time - last_audio_time >= audio_cooldown:

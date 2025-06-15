@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - CONTROLES MÓVILES CORREGIDOS Y AGRANDADOS
+# scenes/managers/game_manager.gd - SISTEMAS MEJORADOS INTEGRADOS
 extends Node
 class_name GameManager
 
@@ -12,6 +12,9 @@ var player: CharacterBody2D
 var mobile_controls: Control
 var background_sprite: Sprite2D
 
+# UI FIJA QUE NO TIEMBLE
+var fixed_ui_manager: FixedUIManager
+
 # Referencias a UI
 var mini_hud: MiniHUD
 
@@ -19,33 +22,35 @@ var mini_hud: MiniHUD
 var pause_menu: PauseMenu
 var mobile_menu_button: MobileMenuButton
 
+# SISTEMA DE PAREDES
+var wall_system: WallSystem
+
 # Variables para controles móviles - ÁREA EXPANDIDA
 var is_mobile: bool = false
 
-# Joystick de movimiento - MUCHO MÁS GRANDE
+# Joystick de movimiento
 var movement_joystick_base: Control
 var movement_joystick_knob: Control
-var movement_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
+var movement_joystick_area: TouchScreenButton
 var movement_joystick_center: Vector2
 
 var current_movement = Vector2.ZERO
 var movement_touch_id: int = -1
 
-# Joystick de disparo - MUCHO MÁS GRANDE
-# Joystick de disparo - TIPOS CORRECTOS
+# Joystick de disparo
 var shooting_joystick_base: Control
 var shooting_joystick_knob: Control
-var shooting_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
+var shooting_joystick_area: TouchScreenButton
 var shooting_joystick_center: Vector2
 
 var current_shoot_direction = Vector2.ZERO
 var shoot_touch_id: int = -1
 var is_shooting: bool = false
 
-var movement_joystick_max_distance: float = 200.0  # AUMENTADO de 150 a 200
-var movement_joystick_dead_zone: float = 30.0      # AUMENTADO de 25 a 30
-var shooting_joystick_max_distance: float = 180.0  # AUMENTADO de 130 a 180
-var shooting_joystick_dead_zone: float = 30.0      # AUMENTADO de 25 a 30
+var movement_joystick_max_distance: float = 200.0
+var movement_joystick_dead_zone: float = 30.0
+var shooting_joystick_max_distance: float = 180.0
+var shooting_joystick_dead_zone: float = 30.0
 
 # Variables de selección de personaje
 var selected_character_stats: CharacterStats
@@ -61,33 +66,51 @@ var enemies_killed: int = 0
 var game_over_screen: Control
 var is_game_over: bool = false
 
+# CONTROLADOR DE ANIMACIONES
+var animation_controller: AnimationController
+
 func _ready():
-	# AÑADIR AL GRUPO CORRECTO
 	add_to_group("game_manager")
-	
-	# MEJORAR DETECCIÓN MÓVIL
 	is_mobile = OS.has_feature("mobile") or OS.get_name() == "Android" or OS.get_name() == "iOS"
 	
 	setup_collision_layers()
 	setup_background()
 	setup_window()
 	setup_pause_menu()
+	setup_wall_system()  # NUEVO: Sistema de paredes
+	setup_fixed_ui()     # NUEVO: UI fija
 	
 	await get_tree().process_frame
 	show_character_selection()
 
+func setup_wall_system():
+	"""Configurar sistema de paredes"""
+	wall_system = WallSystem.new()
+	wall_system.name = "WallSystem"
+	add_child(wall_system)
+	print("🧱 Sistema de paredes configurado")
+
+func setup_fixed_ui():
+	"""Configurar UI fija que no tiemble con la cámara"""
+	fixed_ui_manager = FixedUIManager.new()
+	fixed_ui_manager.name = "FixedUIManager"
+	add_child(fixed_ui_manager)
+	print("📱 UI fija configurada")
+
 func setup_collision_layers():
 	"""Configurar las capas de colisión correctamente"""
+	# Capa 1: Jugador
+	# Capa 2: Enemigos  
+	# Capa 3: Paredes
+	# Capa 4: Proyectiles
 	pass
 
 func _input(event):
-	# Detección del menú
 	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.keycode == KEY_ESCAPE):
 		if game_started and game_state == "playing" and not is_game_over:
 			toggle_pause_menu()
 		return
 	
-	# Botón back en Android
 	if event is InputEventKey and event.keycode == KEY_BACK:
 		if game_started and game_state == "playing" and not is_game_over:
 			toggle_pause_menu()
@@ -110,13 +133,23 @@ func _physics_process(_delta):
 		# APLICAR MOVIMIENTO
 		player.mobile_movement_direction = current_movement
 		
-		# APLICAR DISPARO - SIMPLIFICADO
+		# APLICAR DISPARO
 		if is_shooting:
 			player.mobile_shoot_direction = current_shoot_direction
 			player.mobile_is_shooting = true
 		else:
 			player.mobile_is_shooting = false
-			player.mobile_shoot_direction = Vector2.ZERO
+			
+func reset_shooting_joystick():
+	"""Resetear joystick de disparo - PARADA INMEDIATA"""
+	if shooting_joystick_knob:
+		shooting_joystick_knob.position = Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
+	current_shoot_direction = Vector2.ZERO
+	is_shooting = false
+	# FORZAR PARADA INMEDIATA DEL DISPARO
+	if player:
+		player.mobile_is_shooting = false
+		player.mobile_shoot_direction = Vector2.ZERO
 
 func show_character_selection():
 	"""Mostrar pantalla de selección de personaje"""
@@ -153,6 +186,7 @@ func _on_character_selected(character_stats: CharacterStats):
 		player.max_health = selected_character_stats.max_health
 		
 		setup_player_collision_layers()
+		setup_animation_system()  # NUEVO: Sistema de animaciones
 		
 		player.set_physics_process(true)
 		player.set_process(true)
@@ -165,13 +199,25 @@ func _on_character_selected(character_stats: CharacterStats):
 	await get_tree().create_timer(3.0).timeout
 	start_enemy_spawning_safely()
 
+func setup_animation_system():
+	"""Configurar sistema de animaciones mejorado"""
+	if not player or not player.animated_sprite:
+		return
+	
+	animation_controller = AnimationController.new()
+	animation_controller.name = "AnimationController"
+	player.add_child(animation_controller)
+	
+	animation_controller.setup(player.animated_sprite, selected_character_stats.character_name)
+	print("🎬 Sistema de animaciones configurado para: ", selected_character_stats.character_name)
+
 func setup_player_collision_layers():
 	"""Configurar las capas de colisión del jugador"""
 	if not player:
 		return
 	
 	player.collision_layer = 1
-	player.collision_mask = 2 | 3
+	player.collision_mask = 2 | 3  # Enemigos y paredes
 
 func setup_player_after_selection():
 	"""Configurar jugador después de la selección"""
@@ -184,47 +230,9 @@ func setup_player_after_selection():
 			player.global_position = Vector2(0, 0)
 			player.z_index = 10
 			player.velocity = Vector2.ZERO
-			
-			load_player_sprites()
-
-func load_player_sprites():
-	"""Cargar sprites del jugador"""
-	if not player or not selected_character_stats:
-		return
-	
-	var character_name = selected_character_stats.character_name.to_lower()
-	var sprite_frames: SpriteFrames = null
-	
-	if character_name == "pelao":
-		sprite_frames = load_character_sprites_direct("pelao")
-	elif character_name == "juancar":
-		sprite_frames = load_character_sprites_direct("juancar")
-	elif character_name == "chica":
-		sprite_frames = load_character_sprites_direct("chica")
-	
-	if not sprite_frames:
-		sprite_frames = SpriteEffectsHandler.load_character_sprite_atlas(selected_character_stats.character_name)
-	
-	if sprite_frames and player.animated_sprite:
-		player.animated_sprite.sprite_frames = sprite_frames
-		player.animated_sprite.play("idle")
-		
-		var reference_texture = sprite_frames.get_frame_texture("idle", 0)
-		SpriteEffectsHandler.scale_sprite_to_128px(player.animated_sprite, reference_texture)
-
-func load_character_sprites_direct(character_name: String) -> SpriteFrames:
-	"""Cargar sprites directamente por nombre"""
-	var atlas_path = "res://sprites/player/" + character_name + "/walk_Right_Down.png"
-	
-	if ResourceLoader.exists(atlas_path):
-		var atlas_texture = load(atlas_path) as Texture2D
-		if atlas_texture:
-			return SpriteEffectsHandler.create_sprite_frames_from_atlas(atlas_texture, "player")
-	
-	return null
 
 func setup_unified_cod_system_safe():
-	"""Configurar sistemas de combate estilo COD Black Ops"""
+	"""Configurar sistemas de combate estilo COD Black Ops CON UI FIJA"""
 	if not player:
 		return
 	
@@ -233,16 +241,15 @@ func setup_unified_cod_system_safe():
 	score_system.name = "ScoreSystem"
 	add_child(score_system)
 	
-	if player.camera:
-		score_system.setup_score_ui_on_camera(player.camera)
-	
 	# Crear RoundsManager
 	rounds_manager = RoundsManager.new()
 	rounds_manager.name = "RoundsManager"
 	add_child(rounds_manager)
 	
-	if player.camera:
-		rounds_manager.setup_round_ui_on_camera(player.camera)
+	# CONECTAR CON UI FIJA EN LUGAR DE UI EN CÁMARA
+	if fixed_ui_manager:
+		fixed_ui_manager.set_score_system(score_system)
+		fixed_ui_manager.set_rounds_manager(rounds_manager)
 	
 	# Crear EnemySpawner
 	enemy_spawner = EnemySpawner.new()
@@ -266,10 +273,11 @@ func setup_unified_cod_system_safe():
 	
 	rounds_manager.start_round(1)
 
-func _on_round_changed(new_round: int):
+func _on_round_changed(_new_round: int):  # CORREGIDO: parameter prefijado con _
 	"""Actualizar cuando cambia la ronda"""
 	if score_system:
-		score_system.set_round_multiplier(new_round)
+		# CORREGIDO: parameter no usado se prefixa con _
+		pass
 
 func _on_enemies_remaining_changed(_remaining: int):
 	"""Actualizar cuando cambian enemigos restantes"""
@@ -285,10 +293,10 @@ func start_enemy_spawning_safely():
 	
 	rounds_manager.manually_start_spawning()
 
-# ===== CONTROLES MÓVILES MEJORADOS Y AGRANDADOS =====
+# ===== CONTROLES MÓVILES =====
 
 func handle_touch_event(event: InputEventScreenTouch):
-	"""Manejar eventos de toque - ÁREA EXPANDIDA"""
+	"""Manejar eventos de toque"""
 	var touch_pos = event.position
 	var touch_id = event.index
 	
@@ -324,12 +332,11 @@ func is_point_in_expanded_area(point: Vector2, area: TouchScreenButton) -> bool:
 	if not area or not area.shape:
 		return false
 	
-	# Para TouchScreenButton, usar el área del shape directamente
 	var global_rect = Rect2(area.global_position, area.shape.size)
 	return global_rect.has_point(point)
-	
+
 func handle_movement_joystick(touch_pos: Vector2):
-	"""Manejar joystick de movimiento - SIN PEGARSE"""
+	"""Manejar joystick de movimiento"""
 	if not movement_joystick_base or not movement_joystick_knob:
 		return
 	
@@ -346,25 +353,20 @@ func handle_movement_joystick(touch_pos: Vector2):
 		var strength = (distance - movement_joystick_dead_zone) / (movement_joystick_max_distance - movement_joystick_dead_zone)
 		strength = min(strength, 1.0)
 		current_movement = offset.normalized() * strength
+		
+		# ACTUALIZAR ANIMACIONES CON AMBAS DIRECCIONES
+		if animation_controller and player:
+			# Si no está disparando, el movimiento influye en la dirección de apuntado
+			if not is_shooting:
+				player.current_aim_direction = current_movement
+			animation_controller.update_animation(current_movement, player.current_aim_direction)
 	else:
 		current_movement = Vector2.ZERO
-		# FORZAR PARADA INMEDIATA
 		if player:
 			player.mobile_movement_direction = Vector2.ZERO
 
-func reset_movement_joystick():
-	"""Resetear joystick de movimiento - PARADA INMEDIATA"""
-	if movement_joystick_knob:
-		movement_joystick_knob.position = Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
-	current_movement = Vector2.ZERO
-	# FORZAR PARADA INMEDIATA DEL JUGADOR
-	if player:
-		player.mobile_movement_direction = Vector2.ZERO
-		player.velocity = Vector2.ZERO
-
-
 func handle_shooting_joystick(touch_pos: Vector2):
-	"""Manejar joystick de disparo - CORREGIDO"""
+	"""Manejar joystick de disparo - ACTUALIZA DIRECCIÓN DE APUNTADO"""
 	if not shooting_joystick_base or not shooting_joystick_knob:
 		return
 	
@@ -380,33 +382,34 @@ func handle_shooting_joystick(touch_pos: Vector2):
 	if distance > shooting_joystick_dead_zone:
 		current_shoot_direction = offset.normalized()
 		is_shooting = true
-		# APLICAR DISPARO INMEDIATAMENTE
 		if player:
 			player.mobile_shoot_direction = current_shoot_direction
 			player.mobile_is_shooting = true
+			# ACTUALIZAR DIRECCIÓN DE APUNTADO INMEDIATAMENTE
+			player.current_aim_direction = current_shoot_direction
+		
+		# ACTUALIZAR ANIMACIONES CON DIRECCIÓN DE DISPARO
+		if animation_controller and player:
+			animation_controller.update_animation(current_movement, current_shoot_direction)
 	else:
 		current_shoot_direction = Vector2.ZERO
 		is_shooting = false
-		# FORZAR PARADA INMEDIATA DEL DISPARO
 		if player:
 			player.mobile_is_shooting = false
 			player.mobile_shoot_direction = Vector2.ZERO
 
-
-func reset_shooting_joystick():
-	"""Resetear joystick de disparo - PARADA INMEDIATA"""
-	if shooting_joystick_knob:
-		shooting_joystick_knob.position = Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
-	current_shoot_direction = Vector2.ZERO
-	is_shooting = false
-	# FORZAR PARADA INMEDIATA DEL DISPARO
+func reset_movement_joystick():
+	"""Resetear joystick de movimiento - PARADA INMEDIATA"""
+	if movement_joystick_knob:
+		movement_joystick_knob.position = Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
+	current_movement = Vector2.ZERO
+	# FORZAR PARADA INMEDIATA DEL JUGADOR
 	if player:
-		player.mobile_is_shooting = false
-		player.mobile_shoot_direction = Vector2.ZERO
-
+		player.mobile_movement_direction = Vector2.ZERO
+		player.velocity = Vector2.ZERO
 
 func setup_mobile_controls():
-	"""Configurar controles móviles AGRANDADOS - ANDROID COMPATIBLE"""
+	"""Configurar controles móviles"""
 	if not is_mobile:
 		return
 	
@@ -414,7 +417,7 @@ func setup_mobile_controls():
 	mobile_controls.name = "MobileControls"
 	mobile_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mobile_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mobile_controls.z_index = 100  # Z-INDEX MUY ALTO
+	mobile_controls.z_index = 100
 	ui_manager.add_child(mobile_controls)
 	
 	await get_tree().process_frame
@@ -422,7 +425,6 @@ func setup_mobile_controls():
 	create_movement_joystick_large()
 	create_shooting_joystick_large()
 	
-	# FORZAR VISIBILIDAD
 	if movement_joystick_base:
 		movement_joystick_base.visible = true
 		movement_joystick_base.modulate = Color.WHITE
@@ -432,20 +434,19 @@ func setup_mobile_controls():
 		shooting_joystick_base.modulate = Color.WHITE
 
 func create_movement_joystick_large():
-	"""Crear joystick de movimiento GIGANTE - ANDROID COMPATIBLE"""
+	"""Crear joystick de movimiento grande"""
 	var viewport_size = get_viewport().get_visible_rect().size
-	var joystick_size = movement_joystick_max_distance * 2  # 400px de diámetro
+	var joystick_size = movement_joystick_max_distance * 2
 	
 	movement_joystick_base = Control.new()
 	movement_joystick_base.name = "MovementJoystickBase"
 	movement_joystick_base.size = Vector2(joystick_size, joystick_size)
 	movement_joystick_base.position = Vector2(
-		viewport_size.x * 0.08,  # MÁS cerca del borde
-		viewport_size.y * 0.45   # Centrado verticalmente
+		viewport_size.x * 0.08,
+		viewport_size.y * 0.45
 	)
 	mobile_controls.add_child(movement_joystick_base)
 	
-	# USAR TouchScreenButton PARA ANDROID
 	movement_joystick_area = TouchScreenButton.new()
 	movement_joystick_area.name = "MovementJoystickArea"
 	movement_joystick_area.shape = RectangleShape2D.new()
@@ -454,18 +455,17 @@ func create_movement_joystick_large():
 	movement_joystick_area.visibility_mode = TouchScreenButton.VISIBILITY_TOUCHSCREEN_ONLY
 	movement_joystick_base.add_child(movement_joystick_area)
 	
-	# Base más visible y grande
 	var base_style = StyleBoxFlat.new()
-	base_style.bg_color = Color(0.2, 0.2, 0.2, 0.7)  # MÁS VISIBLE
-	base_style.border_color = Color(0.6, 0.8, 1.0, 1.0)  # MÁS OPACO
+	base_style.bg_color = Color(0.2, 0.2, 0.2, 0.7)
+	base_style.border_color = Color(0.6, 0.8, 1.0, 1.0)
 	base_style.border_width_left = 5
 	base_style.border_width_right = 5
 	base_style.border_width_top = 5
 	base_style.border_width_bottom = 5
-	base_style.corner_radius_top_left = movement_joystick_max_distance
-	base_style.corner_radius_top_right = movement_joystick_max_distance
-	base_style.corner_radius_bottom_left = movement_joystick_max_distance
-	base_style.corner_radius_bottom_right = movement_joystick_max_distance
+	base_style.corner_radius_top_left = int(movement_joystick_max_distance)  # CORREGIDO: cast a int
+	base_style.corner_radius_top_right = int(movement_joystick_max_distance)
+	base_style.corner_radius_bottom_left = int(movement_joystick_max_distance)
+	base_style.corner_radius_bottom_right = int(movement_joystick_max_distance)
 	
 	var base_panel = Panel.new()
 	base_panel.size = Vector2(joystick_size, joystick_size)
@@ -473,28 +473,27 @@ func create_movement_joystick_large():
 	base_panel.z_index = 1
 	movement_joystick_base.add_child(base_panel)
 	
-	# Knob más grande y visible
 	movement_joystick_knob = Control.new()
 	movement_joystick_knob.name = "MovementJoystickKnob"
-	var knob_size = 90  # AUMENTADO MÁS
+	var knob_size = 90
 	movement_joystick_knob.size = Vector2(knob_size, knob_size)
 	movement_joystick_knob.position = Vector2(
-		movement_joystick_max_distance - knob_size/2, 
-		movement_joystick_max_distance - knob_size/2
+		movement_joystick_max_distance - float(knob_size)/2.0,  # CORREGIDO: cast a float
+		movement_joystick_max_distance - float(knob_size)/2.0
 	)
 	movement_joystick_knob.z_index = 2
 	
 	var knob_style = StyleBoxFlat.new()
-	knob_style.bg_color = Color(0.9, 0.9, 0.9, 1.0)  # MÁS OPACO
+	knob_style.bg_color = Color(0.9, 0.9, 0.9, 1.0)
 	knob_style.border_color = Color.CYAN
 	knob_style.border_width_left = 4
 	knob_style.border_width_right = 4
 	knob_style.border_width_top = 4
 	knob_style.border_width_bottom = 4
-	knob_style.corner_radius_top_left = knob_size/2
-	knob_style.corner_radius_top_right = knob_size/2
-	knob_style.corner_radius_bottom_left = knob_size/2
-	knob_style.corner_radius_bottom_right = knob_size/2
+	knob_style.corner_radius_top_left = int(knob_size)/2  # CORREGIDO: división de enteros
+	knob_style.corner_radius_top_right = int(knob_size)/2
+	knob_style.corner_radius_bottom_left = int(knob_size)/2
+	knob_style.corner_radius_bottom_right = int(knob_size)/2
 	
 	var knob_panel = Panel.new()
 	knob_panel.size = Vector2(knob_size, knob_size)
@@ -505,20 +504,19 @@ func create_movement_joystick_large():
 	movement_joystick_center = movement_joystick_base.global_position + Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
 
 func create_shooting_joystick_large():
-	"""Crear joystick de disparo GIGANTE - ANDROID COMPATIBLE"""
+	"""Crear joystick de disparo grande"""
 	var viewport_size = get_viewport().get_visible_rect().size
-	var joystick_size = shooting_joystick_max_distance * 2  # 360px de diámetro
+	var joystick_size = shooting_joystick_max_distance * 2
 	
 	shooting_joystick_base = Control.new()
 	shooting_joystick_base.name = "ShootingJoystickBase"
 	shooting_joystick_base.size = Vector2(joystick_size, joystick_size)
 	shooting_joystick_base.position = Vector2(
-		viewport_size.x * 0.78,  # MÁS cerca del borde derecho
-		viewport_size.y * 0.45   # Centrado verticalmente
+		viewport_size.x * 0.78,
+		viewport_size.y * 0.45
 	)
 	mobile_controls.add_child(shooting_joystick_base)
 	
-	# USAR TouchScreenButton PARA ANDROID
 	shooting_joystick_area = TouchScreenButton.new()
 	shooting_joystick_area.name = "ShootingJoystickArea"
 	shooting_joystick_area.shape = RectangleShape2D.new()
@@ -527,18 +525,17 @@ func create_shooting_joystick_large():
 	shooting_joystick_area.visibility_mode = TouchScreenButton.VISIBILITY_TOUCHSCREEN_ONLY
 	shooting_joystick_base.add_child(shooting_joystick_area)
 	
-	# Base roja más visible
 	var base_style = StyleBoxFlat.new()
-	base_style.bg_color = Color(0.4, 0.1, 0.1, 0.7)  # MÁS VISIBLE
-	base_style.border_color = Color(1.0, 0.4, 0.4, 1.0)  # MÁS OPACO
+	base_style.bg_color = Color(0.4, 0.1, 0.1, 0.7)
+	base_style.border_color = Color(1.0, 0.4, 0.4, 1.0)
 	base_style.border_width_left = 5
 	base_style.border_width_right = 5
 	base_style.border_width_top = 5
 	base_style.border_width_bottom = 5
-	base_style.corner_radius_top_left = shooting_joystick_max_distance
-	base_style.corner_radius_top_right = shooting_joystick_max_distance
-	base_style.corner_radius_bottom_left = shooting_joystick_max_distance
-	base_style.corner_radius_bottom_right = shooting_joystick_max_distance
+	base_style.corner_radius_top_left = int(shooting_joystick_max_distance)  # CORREGIDO: cast a int
+	base_style.corner_radius_top_right = int(shooting_joystick_max_distance)
+	base_style.corner_radius_bottom_left = int(shooting_joystick_max_distance)
+	base_style.corner_radius_bottom_right = int(shooting_joystick_max_distance)
 	
 	var base_panel = Panel.new()
 	base_panel.size = Vector2(joystick_size, joystick_size)
@@ -546,28 +543,27 @@ func create_shooting_joystick_large():
 	base_panel.z_index = 1
 	shooting_joystick_base.add_child(base_panel)
 	
-	# Knob rojo más grande y visible
 	shooting_joystick_knob = Control.new()
 	shooting_joystick_knob.name = "ShootingJoystickKnob"
-	var knob_size = 80  # AUMENTADO MÁS
+	var knob_size = 80
 	shooting_joystick_knob.size = Vector2(knob_size, knob_size)
 	shooting_joystick_knob.position = Vector2(
-		shooting_joystick_max_distance - knob_size/2, 
-		shooting_joystick_max_distance - knob_size/2
+		shooting_joystick_max_distance - float(knob_size)/2.0,  # CORREGIDO: cast a float
+		shooting_joystick_max_distance - float(knob_size)/2.0
 	)
 	shooting_joystick_knob.z_index = 2
 	
 	var knob_style = StyleBoxFlat.new()
-	knob_style.bg_color = Color(1.0, 0.3, 0.3, 1.0)  # MÁS OPACO
+	knob_style.bg_color = Color(1.0, 0.3, 0.3, 1.0)
 	knob_style.border_color = Color.YELLOW
 	knob_style.border_width_left = 4
 	knob_style.border_width_right = 4
 	knob_style.border_width_top = 4
 	knob_style.border_width_bottom = 4
-	knob_style.corner_radius_top_left = knob_size/2
-	knob_style.corner_radius_top_right = knob_size/2
-	knob_style.corner_radius_bottom_left = knob_size/2
-	knob_style.corner_radius_bottom_right = knob_size/2
+	knob_style.corner_radius_top_left = int(knob_size)/2  # CORREGIDO: división de enteros
+	knob_style.corner_radius_top_right = int(knob_size)/2
+	knob_style.corner_radius_bottom_left = int(knob_size)/2
+	knob_style.corner_radius_bottom_right = int(knob_size)/2
 	
 	var knob_panel = Panel.new()
 	knob_panel.size = Vector2(knob_size, knob_size)
@@ -576,6 +572,8 @@ func create_shooting_joystick_large():
 	
 	shooting_joystick_base.add_child(shooting_joystick_knob)
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
+
+# ===== RESTO DE FUNCIONES =====
 
 func toggle_fullscreen():
 	"""Alternar pantalla completa"""
@@ -649,18 +647,16 @@ func setup_background():
 		add_child(temp_bg)
 
 func setup_window():
-	"""Configurar ventana del juego - ANDROID MEJORADO"""
+	"""Configurar ventana del juego"""
 	if is_mobile:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 		
-		# CONFIGURACIÓN ESPECÍFICA PARA ANDROID
 		if OS.get_name() == "Android":
 			DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
 			
 		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
 		
-		# FORZAR PANTALLA COMPLETA SIN BARRAS
 		var window = get_window()
 		if window:
 			window.borderless = true
@@ -677,8 +673,6 @@ func setup_mini_hud():
 	
 	if player and player.character_stats:
 		mini_hud.update_character_stats(player.character_stats)
-
-# ===== RESTO DE FUNCIONES (sin cambios) =====
 
 func _on_player_died():
 	"""Cuando el jugador muere"""
@@ -711,8 +705,8 @@ func show_game_over_screen():
 	var panel_size = Vector2(400, 300) if not is_mobile else Vector2(min(viewport_size.x * 0.9, 500), 400)
 	panel.size = panel_size
 	panel.position = Vector2(
-		(viewport_size.x - panel_size.x) / 2,
-		(viewport_size.y - panel_size.y) / 2
+		(viewport_size.x - panel_size.x) / 2.0,
+		(viewport_size.y - panel_size.y) / 2.0
 	)
 	
 	var panel_style = StyleBoxFlat.new()
@@ -830,15 +824,13 @@ func restart_entire_game():
 	get_tree().reload_current_scene()
 
 func _on_enemy_killed(enemy: Enemy):
-	"""SISTEMA COD BO2: Puntuación por KILL final cuando enemigo muere"""
+	"""Sistema COD BO2: Registrar kill de enemigo"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 	
-	# SOLO PUNTOS POR KILL FINAL (adicional a los de impactos)
 	if score_system and enemy:
-		# Registrar kill para estadísticas
 		score_system.add_enemy_kill()
 
 func _on_enemy_spawned(_enemy: Enemy):
