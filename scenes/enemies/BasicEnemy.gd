@@ -1,4 +1,4 @@
-# scenes/enemies/BasicEnemy.gd - PATHFINDING MEJORADO COD ZOMBIES + SIN PRINTS
+# scenes/enemies/BasicEnemy.gd - SISTEMA DE ATAQUE ESTILO COD BLACK OPS 1 ZOMBIES COMPLETO
 extends CharacterBody2D
 class_name Enemy
 
@@ -7,10 +7,10 @@ signal damaged(enemy: Enemy, damage: int)
 
 @export var max_health: int = 150
 @export var current_health: int = 150
-@export var move_speed: float = 50.0
-@export var damage: int = 1
-@export var attack_range: float = 50.0
-@export var detection_range: float = 500.0
+@export var move_speed: float = 80.0  # Más rápido como BO1
+@export var damage: int = 50  # Más daño como BO1
+@export var attack_range: float = 60.0  # Rango de ataque más amplio
+@export var detection_range: float = 600.0
 
 @onready var sprite = $Sprite2D
 @onready var collision_shape = $CollisionShape2D
@@ -21,54 +21,51 @@ var player: Player = null
 var is_dead: bool = false
 var is_attacking: bool = false
 var last_attack_time: float = 0.0
-var attack_cooldown: float = 1.5
+var attack_cooldown: float = 2.0  # Ataque cada 2 segundos como BO1
 
-# Control de proximidad al jugador
-var proximity_distance: float = 40.0
-var separation_force_strength: float = 300.0
-var push_back_force: float = 150.0
+# Control de proximidad al jugador 
+var proximity_distance: float = 45.0  # Distancia para empezar a atacar
+var min_distance: float = 25.0  # Distancia mínima al jugador
+var max_distance: float = 80.0  # Distancia máxima de persecución
 
 # Variables para prevenir spam de ataques
 var can_damage_player: bool = true
-var damage_cooldown: float = 1.0
+var damage_cooldown: float = 2.5  # Cooldown entre ataques exitosos
 
 # Variables para sprites
 var enemy_sprite_frames: SpriteFrames
 var enemy_type: String = "zombie"
 var is_sprite_loaded: bool = false
 
-# Estados del enemigo
+# Estados del enemigo estilo COD BO1
 enum EnemyState {
-	IDLE,
-	CHASING,
-	ATTACKING,
-	STUNNED,
-	DEAD
+	SPAWN,      # Apareciendo
+	IDLE,       # Esperando
+	CHASING,    # Persiguiendo
+	GRABBING,   # Agarrando al jugador
+	ATTACKING,  # Atacando
+	STUNNED,    # Aturdido por daño
+	DEAD        # Muerto
 }
 
-var current_state: EnemyState = EnemyState.IDLE
+var current_state: EnemyState = EnemyState.SPAWN
 var original_color: Color = Color.WHITE
 
-# PATHFINDING MEJORADO COD ZOMBIES
+# PATHFINDING COD BO1
 var aggression_level: float = 1.0
 var last_player_position: Vector2
 var search_timer: float = 0.0
 var stuck_timer: float = 0.0
 var last_position: Vector2
-var unstuck_direction: Vector2
 var wander_target: Vector2
 
-# SISTEMA DE PATHFINDING AVANZADO
-var path_finding_timer: float = 0.0
-var path_update_interval: float = 0.5  # Actualizar path cada 0.5 segundos
-var raycast_directions: Array[Vector2] = []
-var wall_avoidance_force: Vector2 = Vector2.ZERO
-var wall_detection_distance: float = 60.0
+# Sistema de agarre estilo COD BO1
+var grab_duration: float = 3.0
+var grab_timer: float = 0.0
+var is_grabbing: bool = false
 
 # Separación entre enemigos
-var nearby_enemies: Array[Enemy] = []
-var separation_force: Vector2 = Vector2.ZERO
-var separation_radius: float = 80.0
+var separation_radius: float = 70.0
 
 # Zona de headshot
 var head_area: Area2D
@@ -77,27 +74,6 @@ func _ready():
 	setup_enemy()
 	setup_head_collision()
 	setup_attack_system()
-	setup_pathfinding_system()
-
-func setup_pathfinding_system():
-	"""Configurar sistema de pathfinding avanzado"""
-	# Direcciones para raycast en círculo
-	for i in range(8):
-		var angle = (float(i) * PI * 2.0) / 8.0
-		raycast_directions.append(Vector2.from_angle(angle))
-
-func setup_attack_system():
-	"""Configurar sistema de ataque"""
-	var damage_cooldown_timer = Timer.new()
-	damage_cooldown_timer.name = "DamageCooldownTimer"
-	damage_cooldown_timer.wait_time = damage_cooldown
-	damage_cooldown_timer.one_shot = true
-	damage_cooldown_timer.timeout.connect(_on_damage_cooldown_finished)
-	add_child(damage_cooldown_timer)
-
-func _on_damage_cooldown_finished():
-	"""Cuando termina el cooldown de daño"""
-	can_damage_player = true
 
 func setup_head_collision():
 	"""Configurar área de colisión para headshots"""
@@ -132,13 +108,29 @@ func _on_head_area_entered(area):
 				var knockback_direction = (global_position - bullet.global_position).normalized()
 				apply_knockback(knockback_direction, bullet.knockback_force)
 
+func setup_attack_system():
+	"""Configurar sistema de ataque estilo COD BO1"""
+	var damage_cooldown_timer = Timer.new()
+	damage_cooldown_timer.name = "DamageCooldownTimer"
+	damage_cooldown_timer.wait_time = damage_cooldown
+	damage_cooldown_timer.one_shot = true
+	damage_cooldown_timer.timeout.connect(_on_damage_cooldown_finished)
+	add_child(damage_cooldown_timer)
+
+func _on_damage_cooldown_finished():
+	"""Cuando termina el cooldown de daño"""
+	can_damage_player = true
+	is_grabbing = false
+	grab_timer = 0.0
+
 func setup_enemy():
 	"""Configurar el enemigo inicial"""
 	current_health = max_health
 	is_dead = false
 	is_attacking = false
-	current_state = EnemyState.IDLE
-	damage = 1
+	is_grabbing = false
+	current_state = EnemyState.SPAWN
+	damage = 50
 	can_damage_player = true
 	
 	last_position = global_position
@@ -146,7 +138,7 @@ func setup_enemy():
 	
 	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAS
 	collision_layer = 2
-	collision_mask = 1 | 3
+	collision_mask = 1 | 3  # Jugador y paredes
 	
 	if not is_sprite_loaded:
 		load_enemy_sprite_from_atlas()
@@ -160,6 +152,11 @@ func setup_enemy():
 		attack_timer.wait_time = attack_cooldown
 		attack_timer.one_shot = true
 		attack_timer.timeout.connect(_on_attack_timer_timeout)
+	
+	# Transición a IDLE después de spawn
+	await get_tree().create_timer(0.5).timeout
+	if current_state == EnemyState.SPAWN:
+		current_state = EnemyState.IDLE
 
 func has_valid_sprite() -> bool:
 	"""Verificar si el sprite es válido"""
@@ -259,7 +256,6 @@ func create_default_enemy_sprite():
 	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
 	image.fill(Color.DARK_RED)
 	
-	var center = Vector2(64, 64)
 	for x in range(128):
 		for y in range(128):
 			var dist = Vector2(x - 64, y - 64).length()
@@ -268,7 +264,7 @@ func create_default_enemy_sprite():
 			elif dist < 30:
 				image.set_pixel(x, y, Color.RED.darkened(0.2))
 	
-	# Ojos
+	# Ojos rojos
 	var eye_size = 8
 	for x in range(64 - 15, 64 - 15 + eye_size):
 		for y in range(64 - 15, 64 - 15 + eye_size):
@@ -351,9 +347,11 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	current_health = max_health
 	is_dead = false
 	is_attacking = false
-	current_state = EnemyState.IDLE
-	damage = 1
+	is_grabbing = false
+	current_state = EnemyState.SPAWN
+	damage = 50
 	can_damage_player = true
+	grab_timer = 0.0
 	
 	aggression_level = randf_range(0.8, 1.2)
 	search_timer = 0.0
@@ -376,10 +374,12 @@ func reset_for_pool():
 	"""Resetear enemigo para el pool"""
 	is_dead = false
 	is_attacking = false
-	current_state = EnemyState.IDLE
+	is_grabbing = false
+	current_state = EnemyState.SPAWN
 	current_health = max_health
-	damage = 1
+	damage = 50
 	can_damage_player = true
+	grab_timer = 0.0
 	
 	call_deferred("_deactivate_collision")
 	
@@ -414,7 +414,7 @@ func take_damage(amount: int, is_headshot: bool = false):
 	
 	current_state = EnemyState.STUNNED
 	var stun_timer = Timer.new()
-	stun_timer.wait_time = 0.3
+	stun_timer.wait_time = 0.2  # Stun más corto
 	stun_timer.one_shot = true
 	stun_timer.timeout.connect(func(): 
 		if current_state == EnemyState.STUNNED:
@@ -502,15 +502,139 @@ func _physics_process(delta):
 		return
 	
 	update_timers(delta)
-	update_state()
-	update_nearby_enemies()
-	handle_movement_cod_style_improved(delta)
-	handle_combat_cod_style()
+	update_state_cod_bo1()
+	handle_movement_cod_bo1(delta)
+	handle_combat_cod_bo1(delta)
 
-func update_nearby_enemies():
-	"""Actualizar lista de enemigos cercanos"""
-	nearby_enemies.clear()
-	separation_force = Vector2.ZERO
+func update_timers(delta):
+	"""Actualizar timers del comportamiento"""
+	search_timer += delta
+	
+	if global_position.distance_to(last_position) < 10.0:
+		stuck_timer += delta
+	else:
+		stuck_timer = 0.0
+		last_position = global_position
+	
+	# Timer de agarre
+	if is_grabbing:
+		grab_timer += delta
+
+func update_state_cod_bo1():
+	"""Actualizar estado estilo COD Black Ops 1"""
+	if is_dead:
+		current_state = EnemyState.DEAD
+		return
+	
+	var distance_to_player = global_position.distance_to(player.global_position)
+	
+	# Detectar jugador
+	if distance_to_player <= detection_range:
+		last_player_position = player.global_position
+		search_timer = 0.0
+	
+	# Determinar estado según distancia
+	match current_state:
+		EnemyState.SPAWN:
+			# Ya manejado en setup
+			pass
+		EnemyState.IDLE:
+			if distance_to_player <= detection_range:
+				current_state = EnemyState.CHASING
+		EnemyState.CHASING:
+			if distance_to_player <= proximity_distance:
+				current_state = EnemyState.GRABBING
+			elif distance_to_player > detection_range and search_timer > 8.0:
+				current_state = EnemyState.IDLE
+		EnemyState.GRABBING:
+			if distance_to_player > max_distance:
+				current_state = EnemyState.CHASING
+			elif grab_timer >= grab_duration:
+				current_state = EnemyState.ATTACKING
+		EnemyState.ATTACKING:
+			if not is_attacking:
+				current_state = EnemyState.CHASING
+		EnemyState.STUNNED:
+			# Se maneja en take_damage
+			pass
+
+func handle_movement_cod_bo1(delta):
+	"""Manejo de movimiento estilo COD Black Ops 1"""
+	var movement_direction = Vector2.ZERO
+	
+	match current_state:
+		EnemyState.SPAWN, EnemyState.IDLE:
+			movement_direction = get_wander_movement()
+		EnemyState.CHASING:
+			movement_direction = get_chase_movement()
+		EnemyState.GRABBING:
+			movement_direction = get_grab_movement()
+		EnemyState.ATTACKING:
+			movement_direction = Vector2.ZERO  # No moverse durante ataque
+		EnemyState.STUNNED:
+			movement_direction = velocity.move_toward(Vector2.ZERO, move_speed * delta * 3)
+		EnemyState.DEAD:
+			movement_direction = Vector2.ZERO
+	
+	# Aplicar separación entre enemigos
+	apply_enemy_separation()
+	
+	if movement_direction != Vector2.ZERO:
+		velocity = movement_direction.normalized() * move_speed
+	else:
+		velocity = Vector2.ZERO
+	
+	move_and_slide()
+
+func get_chase_movement() -> Vector2:
+	"""Obtener movimiento de persecución"""
+	if not player:
+		return Vector2.ZERO
+	
+	var distance_to_player = global_position.distance_to(player.global_position)
+	
+	# Mantener distancia óptima
+	if distance_to_player < min_distance:
+		# Muy cerca - alejarse un poco
+		return (global_position - player.global_position).normalized() * 0.5
+	elif distance_to_player > proximity_distance:
+		# Lejos - acercarse
+		return (player.global_position - global_position).normalized()
+	else:
+		# Distancia óptima - rodear al jugador
+		var direction_to_player = (player.global_position - global_position).normalized()
+		var perpendicular = Vector2(-direction_to_player.y, direction_to_player.x)
+		return (direction_to_player * 0.3 + perpendicular * 0.7).normalized()
+
+func get_grab_movement() -> Vector2:
+	"""Obtener movimiento durante agarre"""
+	if not player:
+		return Vector2.ZERO
+	
+	var distance_to_player = global_position.distance_to(player.global_position)
+	
+	if distance_to_player > proximity_distance + 10:
+		# Acercarse para mantener el agarre
+		return (player.global_position - global_position).normalized()
+	else:
+		# Mantener posición de agarre
+		return Vector2.ZERO
+
+func get_wander_movement() -> Vector2:
+	"""Comportamiento de deambulación"""
+	var to_wander_target = wander_target - global_position
+	
+	if to_wander_target.length() < 50.0:
+		wander_target = global_position + Vector2(randf_range(-300, 300), randf_range(-300, 300))
+	else:
+		return to_wander_target.normalized() * 0.4
+	
+	return Vector2.ZERO
+
+func apply_enemy_separation():
+	"""Aplicar separación entre enemigos"""
+	var separation_force = Vector2.ZERO
+	var nearby_count = 0
 	
 	var space_state = get_world_2d().direct_space_state
 	var query = PhysicsShapeQueryParameters2D.new()
@@ -521,200 +645,163 @@ func update_nearby_enemies():
 	query.collision_mask = 2
 	query.exclude = [self]
 	
-	var results = space_state.intersect_shape(query, 10)
+	var results = space_state.intersect_shape(query, 5)
 	
 	for result in results:
-		var enemy = result.collider as Enemy
-		if enemy and enemy != self and not enemy.is_dead:
-			nearby_enemies.append(enemy)
-			
-			var separation_vector = global_position - enemy.global_position
+		var other_enemy = result.collider as Enemy
+		if other_enemy and other_enemy != self and not other_enemy.is_dead:
+			var separation_vector = global_position - other_enemy.global_position
 			var distance = separation_vector.length()
 			
 			if distance > 0 and distance < separation_radius:
 				var force_magnitude = (separation_radius - distance) / separation_radius
-				separation_force += separation_vector.normalized() * force_magnitude * 80.0
-
-func update_timers(delta):
-	"""Actualizar timers del comportamiento"""
-	search_timer += delta
-	path_finding_timer += delta
+				separation_force += separation_vector.normalized() * force_magnitude
+				nearby_count += 1
 	
-	if global_position.distance_to(last_position) < 10.0:
-		stuck_timer += delta
-	else:
-		stuck_timer = 0.0
-		last_position = global_position
+	if nearby_count > 0:
+		velocity += separation_force.normalized() * 30.0
 
-func update_state():
-	"""Actualizar estado estilo COD Zombies"""
-	if is_dead:
-		current_state = EnemyState.DEAD
+func handle_combat_cod_bo1(delta):
+	"""Manejo de combate estilo COD Black Ops 1"""
+	if not player or is_dead:
 		return
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	if distance_to_player <= detection_range:
-		last_player_position = player.global_position
-		search_timer = 0.0
+	# Sistema de agarre estilo COD BO1
+	if current_state == EnemyState.GRABBING and not is_grabbing:
+		if distance_to_player <= proximity_distance:
+			start_grab_attack()
 	
-	if distance_to_player <= attack_range and not is_attacking:
-		current_state = EnemyState.ATTACKING
-	elif distance_to_player <= detection_range:
-		current_state = EnemyState.CHASING
-	elif search_timer < 5.0:
-		current_state = EnemyState.CHASING
-	else:
-		current_state = EnemyState.IDLE
+	# Sistema de ataque después del agarre
+	if current_state == EnemyState.ATTACKING and can_damage_player:
+		if distance_to_player <= attack_range:
+			perform_cod_bo1_attack()
 
-func handle_movement_cod_style_improved(delta):
-	"""Manejo de movimiento COD Zombies con pathfinding mejorado"""
-	var movement_direction = Vector2.ZERO
+func start_grab_attack():
+	"""Iniciar agarre estilo COD BO1"""
+	if is_grabbing or not can_damage_player:
+		return
 	
-	match current_state:
-		EnemyState.CHASING:
-			movement_direction = get_smart_movement_towards_player()
-		EnemyState.ATTACKING:
-			movement_direction = Vector2.ZERO
-		EnemyState.IDLE:
-			movement_direction = get_wander_movement()
-		EnemyState.STUNNED:
-			movement_direction = velocity.move_toward(Vector2.ZERO, move_speed * delta * 2)
+	is_grabbing = true
+	grab_timer = 0.0
 	
-	# Aplicar separación entre enemigos
-	if separation_force.length() > 0:
-		movement_direction += separation_force.normalized() * 0.8
+	# Efecto visual de agarre
+	if sprite:
+		sprite.modulate = Color.PURPLE
+		var color_tween = create_tween()
+		color_tween.tween_property(sprite, "modulate", Color.WHITE, 0.5)
 	
-	# Aplicar wall avoidance
-	if path_finding_timer >= path_update_interval:
-		update_wall_avoidance()
-		path_finding_timer = 0.0
+	# Aplicar efecto de ralentización al jugador
+	if player and player.has_method("apply_grab_effect"):
+		player.apply_grab_effect(grab_duration)
 	
-	movement_direction += wall_avoidance_force
-	
-	# Mantener distancia mínima del jugador
-	if player:
-		var distance_to_player = global_position.distance_to(player.global_position)
-		if distance_to_player < proximity_distance and distance_to_player > 0:
-			var separation_from_player = (global_position - player.global_position).normalized()
-			movement_direction += separation_from_player * push_back_force * delta
-	
-	if movement_direction != Vector2.ZERO:
-		velocity = movement_direction.normalized() * move_speed
-	else:
-		velocity = Vector2.ZERO
-	
-	move_and_slide()
+	# Crear efecto visual
+	create_grab_effect()
 
-func get_smart_movement_towards_player() -> Vector2:
-	"""Obtener dirección inteligente hacia el jugador con pathfinding"""
-	if not player:
-		return Vector2.ZERO
+func perform_cod_bo1_attack():
+	"""Realizar ataque estilo COD Black Ops 1"""
+	if not player or not can_damage_player or is_attacking:
+		return
 	
-	var distance_to_player = global_position.distance_to(player.global_position)
+	var distance_to_player = global_position.distance_to(player.global_position)	
+	if distance_to_player > attack_range:
+		return
 	
-	if distance_to_player <= proximity_distance:
-		return Vector2.ZERO
+	is_attacking = true
+	can_damage_player = false
+	last_attack_time = Time.get_ticks_msec() / 1000.0
 	
-	# Dirección básica hacia el jugador
-	var direct_direction = (player.global_position - global_position).normalized()
+	# Efecto visual de ataque
+	if sprite:
+		sprite.modulate = Color.ORANGE_RED
+		var color_tween = create_tween()
+		color_tween.tween_property(sprite, "modulate", original_color, 0.5)
 	
-	# Verificar si hay obstáculos en el camino directo
-	var space_state = get_world_2d().direct_space_state
-	var query = PhysicsRayQueryParameters2D.create(
-		global_position,
-		player.global_position
+	# APLICAR DAÑO AL JUGADOR
+	if player.has_method("take_damage"):
+		player.take_damage(damage)
+	
+	# Aplicar knockback fuerte estilo BO1
+	if player and player.has_method("apply_knockback"):
+		var push_direction = (player.global_position - global_position).normalized()
+		player.apply_knockback(push_direction, 150.0)
+	
+	# Crear efecto de ataque
+	create_attack_effect()
+	
+	# Iniciar cooldowns
+	if attack_timer:
+		attack_timer.start()
+	
+	var damage_timer = get_node("DamageCooldownTimer")
+	if damage_timer:
+		damage_timer.start()
+
+func create_grab_effect():
+	"""Crear efecto visual de agarre"""
+	var effect = Node2D.new()
+	effect.position = global_position
+	get_tree().current_scene.add_child(effect)
+	
+	for i in range(8):
+		var particle = Sprite2D.new()
+		var particle_image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
+		particle_image.fill(Color.PURPLE)
+		particle.texture = ImageTexture.create_from_image(particle_image)
+		
+		var angle = (float(i) * PI * 2.0) / 8.0
+		var offset = Vector2.from_angle(angle) * randf_range(20, 40)
+		particle.position = offset
+		
+		effect.add_child(particle)
+		
+		var particle_tween = effect.create_tween()
+		particle_tween.parallel().tween_property(particle, "position", offset * 1.5, 0.8)
+		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.8)
+	
+	var cleanup_timer = Timer.new()
+	cleanup_timer.wait_time = 1.0
+	cleanup_timer.one_shot = true
+	cleanup_timer.timeout.connect(func(): 
+		if is_instance_valid(effect):
+			effect.queue_free()
 	)
-	query.collision_mask = 3  # Solo paredes
-	query.exclude = [self]
-	
-	var result = space_state.intersect_ray(query)
-	
-	# Si hay obstáculos, usar pathfinding
-	if result:
-		return get_wall_avoiding_direction(direct_direction)
-	else:
-		# Camino libre, ir directo con pequeña variación
-		if randf() < 0.1:
-			direct_direction = direct_direction.rotated(randf_range(-0.3, 0.3))
-		
-		update_sprite_animation("walk", direct_direction)
-		return direct_direction
+	effect.add_child(cleanup_timer)
+	cleanup_timer.start()
 
-func get_wall_avoiding_direction(target_direction: Vector2) -> Vector2:
-	"""Obtener dirección que evita paredes"""
-	var best_direction = target_direction
-	var best_score = -1.0
+func create_attack_effect():
+	"""Crear efecto visual de ataque"""
+	var effect = Node2D.new()
+	effect.position = global_position
+	get_tree().current_scene.add_child(effect)
 	
-	# Probar diferentes ángulos alrededor de la dirección objetivo
-	var angle_tests = [-PI/4, -PI/8, 0, PI/8, PI/4, -PI/2, PI/2]
-	
-	for angle_offset in angle_tests:
-		var test_direction = target_direction.rotated(angle_offset)
-		var score = evaluate_direction(test_direction)
+	for i in range(6):
+		var particle = Sprite2D.new()
+		var particle_image = Image.create(10, 10, false, Image.FORMAT_RGBA8)
+		particle_image.fill(Color.ORANGE_RED)
+		particle.texture = ImageTexture.create_from_image(particle_image)
 		
-		if score > best_score:
-			best_score = score
-			best_direction = test_direction
+		var angle = (float(i) * PI * 2.0) / 6.0
+		var offset = Vector2.from_angle(angle) * randf_range(15, 25)
+		particle.position = offset
+		
+		effect.add_child(particle)
+		
+		var particle_tween = effect.create_tween()
+		particle_tween.parallel().tween_property(particle, "position", offset * 2, 0.6)
+		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.6)
+		particle_tween.parallel().tween_property(particle, "scale", Vector2.ZERO, 0.6)
 	
-	update_sprite_animation("walk", best_direction)
-	return best_direction
-
-func evaluate_direction(direction: Vector2) -> float:
-	"""Evaluar qué tan buena es una dirección"""
-	var space_state = get_world_2d().direct_space_state
-	var test_distance = wall_detection_distance
-	
-	var query = PhysicsRayQueryParameters2D.create(
-		global_position,
-		global_position + direction * test_distance
+	var cleanup_timer = Timer.new()
+	cleanup_timer.wait_time = 0.8
+	cleanup_timer.one_shot = true
+	cleanup_timer.timeout.connect(func(): 
+		if is_instance_valid(effect):
+			effect.queue_free()
 	)
-	query.collision_mask = 3  # Solo paredes
-	query.exclude = [self]
-	
-	var result = space_state.intersect_ray(query)
-	
-	if result:
-		# Hay pared, dar score bajo
-		var hit_distance = global_position.distance_to(result.position)
-		return hit_distance / test_distance  # Score entre 0-1
-	else:
-		# No hay pared, score alto
-		return 1.0
-
-func update_wall_avoidance():
-	"""Actualizar fuerza de evitación de paredes"""
-	wall_avoidance_force = Vector2.ZERO
-	
-	var space_state = get_world_2d().direct_space_state
-	
-	for direction in raycast_directions:
-		var query = PhysicsRayQueryParameters2D.create(
-			global_position,
-			global_position + direction * wall_detection_distance
-		)
-		query.collision_mask = 3  # Solo paredes
-		query.exclude = [self]
-		
-		var result = space_state.intersect_ray(query)
-		
-		if result:
-			var hit_distance = global_position.distance_to(result.position)
-			var avoidance_strength = (wall_detection_distance - hit_distance) / wall_detection_distance
-			wall_avoidance_force += -direction * avoidance_strength * 50.0
-
-func get_wander_movement() -> Vector2:
-	"""Comportamiento de deambulación"""
-	var to_wander_target = wander_target - global_position
-	
-	if to_wander_target.length() < 50.0:
-		wander_target = global_position + Vector2(randf_range(-300, 300), randf_range(-300, 300))
-	else:
-		var direction = to_wander_target.normalized()
-		update_sprite_animation("walk", direction)
-		return direction * 0.3
-	
-	return Vector2.ZERO
+	effect.add_child(cleanup_timer)
+	cleanup_timer.start()
 
 func update_sprite_animation(animation: String, direction: Vector2):
 	"""Actualizar animación del sprite"""
@@ -731,95 +818,6 @@ func update_sprite_animation(animation: String, direction: Vector2):
 				animated_sprite.play(animation)
 		elif animated_sprite.animation != "idle":
 			animated_sprite.play("idle")
-
-func handle_combat_cod_style():
-	"""Manejo de combate estilo COD Black Ops Zombies"""
-	if current_state == EnemyState.ATTACKING and can_damage_player:
-		var current_time = Time.get_ticks_msec() / 1000.0
-		
-		if current_time - last_attack_time >= attack_cooldown:
-			var distance_to_player = global_position.distance_to(player.global_position)
-			if distance_to_player <= attack_range:
-				perform_zombie_grab_attack()
-
-func perform_zombie_grab_attack():
-	"""Realizar ataque de agarre"""
-	if not player or not can_damage_player:
-		return
-	
-	var distance_to_player = global_position.distance_to(player.global_position)	
-	if distance_to_player > attack_range:
-		return
-	
-	is_attacking = true
-	can_damage_player = false
-	last_attack_time = Time.get_ticks_msec() / 1000.0
-	
-	# Efecto visual de preparación del ataque
-	if sprite:
-		sprite.modulate = Color.ORANGE_RED
-	
-	# APLICAR DAÑO INMEDIATAMENTE AL JUGADOR
-	if player.has_method("take_damage"):
-		player.take_damage(damage)
-	
-	# Aplicar efecto de agarre
-	if player and player.has_method("apply_grab_effect"):
-		player.apply_grab_effect(1.0)
-	
-	# Knockback menor
-	if player and player.has_method("apply_knockback"):
-		var push_direction = (player.global_position - global_position).normalized()
-		player.apply_knockback(push_direction, 75.0)
-	
-	create_grab_effect()
-	
-	# Restaurar color y estados
-	if sprite:
-		var color_tween = create_tween()
-		color_tween.tween_property(sprite, "modulate", original_color, 0.3)
-	
-	# Iniciar cooldown de ataque
-	if attack_timer:
-		attack_timer.start()
-	
-	# Iniciar cooldown de daño
-	var damage_timer = get_node("DamageCooldownTimer")
-	if damage_timer:
-		damage_timer.start()
-
-func create_grab_effect():
-	"""Crear efecto visual de agarre"""
-	var effect = Node2D.new()
-	effect.position = global_position
-	get_tree().current_scene.add_child(effect)
-	
-	for i in range(6):
-		var particle = Sprite2D.new()
-		var particle_image = Image.create(6, 6, false, Image.FORMAT_RGBA8)
-		particle_image.fill(Color.PURPLE)
-		particle.texture = ImageTexture.create_from_image(particle_image)
-		
-		var angle = (float(i) * PI * 2.0) / 6.0
-		var offset = Vector2.from_angle(angle) * randf_range(15, 30)
-		particle.position = offset
-		
-		effect.add_child(particle)
-		
-		var particle_tween = effect.create_tween()
-		particle_tween.parallel().tween_property(particle, "position", offset * 2, 0.5)
-		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
-		particle_tween.parallel().tween_property(particle, "scale", Vector2.ZERO, 0.5)
-	
-	var cleanup_timer = Timer.new()
-	cleanup_timer.wait_time = 1.0
-	cleanup_timer.one_shot = true
-	cleanup_timer.timeout.connect(func(): 
-		if is_instance_valid(effect):
-			effect.queue_free()
-	)
-	effect.add_child(cleanup_timer)
-	cleanup_timer.start()
 
 # Funciones básicas de información
 func get_current_health() -> int:

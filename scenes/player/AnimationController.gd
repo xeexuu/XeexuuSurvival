@@ -1,4 +1,4 @@
-# scenes/player/AnimationController.gd - SISTEMA DE ANIMACIONES DIRECCIONALES CORREGIDO
+# scenes/player/AnimationController.gd - ANIMACIONES CON FRAMES CORRECTOS Y SIN ROTACIÓN
 extends Node
 class_name AnimationController
 
@@ -13,11 +13,6 @@ var is_moving: bool = false
 
 # Mapeo de animaciones disponibles
 var available_animations: Dictionary = {}
-
-# SISTEMA DE ROTACIÓN SUAVE - REDUCIDO
-var target_rotation: float = 0.0
-var rotation_speed: float = 8.0
-var max_rotation_angle: float = 8.0  # Reducido a 8 grados máximo
 
 func setup(sprite: AnimatedSprite2D, char_name: String):
 	"""Configurar el controlador de animaciones"""
@@ -44,12 +39,12 @@ func load_primary_animations() -> SpriteFrames:
 	
 	# SPRITES DIRECCIONALES ESPECÍFICOS
 	var animation_files = [
-		"walk_Down.png",          # Apuntando hacia abajo
-		"walk_Left_Down.png",     # Apuntando hacia abajo izquierda
-		"walk_Left_Up.png",       # Apuntando hacia arriba izquierda
-		"walk_Right_Down.png",    # Apuntando hacia abajo derecha
-		"walk_Right_Up.png",      # Apuntando hacia arriba derecha
-		"walk_Up.png"             # Apuntando hacia arriba
+		"walk_Down.png",
+		"walk_Right_Down.png", 
+		"walk_Right_Up.png",
+		"walk_Left_Up.png",
+		"walk_Left_Down.png",
+		"walk_Up.png"
 	]
 	
 	var loaded_textures: Dictionary = {}
@@ -76,10 +71,10 @@ func load_fallback_animations() -> SpriteFrames:
 	
 	var animation_files = [
 		"walk_Down.png",
-		"walk_Left_Down.png",
-		"walk_Left_Up.png",
 		"walk_Right_Down.png",
-		"walk_Right_Up.png",
+		"walk_Right_Up.png", 
+		"walk_Left_Up.png",
+		"walk_Left_Down.png",
 		"walk_Up.png"
 	]
 	
@@ -97,119 +92,74 @@ func load_fallback_animations() -> SpriteFrames:
 	return create_default_sprite_frames()
 
 func create_sprite_frames_from_textures(textures: Dictionary) -> SpriteFrames:
-	"""Crear SpriteFrames desde texturas cargadas"""
+	"""Crear SpriteFrames desde texturas cargadas - EXTRAER 8 FRAMES DE 128x128"""
 	var frames = SpriteFrames.new()
 	
-	# Crear animación idle usando la primera textura disponible
+	# Crear animación idle usando walk_Down como base
 	frames.add_animation("idle")
-	frames.set_animation_speed("idle", 2.0)
+	frames.set_animation_speed("idle", 4.0)
 	frames.set_animation_loop("idle", true)
 	
-	var first_texture = get_first_available_texture(textures)
-	if first_texture:
-		var first_frame = extract_first_frame_from_texture(first_texture)
+	var idle_texture = textures.get("walk_Down", get_first_available_texture(textures))
+	if idle_texture:
+		var first_frame = extract_frame_from_atlas(idle_texture, 0)
 		frames.add_frame("idle", first_frame)
 	
-	# Crear animaciones direccionales EXACTAS
+	# Crear animaciones direccionales EXACTAS - EXTRAER TODOS LOS 8 FRAMES
 	for texture_key in textures.keys():
 		var texture = textures[texture_key]
 		var anim_name = texture_key
 		
 		# Crear animación específica
 		frames.add_animation(anim_name)
-		frames.set_animation_speed(anim_name, 8.0)
+		frames.set_animation_speed(anim_name, 12.0)  # Velocidad de animación
 		frames.set_animation_loop(anim_name, true)
 		
-		# Extraer frames del atlas
-		var animation_frames = extract_frames_from_texture(texture)
-		for frame in animation_frames:
+		# EXTRAER TODOS LOS 8 FRAMES DEL ATLAS 1024x128
+		for i in range(8):
+			var frame = extract_frame_from_atlas(texture, i)
 			frames.add_frame(anim_name, frame)
-	
-	# Crear animación genérica "walk" usando walk_Down como base
-	if not frames.has_animation("walk"):
-		frames.add_animation("walk")
-		frames.set_animation_speed("walk", 8.0)
-		frames.set_animation_loop("walk", true)
-		
-		var walk_texture = textures.get("walk_Down", first_texture)
-		if walk_texture:
-			var walk_frames = extract_frames_from_texture(walk_texture)
-			for frame in walk_frames:
-				frames.add_frame("walk", frame)
 	
 	return frames
 
+func extract_frame_from_atlas(atlas_texture: Texture2D, frame_index: int) -> Texture2D:
+	"""Extraer un frame específico del atlas 1024x128 (8 frames de 128x128)"""
+	if not atlas_texture:
+		return null
+	
+	var frame_width = 128.0  # Cada frame es 128x128
+	var frame_height = 128.0
+	var x = float(frame_index) * frame_width
+	
+	var atlas_frame = AtlasTexture.new()
+	atlas_frame.atlas = atlas_texture
+	atlas_frame.region = Rect2(x, 0, frame_width, frame_height)
+	
+	return atlas_frame
+
 func get_first_available_texture(textures: Dictionary) -> Texture2D:
-	"""Obtener la primera textura disponible con prioridad específica"""
+	"""Obtener la primera textura disponible"""
 	var priority_order = ["walk_Down", "walk_Right_Down", "walk_Up", "walk_Left_Down", "walk_Left_Up", "walk_Right_Up"]
 	
 	for key in priority_order:
 		if key in textures:
 			return textures[key]
 	
-	# Si no hay prioridades, tomar cualquiera
 	for key in textures.keys():
 		return textures[key]
 	
 	return null
-
-func extract_first_frame_from_texture(texture: Texture2D) -> Texture2D:
-	"""Extraer el primer frame de una textura (puede ser atlas)"""
-	if not texture:
-		return null
-	
-	var texture_size = texture.get_size()
-	
-	# Si la textura es muy ancha, probablemente es un atlas
-	if texture_size.x > texture_size.y * 2:
-		var frame_width = float(texture_size.x) / 8.0  # Asumir 8 frames
-		var frame_height = float(texture_size.y)
-		
-		var first_frame = AtlasTexture.new()
-		first_frame.atlas = texture
-		first_frame.region = Rect2(0, 0, frame_width, frame_height)
-		return first_frame
-	
-	return texture
-
-func extract_frames_from_texture(texture: Texture2D) -> Array[Texture2D]:
-	"""Extraer todos los frames de una textura"""
-	var frames: Array[Texture2D] = []
-	
-	if not texture:
-		return frames
-	
-	var texture_size = texture.get_size()
-	
-	# Detectar si es un atlas
-	if texture_size.x > texture_size.y * 2:
-		# Es un atlas, extraer frames
-		var frame_count = 8  # Asumir 8 frames
-		var frame_width = float(texture_size.x) / float(frame_count)
-		var frame_height = float(texture_size.y)
-		
-		for i in range(frame_count):
-			var frame = AtlasTexture.new()
-			frame.atlas = texture
-			frame.region = Rect2(i * frame_width, 0, frame_width, frame_height)
-			frames.append(frame)
-	else:
-		# Es una sola imagen
-		frames.append(texture)
-	
-	return frames
 
 func create_default_sprite_frames() -> SpriteFrames:
 	"""Crear SpriteFrames por defecto"""
 	var frames = SpriteFrames.new()
 	var default_texture = create_default_character_texture()
 	
-	# Animaciones básicas
-	var animations = ["idle", "walk", "walk_Down", "walk_Up", "walk_Left_Down", "walk_Left_Up", "walk_Right_Down", "walk_Right_Up"]
+	var animations = ["idle", "walk_Down", "walk_Right_Down", "walk_Right_Up", "walk_Left_Up", "walk_Left_Down", "walk_Up"]
 	
 	for anim in animations:
 		frames.add_animation(anim)
-		frames.set_animation_speed(anim, 2.0 if anim == "idle" else 8.0)
+		frames.set_animation_speed(anim, 4.0 if anim == "idle" else 12.0)
 		frames.set_animation_loop(anim, true)
 		frames.add_frame(anim, default_texture)
 	
@@ -217,7 +167,7 @@ func create_default_sprite_frames() -> SpriteFrames:
 
 func create_default_character_texture() -> Texture2D:
 	"""Crear textura por defecto para el personaje"""
-	var image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
 	
 	var name_hash = character_name.hash()
 	var hue = float(abs(name_hash) % 360) / 360.0
@@ -226,23 +176,23 @@ func create_default_character_texture() -> Texture2D:
 	image.fill(character_color)
 	
 	# Detalles básicos
-	var center = Vector2(32, 32)
-	for x in range(64):
-		for y in range(64):
+	var center = Vector2(64, 64)
+	for x in range(128):
+		for y in range(128):
 			var dist = Vector2(x, y).distance_to(center)
-			if dist < 8:
+			if dist < 20:
 				image.set_pixel(x, y, Color.WHITE)
-			elif dist < 12:
+			elif dist < 30:
 				image.set_pixel(x, y, character_color.darkened(0.3))
-			elif dist < 16:
+			elif dist < 40:
 				image.set_pixel(x, y, character_color.darkened(0.1))
 	
 	# Ojos
-	for x in range(28, 32):
-		for y in range(28, 32):
+	for x in range(54, 62):
+		for y in range(54, 62):
 			image.set_pixel(x, y, Color.BLACK)
-	for x in range(32, 36):
-		for y in range(28, 32):
+	for x in range(66, 74):
+		for y in range(54, 62):
 			image.set_pixel(x, y, Color.BLACK)
 	
 	return ImageTexture.create_from_image(image)
@@ -259,7 +209,7 @@ func detect_available_animations():
 		available_animations[anim_name] = true
 
 func update_animation(movement_direction: Vector2, aim_direction: Vector2):
-	"""SISTEMA PRINCIPAL: Actualizar animación basada en dirección de apuntado PRIORITARIA"""
+	"""SISTEMA PRINCIPAL: Actualizar animación basada en dirección - SIN ROTACIÓN"""
 	if not animated_sprite or not sprite_frames:
 		return
 	
@@ -271,33 +221,30 @@ func update_animation(movement_direction: Vector2, aim_direction: Vector2):
 	var direction_to_use = aim_direction if aim_direction.length() > 0.1 else movement_direction
 	
 	if direction_to_use.length() > 0.1:
-		# Obtener animación y rotación según dirección de apuntado
-		var target_animation = get_animation_from_direction(direction_to_use)
-		var target_rot = get_rotation_from_direction(direction_to_use)
+		# Obtener animación EXACTA según dirección - SEGÚN TUS ESPECIFICACIONES
+		var target_animation = get_exact_animation_from_direction(direction_to_use)
 		
-		# Aplicar animación direccional ESPECÍFICA
+		# Aplicar animación direccional ESPECÍFICA - SIN ROTACIÓN
 		if target_animation != "" and available_animations.has(target_animation):
 			if animated_sprite.animation != target_animation:
 				animated_sprite.play(target_animation)
-		elif available_animations.has("walk") and is_moving:
-			if animated_sprite.animation != "walk":
-				animated_sprite.play("walk")
+		elif available_animations.has("walk_Down") and is_moving:
+			if animated_sprite.animation != "walk_Down":
+				animated_sprite.play("walk_Down")
 		
-		# Aplicar rotación suave REDUCIDA
-		target_rotation = target_rot
-		update_sprite_rotation()
+		# NO APLICAR ROTACIÓN - SOLO ANIMACIONES DIRECCIONALES
+		animated_sprite.rotation = 0.0
 	else:
 		# Sin movimiento ni apuntado - usar idle
 		if available_animations.has("idle"):
 			if animated_sprite.animation != "idle":
 				animated_sprite.play("idle")
 		
-		# Volver gradualmente a rotación 0
-		target_rotation = 0.0
-		update_sprite_rotation()
+		# Sin rotación
+		animated_sprite.rotation = 0.0
 
-func get_animation_from_direction(direction: Vector2) -> String:
-	"""Obtener animación EXACTA según dirección"""
+func get_exact_animation_from_direction(direction: Vector2) -> String:
+	"""Obtener animación EXACTA según dirección - SEGÚN TUS ESPECIFICACIONES"""
 	var angle = direction.angle()
 	var degrees = rad_to_deg(angle)
 	
@@ -305,108 +252,35 @@ func get_animation_from_direction(direction: Vector2) -> String:
 	if degrees < 0:
 		degrees += 360
 	
-	# MAPEO EXACTO SEGÚN ESPECIFICACIONES DEL USUARIO
-	if degrees >= 337.5 or degrees < 22.5:
-		# Derecha pura - usar Right_Down
-		return "walk_Right_Down"
-	elif degrees >= 22.5 and degrees < 67.5:
-		# Derecha-Abajo
-		return "walk_Right_Down"
-	elif degrees >= 67.5 and degrees < 112.5:
-		# Abajo
+	# MAPEO EXACTO SEGÚN TUS ESPECIFICACIONES
+	if (degrees >= 330 and degrees <= 360) or (degrees >= 0 and degrees < 30):
+		# 330° - 30°: walk_Down
 		return "walk_Down"
-	elif degrees >= 112.5 and degrees < 157.5:
-		# Izquierda-Abajo
-		return "walk_Left_Down"
-	elif degrees >= 157.5 and degrees < 202.5:
-		# Izquierda pura - usar Left_Down
-		return "walk_Left_Down"
-	elif degrees >= 202.5 and degrees < 247.5:
-		# Izquierda-Arriba
-		return "walk_Left_Up"
-	elif degrees >= 247.5 and degrees < 292.5:
-		# Arriba
-		return "walk_Up"
-	elif degrees >= 292.5 and degrees < 337.5:
-		# Derecha-Arriba
+	elif degrees >= 30 and degrees < 90:
+		# 30° - 90°: walk_Right_Down  
+		return "walk_Right_Down"
+	elif degrees >= 90 and degrees < 150:
+		# 90° - 150°: walk_Right_Up
 		return "walk_Right_Up"
+	elif degrees >= 150 and degrees < 210:
+		# 150° - 210°: walk_Left_Up
+		return "walk_Left_Up"
+	elif degrees >= 210 and degrees < 270:
+		# 210° - 270°: walk_Left_Down
+		return "walk_Left_Down"
+	elif degrees >= 270 and degrees < 330:
+		# 270° - 330°: walk_Up
+		return "walk_Up"
 	
 	return "walk_Down"  # Fallback
-
-func get_rotation_from_direction(direction: Vector2) -> float:
-	"""Obtener rotación LIGERA según dirección"""
-	var angle = direction.angle()
-	var degrees = rad_to_deg(angle)
-	
-	# Normalizar ángulo a 0-360
-	if degrees < 0:
-		degrees += 360
-	
-	# ROTACIÓN LIGERA (máximo 8 grados) según dirección
-	var base_rotation = 0.0
-	
-	if degrees >= 337.5 or degrees < 22.5:
-		# Derecha - rotación ligera hacia la derecha
-		base_rotation = deg_to_rad(3.0)
-	elif degrees >= 22.5 and degrees < 67.5:
-		# Derecha-Abajo
-		base_rotation = deg_to_rad(6.0)
-	elif degrees >= 67.5 and degrees < 112.5:
-		# Abajo
-		base_rotation = deg_to_rad(4.0)
-	elif degrees >= 112.5 and degrees < 157.5:
-		# Izquierda-Abajo
-		base_rotation = deg_to_rad(-6.0)
-	elif degrees >= 157.5 and degrees < 202.5:
-		# Izquierda
-		base_rotation = deg_to_rad(-3.0)
-	elif degrees >= 202.5 and degrees < 247.5:
-		# Izquierda-Arriba
-		base_rotation = deg_to_rad(-8.0)
-	elif degrees >= 247.5 and degrees < 292.5:
-		# Arriba
-		base_rotation = deg_to_rad(-4.0)
-	elif degrees >= 292.5 and degrees < 337.5:
-		# Derecha-Arriba
-		base_rotation = deg_to_rad(8.0)
-	
-	# Limitar la rotación al máximo permitido
-	base_rotation = clamp(base_rotation, deg_to_rad(-max_rotation_angle), deg_to_rad(max_rotation_angle))
-	
-	return base_rotation
-
-func update_sprite_rotation():
-	"""Actualizar rotación del sprite de forma suave"""
-	if not animated_sprite:
-		return
-	
-	# Interpolación suave hacia la rotación objetivo
-	var delta = get_tree().process_frame
-	animated_sprite.rotation = lerp_angle(animated_sprite.rotation, target_rotation, rotation_speed * delta)
 
 func scale_sprite_to_128px():
 	"""Escalar sprite a 128px de alto"""
 	if not animated_sprite or not sprite_frames:
 		return
 	
-	# Obtener primera textura para calcular escala
-	var reference_texture: Texture2D = null
-	
-	if sprite_frames.has_animation("idle") and sprite_frames.get_frame_count("idle") > 0:
-		reference_texture = sprite_frames.get_frame_texture("idle", 0)
-	
-	if not reference_texture:
-		return
-	
-	var current_height = reference_texture.get_size().y
-	var target_height = 128.0
-	
-	if current_height == target_height:
-		animated_sprite.scale = Vector2(1.0, 1.0)
-		return
-	
-	var scale_factor = target_height / float(current_height)
-	animated_sprite.scale = Vector2(scale_factor, scale_factor)
+	# Como los frames ya son 128x128, no necesitamos escalar
+	animated_sprite.scale = Vector2(1.0, 1.0)
 
 func get_character_folder_name() -> String:
 	"""Obtener nombre de carpeta para el personaje"""
@@ -414,7 +288,7 @@ func get_character_folder_name() -> String:
 	
 	var name_mappings = {
 		"pelao": "pelao",
-		"juancar": "juancar",
+		"juancar": "juancar", 
 		"juan_car": "juancar",
 		"chica": "chica"
 	}

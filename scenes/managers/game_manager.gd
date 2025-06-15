@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - SIN PRINTS REPETITIVOS + SPRITE INVISIBLE ELIMINADO
+# scenes/managers/game_manager.gd - SIN PRINTS REPETITIVOS + SISTEMA BO1 INTEGRADO
 extends Node
 class_name GameManager
 
@@ -229,11 +229,11 @@ func setup_player_after_selection():
 			player.velocity = Vector2.ZERO
 
 func setup_unified_cod_system_safe():
-	"""Configurar sistemas de combate estilo COD Black Ops CON UI FIJA"""
+	"""Configurar sistemas de combate estilo COD Black Ops 1 CON UI FIJA"""
 	if not player:
 		return
 	
-	# Crear ScoreSystem
+	# Crear ScoreSystem COD BO1
 	score_system = ScoreSystem.new()
 	score_system.name = "ScoreSystem"
 	add_child(score_system)
@@ -270,10 +270,11 @@ func setup_unified_cod_system_safe():
 	
 	rounds_manager.start_round(1)
 
-func _on_round_changed(_new_round: int):
-	"""Actualizar cuando cambia la ronda"""
+func _on_round_changed(new_round: int):
+	"""Actualizar cuando cambia la ronda - INTEGRAR CON SISTEMA BO1"""
 	if score_system:
-		pass
+		# ESTABLECER MULTIPLICADOR DE RONDA SEGÚN BLACK OPS 1
+		score_system.set_current_round(new_round)
 
 func _on_enemies_remaining_changed(_remaining: int):
 	"""Actualizar cuando cambian enemigos restantes"""
@@ -820,14 +821,11 @@ func restart_entire_game():
 	get_tree().reload_current_scene()
 
 func _on_enemy_killed(enemy: Enemy):
-	"""Sistema COD BO2: Registrar kill de enemigo"""
+	"""Sistema COD BO1: Registrar kill de enemigo"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
-	
-	if score_system and enemy:
-		score_system.add_enemy_kill()
 
 func _on_enemy_spawned(_enemy: Enemy):
 	"""Cuando un enemigo es spawneado"""

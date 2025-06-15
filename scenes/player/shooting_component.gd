@@ -6,12 +6,13 @@ class_name ShootingComponent
 var equipped_weapon: WeaponStats
 var can_shoot: bool = true
 var shoot_timer: Timer
+var is_stats_configured: bool = false  # EVITAR CONFIGURACIÓN REPETIDA
 
 signal bullet_fired(bullet: Bullet, direction: Vector2)
 
 func _ready():
 	shoot_timer = Timer.new()
-	shoot_timer.wait_time = 3.33  # Para 0.3 balas por segundo (1/0.3 = 3.33 segundos)
+	shoot_timer.wait_time = 3.33  # Valor por defecto
 	shoot_timer.one_shot = true
 	shoot_timer.timeout.connect(_on_shoot_timer_timeout)
 	add_child(shoot_timer)
@@ -20,7 +21,10 @@ func _ready():
 		bullet_scene = load("res://scenes/projectiles/Bullet.tscn")
 
 func update_stats_from_player():
-	"""Función para actualizar estadísticas cuando el jugador cambie"""
+	"""Función para actualizar estadísticas - SOLO UNA VEZ"""
+	if is_stats_configured:
+		return false
+	
 	var player = get_parent() as Player
 	if player and player.character_stats and player.character_stats.equipped_weapon:
 		equipped_weapon = player.character_stats.equipped_weapon
@@ -29,13 +33,13 @@ func update_stats_from_player():
 		if equipped_weapon.reload_timer and not equipped_weapon.reload_timer.get_parent():
 			add_child(equipped_weapon.reload_timer)
 		
-		# USAR ESTADÍSTICAS DEL ARMA - CADENCIA CORREGIDA
+		# CONFIGURAR CADENCIA SOLO UNA VEZ
 		if equipped_weapon.attack_speed > 0:
-			var fire_rate = 1.0 / equipped_weapon.attack_speed  # Para 0.3 balas/seg = 3.33 seg
+			var fire_rate = 1.0 / equipped_weapon.attack_speed
 			if shoot_timer and is_instance_valid(shoot_timer):
 				shoot_timer.wait_time = fire_rate
-				print("🔫 Cadencia configurada: ", equipped_weapon.attack_speed, " balas/seg (", fire_rate, " seg entre disparos)")
 		
+		is_stats_configured = true
 		return true
 	else:
 		return false
@@ -55,8 +59,9 @@ func try_shoot(direction: Vector2, start_position: Vector2) -> bool:
 	if equipped_weapon and not equipped_weapon.can_shoot():
 		return false
 	
-	# Actualizar estadísticas cada vez que se dispara (por si cambiaron)
-	update_stats_from_player()
+	# CONFIGURAR STATS SOLO SI NO ESTÁN CONFIGURADOS
+	if not is_stats_configured:
+		update_stats_from_player()
 	
 	shoot(direction.normalized(), start_position)
 	return true
@@ -86,7 +91,6 @@ func shoot(direction: Vector2, start_position: Vector2):
 	# Verificar nuevamente antes de iniciar el timer
 	if shoot_timer and is_instance_valid(shoot_timer) and shoot_timer.is_inside_tree():
 		shoot_timer.start()
-		print("💥 Disparo realizado - Próximo en ", shoot_timer.wait_time, " segundos")
 
 func create_bullet(base_direction: Vector2, start_position: Vector2, bullet_index: int, total_bullets: int):
 	var bullet = bullet_scene.instantiate() as Bullet
@@ -109,25 +113,24 @@ func create_bullet(base_direction: Vector2, start_position: Vector2, bullet_inde
 	
 	# Aplicar accuracy si está configurada
 	if equipped_weapon and equipped_weapon.accuracy < 1.0:
-		var accuracy_spread = (1.0 - equipped_weapon.accuracy) * 30.0  # Máximo 30 grados de spread
+		var accuracy_spread = (1.0 - equipped_weapon.accuracy) * 30.0
 		var random_offset = randf_range(-accuracy_spread, accuracy_spread)
 		var base_angle = final_direction.angle()
 		var final_angle = base_angle + deg_to_rad(random_offset)
 		final_direction = Vector2.from_angle(final_angle)
 	
-	# Usar estadísticas del arma o valores por defecto - CORREGIDO RANGO
+	# Usar estadísticas del arma o valores por defecto
 	var final_speed = 600.0
 	var final_damage = 1
-	var final_range = 400.0  # Rango por defecto aumentado
+	var final_range = 400.0
 	
 	if equipped_weapon:
 		final_speed = float(equipped_weapon.projectile_speed)
 		final_damage = equipped_weapon.damage
 		final_range = float(equipped_weapon.attack_range)
 		
-		# ASEGURAR QUE EL RANGO SEA CONSISTENTE
 		if final_range < 300:
-			final_range = 400.0  # Mínimo 400 de rango
+			final_range = 400.0
 	
 	# Añadir al árbol ANTES de configurar
 	var main_scene = get_tree().current_scene
@@ -136,7 +139,7 @@ func create_bullet(base_direction: Vector2, start_position: Vector2, bullet_inde
 	else:
 		get_tree().root.add_child(bullet)
 	
-	# AHORA configurar la bala (después de que esté en el árbol)
+	# AHORA configurar la bala
 	bullet.global_position = start_position
 	bullet.setup(final_direction, final_speed, final_range)
 	bullet.damage = final_damage
@@ -152,7 +155,7 @@ func create_bullet(base_direction: Vector2, start_position: Vector2, bullet_inde
 	bullet_fired.emit(bullet, final_direction)
 
 func start_manual_reload():
-	"""Iniciar recarga manual (para cuando el jugador presiona R)"""
+	"""Iniciar recarga manual"""
 	if equipped_weapon:
 		return equipped_weapon.start_reload()
 	return false

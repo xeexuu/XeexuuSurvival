@@ -1,4 +1,4 @@
-# scenes/projectiles/bullet.gd - CORREGIDO: Sprite invisible eliminado + Headshots funcionando
+# scenes/projectiles/bullet.gd - BALAS CORREGIDAS CON SISTEMA DE PUNTUACIÓN BO1
 extends Area2D
 class_name Bullet
 
@@ -22,7 +22,7 @@ var distance_traveled: float = 0.0
 var lifetime_timer: Timer
 var is_being_destroyed: bool = false
 
-# REFERENCIA AL SCORE SYSTEM PARA PUNTUACIÓN
+# REFERENCIA AL SCORE SYSTEM PARA PUNTUACIÓN BO1
 var score_system: ScoreSystem
 
 @onready var sprite = $Sprite2D
@@ -135,21 +135,29 @@ func _on_body_entered(body: Node2D):
 		handle_hit(body)
 
 func handle_headshot_hit(enemy: Node2D):
-	"""Manejar impacto headshot estilo COD Black Ops - SIN PRINTS"""
+	"""Manejar impacto headshot estilo COD Black Ops 1"""
 	if is_being_destroyed or not (enemy is Enemy):
 		return
 	
 	if has_piercing and enemy in targets_hit:
 		return
 	
+	var enemy_ref = enemy as Enemy
+	var enemy_initial_health = enemy_ref.current_health
+	
 	# CALCULAR DAÑO DE HEADSHOT CORRECTAMENTE
 	var headshot_damage = int(float(damage) * headshot_multiplier)
 	apply_damage_to_target(enemy, headshot_damage, true)
 	apply_knockback_to_target(enemy)
 	
-	# PUNTUACIÓN COD BO2: HEADSHOT = 100 PUNTOS INMEDIATAMENTE
+	# SISTEMA DE PUNTUACIÓN BLACK OPS 1
 	if score_system:
-		score_system.add_kill_points(global_position, true, false)  # 100 puntos headshot
+		if enemy_ref.current_health <= 0:
+			# KILL CON HEADSHOT = 50 + 50 = 100 puntos (más multiplicador de ronda)
+			score_system.add_kill_points(global_position, true, false)
+		else:
+			# DAÑO SIN KILL CON HEADSHOT = 20 puntos (más multiplicador de ronda)
+			score_system.add_damage_points(global_position, headshot_damage, true)
 	
 	# Crear efecto de headshot
 	SpriteEffectsHandler.create_headshot_effect(global_position, get_tree().current_scene)
@@ -164,19 +172,27 @@ func handle_headshot_hit(enemy: Node2D):
 		destroy_bullet("headshot")
 
 func handle_hit(target: Node2D):
-	"""Manejar impacto normal"""
+	"""Manejar impacto normal estilo Black Ops 1"""
 	if is_being_destroyed or not (target is Enemy):
 		return
 	
 	if has_piercing and target in targets_hit:
 		return
 	
+	var enemy_ref = target as Enemy
+	var enemy_initial_health = enemy_ref.current_health
+	
 	apply_damage_to_target(target, damage, false)
 	apply_knockback_to_target(target)
 	
-	# PUNTUACIÓN COD BO2: HIT NORMAL = 50 PUNTOS INMEDIATAMENTE
+	# SISTEMA DE PUNTUACIÓN BLACK OPS 1
 	if score_system:
-		score_system.add_kill_points(global_position, false, false)  # 50 puntos normal
+		if enemy_ref.current_health <= 0:
+			# KILL NORMAL = 50 puntos (más multiplicador de ronda)
+			score_system.add_kill_points(global_position, false, false)
+		else:
+			# DAÑO SIN KILL = 10 puntos (más multiplicador de ronda)
+			score_system.add_damage_points(global_position, damage, false)
 	
 	# Crear efecto de impacto
 	if has_piercing:
