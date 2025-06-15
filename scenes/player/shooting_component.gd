@@ -11,7 +11,7 @@ signal bullet_fired(bullet: Bullet, direction: Vector2)
 
 func _ready():
 	shoot_timer = Timer.new()
-	shoot_timer.wait_time = 0.083  # ~12 balas por segundo por defecto
+	shoot_timer.wait_time = 3.33  # Para 0.3 balas por segundo (1/0.3 = 3.33 segundos)
 	shoot_timer.one_shot = true
 	shoot_timer.timeout.connect(_on_shoot_timer_timeout)
 	add_child(shoot_timer)
@@ -29,11 +29,12 @@ func update_stats_from_player():
 		if equipped_weapon.reload_timer and not equipped_weapon.reload_timer.get_parent():
 			add_child(equipped_weapon.reload_timer)
 		
-		# USAR ESTADÍSTICAS DEL ARMA - VALIDACIÓN AÑADIDA
+		# USAR ESTADÍSTICAS DEL ARMA - CADENCIA CORREGIDA
 		if equipped_weapon.attack_speed > 0:
-			var fire_rate = 1.0 / equipped_weapon.attack_speed
+			var fire_rate = 1.0 / equipped_weapon.attack_speed  # Para 0.3 balas/seg = 3.33 seg
 			if shoot_timer and is_instance_valid(shoot_timer):
 				shoot_timer.wait_time = fire_rate
+				print("🔫 Cadencia configurada: ", equipped_weapon.attack_speed, " balas/seg (", fire_rate, " seg entre disparos)")
 		
 		return true
 	else:
@@ -85,6 +86,7 @@ func shoot(direction: Vector2, start_position: Vector2):
 	# Verificar nuevamente antes de iniciar el timer
 	if shoot_timer and is_instance_valid(shoot_timer) and shoot_timer.is_inside_tree():
 		shoot_timer.start()
+		print("💥 Disparo realizado - Próximo en ", shoot_timer.wait_time, " segundos")
 
 func create_bullet(base_direction: Vector2, start_position: Vector2, bullet_index: int, total_bullets: int):
 	var bullet = bullet_scene.instantiate() as Bullet

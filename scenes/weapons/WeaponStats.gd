@@ -5,7 +5,7 @@ class_name WeaponStats
 @export var weapon_name: String = "Pistola"
 @export var weapon_type: String = "ranged"
 @export var damage: int = 25
-@export var attack_speed: float = 12.0  # 12 balas por segundo
+@export var attack_speed: float = 0.3  # 0.3 balas por segundo (cada 3.33 segundos)
 @export var attack_range: int = 300
 @export var projectile_speed: int = 600
 @export var ammo_capacity: int = 30  # Capacidad del cargador
@@ -23,10 +23,10 @@ class_name WeaponStats
 @export var muzzle_flash_sprite: Texture2D
 @export var attack_sound: AudioStream
 
-# POSICIONAMIENTO DEL ARMA EN LAS MANOS
-@export var weapon_offset: Vector2 = Vector2(8, 0)
+# POSICIONAMIENTO DEL ARMA EN LAS MANOS - CENTRO DERECHA DEL JUGADOR
+@export var weapon_offset: Vector2 = Vector2(32, 0)  # A la derecha del centro del jugador
 @export var weapon_rotation_offset: float = 0.0
-@export var muzzle_offset: Vector2 = Vector2(16, 0)
+@export var muzzle_offset: Vector2 = Vector2(20, 0)  # Desde donde salen las balas
 
 # Efectos especiales
 @export var has_piercing: bool = false
@@ -34,7 +34,7 @@ class_name WeaponStats
 @export var knockback_force: float = 0.0
 
 # ANIMACIÓN DE DISPARO
-@export var shooting_animation_duration: float = 0.08  # Más rápido para 12 balas/segundo
+@export var shooting_animation_duration: float = 0.2  # Duración de la animación de disparo
 @export var recoil_distance: float = 2.0
 
 # Estados del arma (no exportados)
@@ -60,7 +60,19 @@ func _on_reload_finished():
 	finish_reload()
 
 func ensure_sprites_exist():
+	# CARGAR SPRITE ESPECÍFICO DE LA PISTOLA
 	if not weapon_sprite:
+		load_pistol_sprite()
+
+func load_pistol_sprite():
+	"""Cargar sprite específico de la pistola desde sprites/weapons/pistola.png"""
+	var pistol_path = "res://sprites/weapons/pistola.png"
+	
+	if ResourceLoader.exists(pistol_path):
+		weapon_sprite = load(pistol_path) as Texture2D
+		print("✅ Sprite de pistola cargado desde: ", pistol_path)
+	else:
+		print("❌ No se encontró sprite en: ", pistol_path, " - Creando sprite por defecto")
 		create_default_weapon_sprite()
 
 func create_default_weapon_sprite():
@@ -149,7 +161,7 @@ func stop_shooting():
 	is_shooting = false
 
 func get_weapon_world_position(player_position: Vector2, aim_direction: Vector2) -> Vector2:
-	"""Obtener la posición del arma relativa al personaje"""
+	"""Obtener la posición del arma relativa al personaje - CENTRO DERECHA"""
 	var rotated_offset = weapon_offset.rotated(aim_direction.angle())
 	return player_position + rotated_offset
 
@@ -185,16 +197,16 @@ static func create_pelao_pistol() -> WeaponStats:
 	var weapon = WeaponStats.new()
 	weapon.weapon_name = "Pistola de Pelao"
 	weapon.damage = 25
-	weapon.attack_speed = 12.0  # 12 balas por segundo
+	weapon.attack_speed = 0.3  # 0.3 balas por segundo
 	weapon.attack_range = 500
 	weapon.projectile_speed = 600
 	weapon.ammo_capacity = 30
 	weapon.reload_time = 2.0
 	weapon.accuracy = 0.95
 	weapon.headshot_multiplier = 1.4
-	weapon.weapon_offset = Vector2(10, 2)
-	weapon.muzzle_offset = Vector2(18, 0)
-	weapon.shooting_animation_duration = 0.08  # Para 12 balas/segundo
+	weapon.weapon_offset = Vector2(32, 0)  # Centro derecha
+	weapon.muzzle_offset = Vector2(20, 0)
+	weapon.shooting_animation_duration = 0.2
 	weapon.recoil_distance = 3.0
 	
 	return weapon
@@ -203,16 +215,16 @@ static func create_juancar_rifle() -> WeaponStats:
 	var weapon = WeaponStats.new()
 	weapon.weapon_name = "Rifle de Juancar"
 	weapon.damage = 35
-	weapon.attack_speed = 8.0
+	weapon.attack_speed = 0.5  # Más lento que la pistola
 	weapon.attack_range = 600
 	weapon.projectile_speed = 800
 	weapon.ammo_capacity = 25
 	weapon.reload_time = 2.5
 	weapon.accuracy = 0.98
 	weapon.headshot_multiplier = 1.6
-	weapon.weapon_offset = Vector2(12, 1)
+	weapon.weapon_offset = Vector2(35, 0)  # Centro derecha
 	weapon.muzzle_offset = Vector2(24, 0)
-	weapon.shooting_animation_duration = 0.12
+	weapon.shooting_animation_duration = 0.15
 	weapon.recoil_distance = 4.0
 	
 	return weapon
@@ -221,16 +233,16 @@ static func create_basic_pistol() -> WeaponStats:
 	var weapon = WeaponStats.new()
 	weapon.weapon_name = "Pistola Básica"
 	weapon.damage = 20
-	weapon.attack_speed = 10.0
+	weapon.attack_speed = 0.3  # 0.3 balas por segundo
 	weapon.attack_range = 400
 	weapon.projectile_speed = 500
 	weapon.ammo_capacity = 25
 	weapon.reload_time = 1.8
 	weapon.accuracy = 0.90
 	weapon.headshot_multiplier = 1.3
-	weapon.weapon_offset = Vector2(8, 2)
-	weapon.muzzle_offset = Vector2(16, 0)
-	weapon.shooting_animation_duration = 0.1
+	weapon.weapon_offset = Vector2(32, 0)  # Centro derecha
+	weapon.muzzle_offset = Vector2(18, 0)
+	weapon.shooting_animation_duration = 0.2
 	weapon.recoil_distance = 2.5
 	
 	return weapon

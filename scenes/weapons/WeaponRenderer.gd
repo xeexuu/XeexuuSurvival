@@ -1,4 +1,4 @@
-# scenes/weapons/WeaponRenderer.gd
+# scenes/weapons/WeaponRenderer.gd - ARMA EN CENTRO DERECHA Y BALAS DESDE ARMA
 extends Node2D
 class_name WeaponRenderer
 
@@ -54,50 +54,59 @@ func update_weapon_sprites():
 	if not weapon_stats:
 		return
 	
+	# ASEGURAR QUE EL SPRITE DE LA PISTOLA ESTÉ CARGADO
+	weapon_stats.ensure_sprites_exist()
+	
 	# Configurar sprite principal
 	if weapon_stats.weapon_sprite:
 		weapon_sprite.texture = weapon_stats.weapon_sprite
+		print("🔫 Sprite del arma configurado: ", weapon_stats.weapon_name)
 	else:
-		weapon_stats.ensure_sprites_exist()
+		print("❌ No se pudo cargar sprite del arma: ", weapon_stats.weapon_name)
+		weapon_stats.create_default_weapon_sprite()
 		weapon_sprite.texture = weapon_stats.weapon_sprite
 	
 	# Configurar flash del cañón
-	if weapon_stats.muzzle_flash_sprite:
-		muzzle_flash_sprite.texture = weapon_stats.muzzle_flash_sprite
-	else:
+	if not weapon_stats.muzzle_flash_sprite:
 		weapon_stats.create_muzzle_flash_sprite()
-		muzzle_flash_sprite.texture = weapon_stats.muzzle_flash_sprite
 	
-	# Posicionar flash del cañón relativo al arma
+	muzzle_flash_sprite.texture = weapon_stats.muzzle_flash_sprite
+	
+	# POSICIONAR FLASH DEL CAÑÓN RELATIVO AL ARMA (DESDE DONDE SALEN LAS BALAS)
 	muzzle_flash_sprite.position = weapon_stats.muzzle_offset
 	
 	print("🔫 Sprites del arma actualizados: ", weapon_stats.weapon_name)
+	print("🎯 Offset del arma: ", weapon_stats.weapon_offset)
+	print("🎯 Offset del cañón: ", weapon_stats.muzzle_offset)
 
 func update_weapon_position_and_rotation(aim_direction: Vector2):
-	"""Actualizar posición y rotación del arma"""
+	"""Actualizar posición y rotación del arma - CENTRO DERECHA DEL JUGADOR"""
 	if not weapon_stats or not player_ref:
 		return
 	
 	current_aim_direction = aim_direction.normalized()
 	
-	# Calcular posición del arma
+	# CALCULAR POSICIÓN DEL ARMA EN EL CENTRO DERECHA DEL JUGADOR
 	var weapon_world_pos = weapon_stats.get_weapon_world_position(player_ref.global_position, current_aim_direction)
 	global_position = weapon_world_pos
 	
-	# Calcular rotación del arma
+	# CALCULAR ROTACIÓN DEL ARMA HACIA LA DIRECCIÓN DE APUNTADO
 	var weapon_rotation = weapon_stats.get_weapon_rotation(current_aim_direction)
 	rotation = weapon_rotation
 	
-	# Voltear el arma si apunta hacia la izquierda
+	# VOLTEAR EL ARMA SI APUNTA HACIA LA IZQUIERDA
 	if current_aim_direction.x < 0:
 		weapon_sprite.flip_v = true
 		muzzle_flash_sprite.flip_v = true
-		# Ajustar posición del flash cuando está volteado
+		# AJUSTAR POSICIÓN DEL FLASH CUANDO ESTÁ VOLTEADO
 		muzzle_flash_sprite.position = Vector2(weapon_stats.muzzle_offset.x, -weapon_stats.muzzle_offset.y)
 	else:
 		weapon_sprite.flip_v = false
 		muzzle_flash_sprite.flip_v = false
 		muzzle_flash_sprite.position = weapon_stats.muzzle_offset
+	
+	# DEBUG: Mostrar información de posicionamiento
+	# print("🎯 Arma - Pos: ", global_position, " | Rot: ", rad_to_deg(rotation), "°")
 
 func start_shooting_animation():
 	"""Iniciar animación de disparo"""
@@ -107,18 +116,18 @@ func start_shooting_animation():
 	is_shooting = true
 	weapon_stats.start_shooting()
 	
-	# Mostrar flash del cañón
+	# MOSTRAR FLASH DEL CAÑÓN
 	muzzle_flash_sprite.visible = true
 	
-	# Efecto de retroceso
+	# EFECTO DE RETROCESO
 	if weapon_stats.recoil_distance > 0:
 		animate_recoil()
 	
-	# Configurar timer para duración del disparo
+	# CONFIGURAR TIMER PARA DURACIÓN DEL DISPARO
 	shooting_timer.wait_time = weapon_stats.shooting_animation_duration
 	shooting_timer.start()
 	
-	# Ocultar flash después de un corto tiempo
+	# OCULTAR FLASH DESPUÉS DE UN CORTO TIEMPO
 	var flash_timer = Timer.new()
 	flash_timer.wait_time = 0.05  # Flash muy rápido
 	flash_timer.one_shot = true
@@ -128,6 +137,8 @@ func start_shooting_animation():
 	)
 	add_child(flash_timer)
 	flash_timer.start()
+	
+	print("💥 Animación de disparo iniciada - Arma: ", weapon_stats.weapon_name)
 
 func animate_recoil():
 	"""Animar el retroceso del arma"""
@@ -136,11 +147,11 @@ func animate_recoil():
 	
 	recoil_tween = create_tween()
 	
-	# Calcular dirección opuesta al disparo para el retroceso
+	# CALCULAR DIRECCIÓN OPUESTA AL DISPARO PARA EL RETROCESO
 	var recoil_direction = -current_aim_direction.normalized()
 	var recoil_offset = recoil_direction * weapon_stats.recoil_distance
 	
-	# Animar retroceso y vuelta a la posición original
+	# ANIMAR RETROCESO Y VUELTA A LA POSICIÓN ORIGINAL
 	recoil_tween.tween_property(weapon_sprite, "position", recoil_offset, 0.05)
 	recoil_tween.tween_property(weapon_sprite, "position", Vector2.ZERO, 0.15)
 
@@ -151,11 +162,15 @@ func _on_shooting_finished():
 		weapon_stats.stop_shooting()
 
 func get_muzzle_world_position() -> Vector2:
-	"""Obtener la posición mundial del cañón"""
+	"""Obtener la posición mundial del cañón - DESDE DONDE SALEN LAS BALAS"""
 	if not weapon_stats or not player_ref:
 		return global_position
 	
-	return weapon_stats.get_muzzle_world_position(player_ref.global_position, current_aim_direction)
+	# USAR LA FUNCIÓN DEL ARMA PARA OBTENER LA POSICIÓN EXACTA DEL CAÑÓN
+	var muzzle_world_pos = weapon_stats.get_muzzle_world_position(player_ref.global_position, current_aim_direction)
+	
+	print("🎯 Posición del cañón (mundo): ", muzzle_world_pos)
+	return muzzle_world_pos
 
 func can_shoot() -> bool:
 	"""Verificar si el arma puede disparar"""
@@ -167,11 +182,13 @@ func debug_weapon_info():
 	if weapon_stats:
 		print("=== DEBUG ARMA ===")
 		print("Nombre: ", weapon_stats.weapon_name)
-		print("Posición: ", global_position)
-		print("Rotación: ", rad_to_deg(rotation))
-		print("Dirección: ", current_aim_direction)
+		print("Posición del arma: ", global_position)
+		print("Rotación: ", rad_to_deg(rotation), "°")
+		print("Dirección de apuntado: ", current_aim_direction)
 		print("Disparando: ", is_shooting)
-		print("Posición cañón: ", get_muzzle_world_position())
+		print("Posición del cañón: ", get_muzzle_world_position())
+		print("Offset del arma: ", weapon_stats.weapon_offset)
+		print("Offset del cañón: ", weapon_stats.muzzle_offset)
 		print("==================")
 
 func _input(event):

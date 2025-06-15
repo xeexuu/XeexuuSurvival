@@ -1,4 +1,4 @@
-# scenes/ui/MiniHUD.gd - SIN PRINTS REPETITIVOS
+# scenes/ui/MiniHUD.gd - SIN FONDO EN EL TEXTO DE ESTADÍSTICAS
 extends Control
 class_name MiniHUD
 
@@ -49,10 +49,8 @@ func setup_hud():
 	size = Vector2(hud_width, hud_height)
 	position = Vector2(15, 15)
 	
-	var bg = ColorRect.new()
-	bg.size = size
-	bg.color = Color(0.0, 0.0, 0.0, 0.75)
-	add_child(bg)
+	# SIN FONDO - ELIMINAR ColorRect de fondo
+	# El HUD será completamente transparente salvo el texto
 	
 	var vbox = VBoxContainer.new()
 	var padding = 15 if not is_mobile else 18
@@ -86,7 +84,7 @@ func setup_hud():
 	weapon_name_label = create_stat_label("🔫 Arma: ---", Color.ORANGE)
 	weapon_damage_label = create_stat_label("⚔ Daño: ---", Color.RED)
 	weapon_range_label = create_stat_label("🎯 Rango: ---", Color.CYAN)
-	weapon_attack_speed_label = create_stat_label("⏱ Vel.Ataque: ---", Color.LIME)
+	weapon_attack_speed_label = create_stat_label("⏱ Cadencia: ---", Color.LIME)
 	
 	vbox.add_child(weapon_name_label)
 	vbox.add_child(weapon_damage_label)
@@ -103,15 +101,20 @@ func create_title_label(text: String) -> Label:
 	
 	if label.has_method("add_theme_color_override"):
 		label.add_theme_color_override("font_color", Color.WHITE)
+		# SOMBRA MÁS PRONUNCIADA PARA MEJOR LEGIBILIDAD SIN FONDO
+		label.add_theme_color_override("font_shadow_color", Color.BLACK)
+		label.add_theme_constant_override("shadow_offset_x", 3)
+		label.add_theme_constant_override("shadow_offset_y", 3)
 	
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
 	return label
 
 func create_separator() -> Control:
+	# SEPARADOR MÁS VISIBLE SIN FONDO
 	var separator = ColorRect.new()
-	separator.custom_minimum_size = Vector2(0, 2)
-	separator.color = Color(0.5, 0.5, 0.5, 0.6)
+	separator.custom_minimum_size = Vector2(0, 3)  # MÁS GRUESO
+	separator.color = Color(1.0, 1.0, 1.0, 0.8)  # BLANCO SEMI-TRANSPARENTE
 	return separator
 
 func create_stat_label(text: String, color: Color = Color.WHITE) -> Label:
@@ -124,11 +127,14 @@ func create_stat_label(text: String, color: Color = Color.WHITE) -> Label:
 	
 	if label.has_method("add_theme_color_override"):
 		label.add_theme_color_override("font_color", color)
+		# SOMBRA MÁS PRONUNCIADA PARA LEGIBILIDAD SIN FONDO
 		label.add_theme_color_override("font_shadow_color", Color.BLACK)
-	
-	if label.has_method("add_theme_constant_override"):
-		label.add_theme_constant_override("shadow_offset_x", 1)
-		label.add_theme_constant_override("shadow_offset_y", 1)
+		label.add_theme_constant_override("shadow_offset_x", 2)
+		label.add_theme_constant_override("shadow_offset_y", 2)
+		
+		# OUTLINE ADICIONAL PARA MEJOR CONTRASTE
+		label.add_theme_color_override("font_outline_color", Color.BLACK)
+		label.add_theme_constant_override("outline_size", 1)
 	
 	return label
 
@@ -154,7 +160,7 @@ func update_character_stats(character: CharacterStats):
 			if weapon_range_label:
 				weapon_range_label.text = "🎯 Rango: " + str(weapon.attack_range)
 			if weapon_attack_speed_label:
-				weapon_attack_speed_label.text = "⏱ Vel.Ataque: " + str(weapon.attack_speed)
+				weapon_attack_speed_label.text = "⏱ Cadencia: " + str(weapon.attack_speed) + " b/s"
 		else:
 			if weapon_name_label:
 				weapon_name_label.text = "🔫 Arma: Sin arma"
@@ -163,7 +169,7 @@ func update_character_stats(character: CharacterStats):
 			if weapon_range_label:
 				weapon_range_label.text = "🎯 Rango: ---"
 			if weapon_attack_speed_label:
-				weapon_attack_speed_label.text = "⏱ Vel.Ataque: ---"
+				weapon_attack_speed_label.text = "⏱ Cadencia: ---"
 	elif name_label:
 		if name_label:
 			name_label.text = "Personaje: ---"
@@ -180,7 +186,7 @@ func update_character_stats(character: CharacterStats):
 		if weapon_range_label:
 			weapon_range_label.text = "🎯 Rango: ---"
 		if weapon_attack_speed_label:
-			weapon_attack_speed_label.text = "⏱ Vel.Ataque: ---"
+			weapon_attack_speed_label.text = "⏱ Cadencia: ---"
 
 func update_health(current_health: int, max_health: int):
 	"""Función para actualizar solo la vida"""

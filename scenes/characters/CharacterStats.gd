@@ -1,4 +1,4 @@
-# scenes/characters/CharacterStats.gd - SIN AUDIO DE PELAO
+# scenes/characters/CharacterStats.gd - ARMA CON SPRITE DE PISTOLA ESPECÍFICO
 extends Resource
 class_name CharacterStats
 
@@ -30,7 +30,7 @@ func ensure_weapon_exists():
 		equipped_weapon = WeaponStats.new()
 		equipped_weapon.weapon_name = "Pistola Básica"
 		equipped_weapon.damage = 25
-		equipped_weapon.attack_speed = 12.0
+		equipped_weapon.attack_speed = 0.3  # 0.3 balas por segundo
 		equipped_weapon.attack_range = 400
 		equipped_weapon.projectile_speed = 600
 		equipped_weapon.ammo_capacity = 30
@@ -38,15 +38,33 @@ func ensure_weapon_exists():
 		equipped_weapon.accuracy = 0.95
 		equipped_weapon.headshot_multiplier = 1.4
 		
-		# NO cargar sonido de pelao - usar sonido del arma
-		# El sonido se asigna en WeaponStats, no aquí
+		# CARGAR SPRITE ESPECÍFICO DE LA PISTOLA
+		load_pistol_sprite_for_weapon()
+		
+		# POSICIONAMIENTO EN EL CENTRO DERECHA DEL JUGADOR
+		equipped_weapon.weapon_offset = Vector2(32, 0)  # Centro derecha
+		equipped_weapon.muzzle_offset = Vector2(20, 0)   # Desde donde salen las balas
+
+func load_pistol_sprite_for_weapon():
+	"""Cargar sprite específico de la pistola desde sprites/weapons/pistola.png"""
+	if not equipped_weapon:
+		return
+	
+	var pistol_path = "res://sprites/weapons/pistola.png"
+	
+	if ResourceLoader.exists(pistol_path):
+		equipped_weapon.weapon_sprite = load(pistol_path) as Texture2D
+		print("✅ Sprite de pistola cargado para ", character_name, " desde: ", pistol_path)
+	else:
+		print("❌ No se encontró sprite en: ", pistol_path, " - Usando sprite por defecto para ", character_name)
+		# El WeaponStats se encargará de crear el sprite por defecto
 
 # Funciones de acceso a estadísticas del arma
 func get_damage() -> int:
 	return equipped_weapon.damage if equipped_weapon else 25
 
 func get_attack_speed() -> float:
-	return equipped_weapon.attack_speed if equipped_weapon else 12.0
+	return equipped_weapon.attack_speed if equipped_weapon else 0.3
 
 func get_attack_range() -> int:
 	return equipped_weapon.attack_range if equipped_weapon else 400
