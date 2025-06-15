@@ -1,4 +1,4 @@
-# scenes/player/AnimationController.gd - SISTEMA DE ANIMACIONES CON ROTACIÓN DIRECCIONAL COMPLETO
+# scenes/player/AnimationController.gd - SISTEMA DE ANIMACIONES DIRECCIONALES CORREGIDO
 extends Node
 class_name AnimationController
 
@@ -14,10 +14,10 @@ var is_moving: bool = false
 # Mapeo de animaciones disponibles
 var available_animations: Dictionary = {}
 
-# SISTEMA DE ROTACIÓN SUAVE
+# SISTEMA DE ROTACIÓN SUAVE - REDUCIDO
 var target_rotation: float = 0.0
 var rotation_speed: float = 8.0
-var max_rotation_angle: float = 15.0  # Máximo 15 grados de rotación
+var max_rotation_angle: float = 8.0  # Reducido a 8 grados máximo
 
 func setup(sprite: AnimatedSprite2D, char_name: String):
 	"""Configurar el controlador de animaciones"""
@@ -42,7 +42,7 @@ func load_primary_animations() -> SpriteFrames:
 	"""Cargar animaciones del personaje principal"""
 	var folder_name = get_character_folder_name()
 	
-	# SPRITES ESPECÍFICOS SEGÚN TU DESCRIPCIÓN
+	# SPRITES DIRECCIONALES ESPECÍFICOS
 	var animation_files = [
 		"walk_Down.png",          # Apuntando hacia abajo
 		"walk_Left_Down.png",     # Apuntando hacia abajo izquierda
@@ -63,7 +63,6 @@ func load_primary_animations() -> SpriteFrames:
 			if texture:
 				var anim_name = file.replace(".png", "")
 				loaded_textures[anim_name] = texture
-				print("✅ Cargada animación: ", anim_name, " para ", character_name)
 	
 	if loaded_textures.size() > 0:
 		return create_sprite_frames_from_textures(loaded_textures)
@@ -72,8 +71,6 @@ func load_primary_animations() -> SpriteFrames:
 
 func load_fallback_animations() -> SpriteFrames:
 	"""Cargar animaciones de fallback (chica)"""
-	print("⚠️ Cargando animaciones fallback (chica) para: ", character_name)
-	
 	var fallback_textures: Dictionary = {}
 	var base_path = "res://sprites/player/chica/"
 	
@@ -93,7 +90,6 @@ func load_fallback_animations() -> SpriteFrames:
 			if texture:
 				var anim_name = file.replace(".png", "")
 				fallback_textures[anim_name] = texture
-				print("✅ Cargada animación fallback: ", anim_name)
 	
 	if fallback_textures.size() > 0:
 		return create_sprite_frames_from_textures(fallback_textures)
@@ -124,7 +120,7 @@ func create_sprite_frames_from_textures(textures: Dictionary) -> SpriteFrames:
 		frames.set_animation_speed(anim_name, 8.0)
 		frames.set_animation_loop(anim_name, true)
 		
-		# Extraer frames del atlas si es necesario
+		# Extraer frames del atlas
 		var animation_frames = extract_frames_from_texture(texture)
 		for frame in animation_frames:
 			frames.add_frame(anim_name, frame)
@@ -205,8 +201,6 @@ func extract_frames_from_texture(texture: Texture2D) -> Array[Texture2D]:
 
 func create_default_sprite_frames() -> SpriteFrames:
 	"""Crear SpriteFrames por defecto"""
-	print("⚠️ Creando SpriteFrames por defecto para: ", character_name)
-	
 	var frames = SpriteFrames.new()
 	var default_texture = create_default_character_texture()
 	
@@ -263,10 +257,9 @@ func detect_available_animations():
 	var animation_list = sprite_frames.get_animation_names()
 	for anim_name in animation_list:
 		available_animations[anim_name] = true
-		print("🎬 Animación disponible: ", anim_name)
 
 func update_animation(movement_direction: Vector2, aim_direction: Vector2):
-	"""SISTEMA PRINCIPAL: Actualizar animación y rotación basada en dirección de apuntado"""
+	"""SISTEMA PRINCIPAL: Actualizar animación basada en dirección de apuntado PRIORITARIA"""
 	if not animated_sprite or not sprite_frames:
 		return
 	
@@ -274,15 +267,15 @@ func update_animation(movement_direction: Vector2, aim_direction: Vector2):
 	current_aim_direction = aim_direction
 	is_moving = movement_direction.length() > 0.1
 	
-	# PRIORIDAD ABSOLUTA: Dirección de apuntado
+	# PRIORIDAD 1: Dirección de apuntado
 	var direction_to_use = aim_direction if aim_direction.length() > 0.1 else movement_direction
 	
 	if direction_to_use.length() > 0.1:
 		# Obtener animación y rotación según dirección de apuntado
-		var target_animation = get_animation_from_aim_direction(direction_to_use)
-		var target_rot = get_rotation_from_aim_direction(direction_to_use)
+		var target_animation = get_animation_from_direction(direction_to_use)
+		var target_rot = get_rotation_from_direction(direction_to_use)
 		
-		# Aplicar animación
+		# Aplicar animación direccional ESPECÍFICA
 		if target_animation != "" and available_animations.has(target_animation):
 			if animated_sprite.animation != target_animation:
 				animated_sprite.play(target_animation)
@@ -290,7 +283,7 @@ func update_animation(movement_direction: Vector2, aim_direction: Vector2):
 			if animated_sprite.animation != "walk":
 				animated_sprite.play("walk")
 		
-		# Aplicar rotación suave
+		# Aplicar rotación suave REDUCIDA
 		target_rotation = target_rot
 		update_sprite_rotation()
 	else:
@@ -303,8 +296,8 @@ func update_animation(movement_direction: Vector2, aim_direction: Vector2):
 		target_rotation = 0.0
 		update_sprite_rotation()
 
-func get_animation_from_aim_direction(direction: Vector2) -> String:
-	"""Obtener animación EXACTA según dirección de apuntado"""
+func get_animation_from_direction(direction: Vector2) -> String:
+	"""Obtener animación EXACTA según dirección"""
 	var angle = direction.angle()
 	var degrees = rad_to_deg(angle)
 	
@@ -312,9 +305,9 @@ func get_animation_from_aim_direction(direction: Vector2) -> String:
 	if degrees < 0:
 		degrees += 360
 	
-	# MAPEO EXACTO SEGÚN TUS ESPECIFICACIONES
+	# MAPEO EXACTO SEGÚN ESPECIFICACIONES DEL USUARIO
 	if degrees >= 337.5 or degrees < 22.5:
-		# Derecha pura - usar Right_Down como base
+		# Derecha pura - usar Right_Down
 		return "walk_Right_Down"
 	elif degrees >= 22.5 and degrees < 67.5:
 		# Derecha-Abajo
@@ -326,7 +319,7 @@ func get_animation_from_aim_direction(direction: Vector2) -> String:
 		# Izquierda-Abajo
 		return "walk_Left_Down"
 	elif degrees >= 157.5 and degrees < 202.5:
-		# Izquierda pura - usar Left_Down como base
+		# Izquierda pura - usar Left_Down
 		return "walk_Left_Down"
 	elif degrees >= 202.5 and degrees < 247.5:
 		# Izquierda-Arriba
@@ -340,8 +333,8 @@ func get_animation_from_aim_direction(direction: Vector2) -> String:
 	
 	return "walk_Down"  # Fallback
 
-func get_rotation_from_aim_direction(direction: Vector2) -> float:
-	"""Obtener rotación LIGERA según dirección de apuntado"""
+func get_rotation_from_direction(direction: Vector2) -> float:
+	"""Obtener rotación LIGERA según dirección"""
 	var angle = direction.angle()
 	var degrees = rad_to_deg(angle)
 	
@@ -349,33 +342,33 @@ func get_rotation_from_aim_direction(direction: Vector2) -> float:
 	if degrees < 0:
 		degrees += 360
 	
-	# ROTACIÓN LIGERA (máximo 15 grados) según dirección
+	# ROTACIÓN LIGERA (máximo 8 grados) según dirección
 	var base_rotation = 0.0
 	
 	if degrees >= 337.5 or degrees < 22.5:
 		# Derecha - rotación ligera hacia la derecha
-		base_rotation = deg_to_rad(5.0)
+		base_rotation = deg_to_rad(3.0)
 	elif degrees >= 22.5 and degrees < 67.5:
-		# Derecha-Abajo - rotación ligera hacia abajo-derecha
-		base_rotation = deg_to_rad(10.0)
+		# Derecha-Abajo
+		base_rotation = deg_to_rad(6.0)
 	elif degrees >= 67.5 and degrees < 112.5:
-		# Abajo - rotación ligera hacia abajo
-		base_rotation = deg_to_rad(8.0)
+		# Abajo
+		base_rotation = deg_to_rad(4.0)
 	elif degrees >= 112.5 and degrees < 157.5:
-		# Izquierda-Abajo - rotación ligera hacia abajo-izquierda
-		base_rotation = deg_to_rad(-10.0)
+		# Izquierda-Abajo
+		base_rotation = deg_to_rad(-6.0)
 	elif degrees >= 157.5 and degrees < 202.5:
-		# Izquierda - rotación ligera hacia la izquierda
-		base_rotation = deg_to_rad(-5.0)
+		# Izquierda
+		base_rotation = deg_to_rad(-3.0)
 	elif degrees >= 202.5 and degrees < 247.5:
-		# Izquierda-Arriba - rotación ligera hacia arriba-izquierda
-		base_rotation = deg_to_rad(-12.0)
-	elif degrees >= 247.5 and degrees < 292.5:
-		# Arriba - rotación ligera hacia arriba
+		# Izquierda-Arriba
 		base_rotation = deg_to_rad(-8.0)
+	elif degrees >= 247.5 and degrees < 292.5:
+		# Arriba
+		base_rotation = deg_to_rad(-4.0)
 	elif degrees >= 292.5 and degrees < 337.5:
-		# Derecha-Arriba - rotación ligera hacia arriba-derecha
-		base_rotation = deg_to_rad(12.0)
+		# Derecha-Arriba
+		base_rotation = deg_to_rad(8.0)
 	
 	# Limitar la rotación al máximo permitido
 	base_rotation = clamp(base_rotation, deg_to_rad(-max_rotation_angle), deg_to_rad(max_rotation_angle))
@@ -414,8 +407,6 @@ func scale_sprite_to_128px():
 	
 	var scale_factor = target_height / float(current_height)
 	animated_sprite.scale = Vector2(scale_factor, scale_factor)
-	
-	print("🎨 Sprite escalado a 128px - Factor: ", scale_factor)
 
 func get_character_folder_name() -> String:
 	"""Obtener nombre de carpeta para el personaje"""
@@ -429,22 +420,3 @@ func get_character_folder_name() -> String:
 	}
 	
 	return name_mappings.get(char_name_lower, char_name_lower)
-
-func debug_available_animations():
-	"""Debug: Mostrar animaciones disponibles"""
-	print("=== ANIMACIONES DISPONIBLES PARA ", character_name, " ===")
-	for anim_name in available_animations.keys():
-		print("🎬 ", anim_name)
-	print("=========================================")
-
-func debug_current_state(aim_direction: Vector2):
-	"""Debug: Mostrar estado actual de animación"""
-	var angle = aim_direction.angle()
-	var degrees = rad_to_deg(angle)
-	if degrees < 0:
-		degrees += 360
-	
-	var animation = get_animation_from_aim_direction(aim_direction)
-	var rotation = rad_to_deg(get_rotation_from_aim_direction(aim_direction))
-	
-	print("🎯 Dirección: ", aim_direction, " | Ángulo: ", degrees, "° | Anim: ", animation, " | Rot: ", rotation, "°")

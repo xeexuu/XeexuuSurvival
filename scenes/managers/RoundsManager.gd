@@ -17,12 +17,6 @@ var enemies_multiplier_per_round: float = 1.25
 # Sistema de salud de enemigos estilo COD
 var base_enemy_health: int = 150
 
-# UI de rondas
-var round_ui: Control
-var player_camera: Camera2D
-var round_label: Label
-var enemies_label: Label
-
 # Referencias
 var enemy_spawner: EnemySpawner
 
@@ -31,67 +25,6 @@ var auto_start_enabled: bool = false
 
 func _ready():
 	pass
-
-func setup_round_ui_on_camera(camera: Camera2D):
-	"""Configurar la UI de rondas en la esquina INFERIOR IZQUIERDA"""
-	player_camera = camera
-	if not player_camera:
-		return
-	
-	round_ui = Control.new()
-	round_ui.name = "RoundUI"
-	round_ui.process_mode = Node.PROCESS_MODE_ALWAYS
-	
-	var is_mobile = OS.has_feature("mobile")
-	var ui_size = Vector2(200, 90) if not is_mobile else Vector2(240, 110)
-	round_ui.size = ui_size
-	
-	round_ui.position = Vector2(0, 0)
-	
-	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	vbox.position = Vector2(15, 15)
-	vbox.size = Vector2(ui_size.x - 30, ui_size.y - 30)
-	round_ui.add_child(vbox)
-	
-	round_label = Label.new()
-	round_label.name = "RoundLabel"
-	round_label.text = "RONDA I"
-	var round_font_size = 28 if not is_mobile else 32
-	round_label.add_theme_font_size_override("font_size", round_font_size)
-	round_label.add_theme_color_override("font_color", Color.GOLD)
-	round_label.add_theme_color_override("font_shadow_color", Color.BLACK)
-	round_label.add_theme_constant_override("shadow_offset_x", 2)
-	round_label.add_theme_constant_override("shadow_offset_y", 2)
-	round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	vbox.add_child(round_label)
-	
-	enemies_label = Label.new()
-	enemies_label.name = "EnemiesLabel"
-	enemies_label.text = "Zombies: 0"
-	var enemies_font_size = 20 if not is_mobile else 24
-	enemies_label.add_theme_font_size_override("font_size", enemies_font_size)
-	enemies_label.add_theme_color_override("font_color", Color.RED)
-	enemies_label.add_theme_color_override("font_shadow_color", Color.BLACK)
-	enemies_label.add_theme_constant_override("shadow_offset_x", 1)
-	enemies_label.add_theme_constant_override("shadow_offset_y", 1)
-	enemies_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	vbox.add_child(enemies_label)
-	
-	player_camera.add_child(round_ui)
-
-func _process(_delta):
-	"""Actualizar posición de la UI relativa a la cámara - INFERIOR IZQUIERDA"""
-	if round_ui and player_camera:
-		var viewport_size = get_viewport().get_visible_rect().size
-		var camera_zoom = player_camera.zoom
-		
-		var ui_offset = Vector2(
-			-(viewport_size.x / camera_zoom.x) / 2 + 20,
-			(viewport_size.y / camera_zoom.y) / 2 - round_ui.size.y - 20
-		)
-		
-		round_ui.position = ui_offset
 
 func int_to_roman(num: int) -> String:
 	"""Convertir número entero a números romanos"""
@@ -130,7 +63,6 @@ func start_round(round_number: int):
 	total_enemies_spawned = 0
 	enemies_killed_in_round = 0
 	
-	update_round_ui()
 	show_round_start_message()
 	round_changed.emit(current_round)
 	
@@ -171,13 +103,11 @@ func on_enemy_killed():
 	enemies_killed_in_round += 1
 	enemies_remaining_in_round = max(0, enemies_remaining_in_round - 1)
 	
-	update_enemies_ui()
 	enemies_remaining_changed.emit(enemies_remaining_in_round)
 
 func on_enemy_spawned():
 	"""Llamar cuando un enemigo es spawneado"""
 	total_enemies_spawned += 1
-	update_enemies_ui()
 
 func _on_round_complete():
 	"""Cuando el spawner confirma que la ronda está completa"""
@@ -229,33 +159,6 @@ func create_round_message(text: String, color: Color, duration: float) -> Contro
 func show_message(message: Control):
 	"""Mostrar mensaje en pantalla"""
 	get_tree().current_scene.add_child(message)
-
-func update_round_ui():
-	"""Actualizar toda la UI de ronda"""
-	if not round_label:
-		return
-	
-	var roman_round = int_to_roman(current_round)
-	round_label.text = "RONDA " + roman_round
-	update_enemies_ui()
-
-func update_enemies_ui():
-	"""Actualizar solo la UI de enemigos restantes"""
-	if not enemies_label:
-		return
-	
-	var active_count = enemy_spawner.get_active_enemy_count() if enemy_spawner else 0
-	var to_spawn = enemy_spawner.get_enemies_remaining_to_spawn() if enemy_spawner else 0
-	var total_remaining = active_count + to_spawn
-	
-	enemies_label.text = "Zombies: " + str(total_remaining)
-	
-	if total_remaining <= 1:
-		enemies_label.add_theme_color_override("font_color", Color.GREEN)
-	elif total_remaining <= 5:
-		enemies_label.add_theme_color_override("font_color", Color.YELLOW)
-	else:
-		enemies_label.add_theme_color_override("font_color", Color.RED)
 
 func get_current_round() -> int:
 	"""Obtener la ronda actual"""

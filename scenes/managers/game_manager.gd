@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - SISTEMAS MEJORADOS INTEGRADOS
+# scenes/managers/game_manager.gd - SIN PRINTS REPETITIVOS + SPRITE INVISIBLE ELIMINADO
 extends Node
 class_name GameManager
 
@@ -77,8 +77,8 @@ func _ready():
 	setup_background()
 	setup_window()
 	setup_pause_menu()
-	setup_wall_system()  # NUEVO: Sistema de paredes
-	setup_fixed_ui()     # NUEVO: UI fija
+	setup_wall_system()
+	setup_fixed_ui()
 	
 	await get_tree().process_frame
 	show_character_selection()
@@ -88,14 +88,12 @@ func setup_wall_system():
 	wall_system = WallSystem.new()
 	wall_system.name = "WallSystem"
 	add_child(wall_system)
-	print("🧱 Sistema de paredes configurado")
 
 func setup_fixed_ui():
 	"""Configurar UI fija que no tiemble con la cámara"""
 	fixed_ui_manager = FixedUIManager.new()
 	fixed_ui_manager.name = "FixedUIManager"
 	add_child(fixed_ui_manager)
-	print("📱 UI fija configurada")
 
 func setup_collision_layers():
 	"""Configurar las capas de colisión correctamente"""
@@ -186,7 +184,7 @@ func _on_character_selected(character_stats: CharacterStats):
 		player.max_health = selected_character_stats.max_health
 		
 		setup_player_collision_layers()
-		setup_animation_system()  # NUEVO: Sistema de animaciones
+		setup_animation_system()
 		
 		player.set_physics_process(true)
 		player.set_process(true)
@@ -209,7 +207,6 @@ func setup_animation_system():
 	player.add_child(animation_controller)
 	
 	animation_controller.setup(player.animated_sprite, selected_character_stats.character_name)
-	print("🎬 Sistema de animaciones configurado para: ", selected_character_stats.character_name)
 
 func setup_player_collision_layers():
 	"""Configurar las capas de colisión del jugador"""
@@ -273,10 +270,9 @@ func setup_unified_cod_system_safe():
 	
 	rounds_manager.start_round(1)
 
-func _on_round_changed(_new_round: int):  # CORREGIDO: parameter prefijado con _
+func _on_round_changed(_new_round: int):
 	"""Actualizar cuando cambia la ronda"""
 	if score_system:
-		# CORREGIDO: parameter no usado se prefixa con _
 		pass
 
 func _on_enemies_remaining_changed(_remaining: int):
@@ -462,7 +458,7 @@ func create_movement_joystick_large():
 	base_style.border_width_right = 5
 	base_style.border_width_top = 5
 	base_style.border_width_bottom = 5
-	base_style.corner_radius_top_left = int(movement_joystick_max_distance)  # CORREGIDO: cast a int
+	base_style.corner_radius_top_left = int(movement_joystick_max_distance)
 	base_style.corner_radius_top_right = int(movement_joystick_max_distance)
 	base_style.corner_radius_bottom_left = int(movement_joystick_max_distance)
 	base_style.corner_radius_bottom_right = int(movement_joystick_max_distance)
@@ -478,7 +474,7 @@ func create_movement_joystick_large():
 	var knob_size = 90
 	movement_joystick_knob.size = Vector2(knob_size, knob_size)
 	movement_joystick_knob.position = Vector2(
-		movement_joystick_max_distance - float(knob_size)/2.0,  # CORREGIDO: cast a float
+		movement_joystick_max_distance - float(knob_size)/2.0,
 		movement_joystick_max_distance - float(knob_size)/2.0
 	)
 	movement_joystick_knob.z_index = 2
@@ -490,7 +486,7 @@ func create_movement_joystick_large():
 	knob_style.border_width_right = 4
 	knob_style.border_width_top = 4
 	knob_style.border_width_bottom = 4
-	knob_style.corner_radius_top_left = int(knob_size)/2  # CORREGIDO: división de enteros
+	knob_style.corner_radius_top_left = int(knob_size)/2
 	knob_style.corner_radius_top_right = int(knob_size)/2
 	knob_style.corner_radius_bottom_left = int(knob_size)/2
 	knob_style.corner_radius_bottom_right = int(knob_size)/2
@@ -532,7 +528,7 @@ func create_shooting_joystick_large():
 	base_style.border_width_right = 5
 	base_style.border_width_top = 5
 	base_style.border_width_bottom = 5
-	base_style.corner_radius_top_left = int(shooting_joystick_max_distance)  # CORREGIDO: cast a int
+	base_style.corner_radius_top_left = int(shooting_joystick_max_distance)
 	base_style.corner_radius_top_right = int(shooting_joystick_max_distance)
 	base_style.corner_radius_bottom_left = int(shooting_joystick_max_distance)
 	base_style.corner_radius_bottom_right = int(shooting_joystick_max_distance)
@@ -548,7 +544,7 @@ func create_shooting_joystick_large():
 	var knob_size = 80
 	shooting_joystick_knob.size = Vector2(knob_size, knob_size)
 	shooting_joystick_knob.position = Vector2(
-		shooting_joystick_max_distance - float(knob_size)/2.0,  # CORREGIDO: cast a float
+		shooting_joystick_max_distance - float(knob_size)/2.0,
 		shooting_joystick_max_distance - float(knob_size)/2.0
 	)
 	shooting_joystick_knob.z_index = 2
@@ -560,7 +556,7 @@ func create_shooting_joystick_large():
 	knob_style.border_width_right = 4
 	knob_style.border_width_top = 4
 	knob_style.border_width_bottom = 4
-	knob_style.corner_radius_top_left = int(knob_size)/2  # CORREGIDO: división de enteros
+	knob_style.corner_radius_top_left = int(knob_size)/2
 	knob_style.corner_radius_top_right = int(knob_size)/2
 	knob_style.corner_radius_bottom_left = int(knob_size)/2
 	knob_style.corner_radius_bottom_right = int(knob_size)/2

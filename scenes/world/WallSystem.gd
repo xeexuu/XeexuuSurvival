@@ -1,4 +1,4 @@
-# scenes/world/WallSystem.gd
+# scenes/world/WallSystem.gd - SOLO PAREDES DEL PERÍMETRO
 extends Node2D
 class_name WallSystem
 
@@ -6,10 +6,10 @@ var walls: Array[StaticBody2D] = []
 
 func _ready():
 	create_boundary_walls()
-	create_interior_walls()
+	# ELIMINADO: create_interior_walls() - No más muros interiores
 
 func create_boundary_walls():
-	"""Crear paredes del perímetro del mapa"""
+	"""Crear SOLO paredes del perímetro del mapa"""
 	var map_size = 1600
 	var wall_thickness = 50
 	var half_size = map_size / 2
@@ -25,15 +25,6 @@ func create_boundary_walls():
 	
 	# Pared derecha
 	create_wall(Vector2(half_size + wall_thickness/2, 0), Vector2(wall_thickness, map_size))
-
-func create_interior_walls():
-	"""Crear algunas paredes interiores para hacer el mapa más interesante"""
-	# Obstáculos en el centro
-	create_wall(Vector2(0, 0), Vector2(200, 50))
-	create_wall(Vector2(300, 200), Vector2(50, 150))
-	create_wall(Vector2(-300, -200), Vector2(150, 50))
-	create_wall(Vector2(200, -300), Vector2(100, 100))
-	create_wall(Vector2(-200, 300), Vector2(120, 80))
 
 func create_wall(position: Vector2, size: Vector2) -> StaticBody2D:
 	"""Crear una pared individual"""
@@ -52,20 +43,20 @@ func create_wall(position: Vector2, size: Vector2) -> StaticBody2D:
 	collision_shape.shape = rect_shape
 	wall.add_child(collision_shape)
 	
-	# Crear sprite visual
+	# Crear sprite visual - MÁS SUTIL
 	var sprite = ColorRect.new()
 	sprite.size = size
 	sprite.position = Vector2(-size.x/2, -size.y/2)
-	sprite.color = Color(0.4, 0.3, 0.2, 0.8)  # Color marrón semi-transparente
+	sprite.color = Color(0.3, 0.2, 0.1, 0.6)  # Color marrón más sutil
 	
-	# Agregar borde
+	# Agregar borde más sutil
 	var border_style = StyleBoxFlat.new()
-	border_style.bg_color = Color(0.4, 0.3, 0.2, 0.8)
-	border_style.border_color = Color(0.2, 0.1, 0.0, 1.0)
-	border_style.border_width_left = 2
-	border_style.border_width_right = 2
-	border_style.border_width_top = 2
-	border_style.border_width_bottom = 2
+	border_style.bg_color = Color(0.3, 0.2, 0.1, 0.6)
+	border_style.border_color = Color(0.1, 0.05, 0.0, 0.8)
+	border_style.border_width_left = 1
+	border_style.border_width_right = 1
+	border_style.border_width_top = 1
+	border_style.border_width_bottom = 1
 	sprite.add_theme_stylebox_override("panel", border_style)
 	
 	wall.add_child(sprite)

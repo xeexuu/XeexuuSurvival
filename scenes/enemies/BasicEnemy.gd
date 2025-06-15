@@ -1,4 +1,4 @@
-# scenes/enemies/BasicEnemy.gd - CORREGIDO: Headshots y prints eliminados
+# scenes/enemies/BasicEnemy.gd - PATHFINDING MEJORADO COD ZOMBIES + SIN PRINTS
 extends CharacterBody2D
 class_name Enemy
 
@@ -49,7 +49,7 @@ enum EnemyState {
 var current_state: EnemyState = EnemyState.IDLE
 var original_color: Color = Color.WHITE
 
-# Comportamiento COD Zombies
+# PATHFINDING MEJORADO COD ZOMBIES
 var aggression_level: float = 1.0
 var last_player_position: Vector2
 var search_timer: float = 0.0
@@ -58,18 +58,33 @@ var last_position: Vector2
 var unstuck_direction: Vector2
 var wander_target: Vector2
 
+# SISTEMA DE PATHFINDING AVANZADO
+var path_finding_timer: float = 0.0
+var path_update_interval: float = 0.5  # Actualizar path cada 0.5 segundos
+var raycast_directions: Array[Vector2] = []
+var wall_avoidance_force: Vector2 = Vector2.ZERO
+var wall_detection_distance: float = 60.0
+
 # Separación entre enemigos
 var nearby_enemies: Array[Enemy] = []
 var separation_force: Vector2 = Vector2.ZERO
 var separation_radius: float = 80.0
 
-# Zona de headshot - CORREGIDA
+# Zona de headshot
 var head_area: Area2D
 
 func _ready():
 	setup_enemy()
 	setup_head_collision()
 	setup_attack_system()
+	setup_pathfinding_system()
+
+func setup_pathfinding_system():
+	"""Configurar sistema de pathfinding avanzado"""
+	# Direcciones para raycast en círculo
+	for i in range(8):
+		var angle = (float(i) * PI * 2.0) / 8.0
+		raycast_directions.append(Vector2.from_angle(angle))
 
 func setup_attack_system():
 	"""Configurar sistema de ataque"""
@@ -85,7 +100,7 @@ func _on_damage_cooldown_finished():
 	can_damage_player = true
 
 func setup_head_collision():
-	"""Configurar área de colisión para headshots - CORREGIDA"""
+	"""Configurar área de colisión para headshots"""
 	head_area = Area2D.new()
 	head_area.name = "HeadArea"
 	head_area.collision_layer = 0
@@ -93,28 +108,24 @@ func setup_head_collision():
 	
 	var head_shape = CollisionShape2D.new()
 	var head_circle = CircleShape2D.new()
-	head_circle.radius = 25.0  # Área más grande para headshots
+	head_circle.radius = 25.0
 	head_shape.shape = head_circle
-	head_shape.position = Vector2(0, -35)  # Más arriba en la cabeza
+	head_shape.position = Vector2(0, -35)
 	
 	head_area.add_child(head_shape)
 	add_child(head_area)
 	
-	# CONEXIÓN DIRECTA SIN DEFER
 	head_area.area_entered.connect(_on_head_area_entered)
 
 func _on_head_area_entered(area):
-	"""Cuando una bala entra en el área de la cabeza - HEADSHOT REAL SIN PRINTS"""
+	"""Cuando una bala entra en el área de la cabeza - HEADSHOT"""
 	if is_dead:
 		return
 		
 	if area.is_in_group("bullets") or area.name.contains("Bullet"):
 		var bullet = area as Bullet
 		if bullet and bullet.damage > 0:
-			# HEADSHOT REAL - NO ALEATORIO
 			var headshot_damage = int(float(bullet.damage) * bullet.headshot_multiplier)
-			
-			# SIN PRINTS DE DEBUG
 			take_damage(headshot_damage, true)
 			
 			if bullet.knockback_force > 0:
@@ -348,7 +359,6 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	search_timer = 0.0
 	stuck_timer = 0.0
 	
-	# REACTIVAR COLISIONES CORRECTAMENTE
 	call_deferred("_reactivate_collision")
 	
 	if sprite:
@@ -371,7 +381,6 @@ func reset_for_pool():
 	damage = 1
 	can_damage_player = true
 	
-	# DESACTIVAR COLISIONES USANDO DEFERRED
 	call_deferred("_deactivate_collision")
 	
 	if sprite:
@@ -396,7 +405,7 @@ func apply_knockback(direction: Vector2, force: float):
 		velocity += direction.normalized() * force
 
 func take_damage(amount: int, is_headshot: bool = false):
-	"""Recibir daño - SIN PRINTS DE DEBUG"""
+	"""Recibir daño"""
 	if is_dead:
 		return
 	
@@ -445,14 +454,13 @@ func flash_headshot_effect():
 		tween.tween_property(sprite, "modulate", original_color, 0.1)
 
 func die():
-	"""Manejar la muerte del enemigo - COLISIÓN CORREGIDA"""
+	"""Manejar la muerte del enemigo"""
 	if is_dead:
 		return
 	
 	is_dead = true
 	current_state = EnemyState.DEAD
 	
-	# DESACTIVAR COLISIÓN USANDO DEFERRED PARA EVITAR ERROR
 	call_deferred("_deactivate_collision")
 	
 	velocity = Vector2.ZERO
@@ -496,7 +504,7 @@ func _physics_process(delta):
 	update_timers(delta)
 	update_state()
 	update_nearby_enemies()
-	handle_movement_cod_style(delta)
+	handle_movement_cod_style_improved(delta)
 	handle_combat_cod_style()
 
 func update_nearby_enemies():
@@ -530,6 +538,7 @@ func update_nearby_enemies():
 func update_timers(delta):
 	"""Actualizar timers del comportamiento"""
 	search_timer += delta
+	path_finding_timer += delta
 	
 	if global_position.distance_to(last_position) < 10.0:
 		stuck_timer += delta
@@ -558,13 +567,13 @@ func update_state():
 	else:
 		current_state = EnemyState.IDLE
 
-func handle_movement_cod_style(delta):
-	"""Manejo de movimiento estilo COD Zombies"""
+func handle_movement_cod_style_improved(delta):
+	"""Manejo de movimiento COD Zombies con pathfinding mejorado"""
 	var movement_direction = Vector2.ZERO
 	
 	match current_state:
 		EnemyState.CHASING:
-			movement_direction = get_movement_towards_player()
+			movement_direction = get_smart_movement_towards_player()
 		EnemyState.ATTACKING:
 			movement_direction = Vector2.ZERO
 		EnemyState.IDLE:
@@ -572,9 +581,16 @@ func handle_movement_cod_style(delta):
 		EnemyState.STUNNED:
 			movement_direction = velocity.move_toward(Vector2.ZERO, move_speed * delta * 2)
 	
-	# Aplicar separación
+	# Aplicar separación entre enemigos
 	if separation_force.length() > 0:
 		movement_direction += separation_force.normalized() * 0.8
+	
+	# Aplicar wall avoidance
+	if path_finding_timer >= path_update_interval:
+		update_wall_avoidance()
+		path_finding_timer = 0.0
+	
+	movement_direction += wall_avoidance_force
 	
 	# Mantener distancia mínima del jugador
 	if player:
@@ -590,8 +606,8 @@ func handle_movement_cod_style(delta):
 	
 	move_and_slide()
 
-func get_movement_towards_player() -> Vector2:
-	"""Obtener dirección de movimiento hacia el jugador"""
+func get_smart_movement_towards_player() -> Vector2:
+	"""Obtener dirección inteligente hacia el jugador con pathfinding"""
 	if not player:
 		return Vector2.ZERO
 	
@@ -600,14 +616,92 @@ func get_movement_towards_player() -> Vector2:
 	if distance_to_player <= proximity_distance:
 		return Vector2.ZERO
 	
-	var direction = (player.global_position - global_position).normalized()
+	# Dirección básica hacia el jugador
+	var direct_direction = (player.global_position - global_position).normalized()
 	
-	if randf() < 0.1:
-		direction = direction.rotated(randf_range(-0.3, 0.3))
+	# Verificar si hay obstáculos en el camino directo
+	var space_state = get_world_2d().direct_space_state
+	var query = PhysicsRayQueryParameters2D.create(
+		global_position,
+		player.global_position
+	)
+	query.collision_mask = 3  # Solo paredes
+	query.exclude = [self]
 	
-	update_sprite_animation("walk", direction)
+	var result = space_state.intersect_ray(query)
 	
-	return direction
+	# Si hay obstáculos, usar pathfinding
+	if result:
+		return get_wall_avoiding_direction(direct_direction)
+	else:
+		# Camino libre, ir directo con pequeña variación
+		if randf() < 0.1:
+			direct_direction = direct_direction.rotated(randf_range(-0.3, 0.3))
+		
+		update_sprite_animation("walk", direct_direction)
+		return direct_direction
+
+func get_wall_avoiding_direction(target_direction: Vector2) -> Vector2:
+	"""Obtener dirección que evita paredes"""
+	var best_direction = target_direction
+	var best_score = -1.0
+	
+	# Probar diferentes ángulos alrededor de la dirección objetivo
+	var angle_tests = [-PI/4, -PI/8, 0, PI/8, PI/4, -PI/2, PI/2]
+	
+	for angle_offset in angle_tests:
+		var test_direction = target_direction.rotated(angle_offset)
+		var score = evaluate_direction(test_direction)
+		
+		if score > best_score:
+			best_score = score
+			best_direction = test_direction
+	
+	update_sprite_animation("walk", best_direction)
+	return best_direction
+
+func evaluate_direction(direction: Vector2) -> float:
+	"""Evaluar qué tan buena es una dirección"""
+	var space_state = get_world_2d().direct_space_state
+	var test_distance = wall_detection_distance
+	
+	var query = PhysicsRayQueryParameters2D.create(
+		global_position,
+		global_position + direction * test_distance
+	)
+	query.collision_mask = 3  # Solo paredes
+	query.exclude = [self]
+	
+	var result = space_state.intersect_ray(query)
+	
+	if result:
+		# Hay pared, dar score bajo
+		var hit_distance = global_position.distance_to(result.position)
+		return hit_distance / test_distance  # Score entre 0-1
+	else:
+		# No hay pared, score alto
+		return 1.0
+
+func update_wall_avoidance():
+	"""Actualizar fuerza de evitación de paredes"""
+	wall_avoidance_force = Vector2.ZERO
+	
+	var space_state = get_world_2d().direct_space_state
+	
+	for direction in raycast_directions:
+		var query = PhysicsRayQueryParameters2D.create(
+			global_position,
+			global_position + direction * wall_detection_distance
+		)
+		query.collision_mask = 3  # Solo paredes
+		query.exclude = [self]
+		
+		var result = space_state.intersect_ray(query)
+		
+		if result:
+			var hit_distance = global_position.distance_to(result.position)
+			var avoidance_strength = (wall_detection_distance - hit_distance) / wall_detection_distance
+			wall_avoidance_force += -direction * avoidance_strength * 50.0
 
 func get_wander_movement() -> Vector2:
 	"""Comportamiento de deambulación"""
