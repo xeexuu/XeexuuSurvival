@@ -25,7 +25,7 @@ var is_mobile: bool = false
 # Joystick de movimiento - MUCHO MÁS GRANDE
 var movement_joystick_base: Control
 var movement_joystick_knob: Control
-var movement_joystick_area: Control  # CAMBIAR de Control a TouchScreenButton
+var movement_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
 var movement_joystick_center: Vector2
 
 var current_movement = Vector2.ZERO
@@ -35,7 +35,7 @@ var movement_touch_id: int = -1
 # Joystick de disparo - TIPOS CORRECTOS
 var shooting_joystick_base: Control
 var shooting_joystick_knob: Control
-var shooting_joystick_area: Control  # CAMBIAR de Control a TouchScreenButton
+var shooting_joystick_area: TouchScreenButton  # CAMBIAR de Control a TouchScreenButton
 var shooting_joystick_center: Vector2
 
 var current_shoot_direction = Vector2.ZERO
@@ -319,18 +319,14 @@ func handle_drag_event(event: InputEventScreenDrag):
 	elif touch_id == shoot_touch_id:
 		handle_shooting_joystick(touch_pos)
 
-func is_point_in_expanded_area(point: Vector2, area: Control) -> bool:  # CAMBIAR TIPO
-	"""Verificar si un punto está dentro de un área MUCHO MÁS EXPANDIDA"""
-	if not area:
+func is_point_in_expanded_area(point: Vector2, area: TouchScreenButton) -> bool:
+	"""Verificar si un punto está dentro de un área TouchScreenButton"""
+	if not area or not area.shape:
 		return false
 	
-	# ÁREA GIGANTE - 5x el tamaño original
-	var expansion = area.size * 4.0
-	var expanded_pos = area.global_position - expansion
-	var expanded_size = area.size + (expansion * 2)
-	var expanded_rect = Rect2(expanded_pos, expanded_size)
-	
-	return expanded_rect.has_point(point)
+	# Para TouchScreenButton, usar el área del shape directamente
+	var global_rect = Rect2(area.global_position, area.shape.size)
+	return global_rect.has_point(point)
 	
 func handle_movement_joystick(touch_pos: Vector2):
 	"""Manejar joystick de movimiento - SIN PEGARSE"""
@@ -449,12 +445,13 @@ func create_movement_joystick_large():
 	)
 	mobile_controls.add_child(movement_joystick_base)
 	
-	# USAR Control SIMPLE EN LUGAR DE TouchScreenButton
-	movement_joystick_area = Control.new()  # CAMBIO CLAVE
+	# USAR TouchScreenButton PARA ANDROID
+	movement_joystick_area = TouchScreenButton.new()
 	movement_joystick_area.name = "MovementJoystickArea"
-	movement_joystick_area.size = Vector2(joystick_size, joystick_size)
+	movement_joystick_area.shape = RectangleShape2D.new()
+	movement_joystick_area.shape.size = Vector2(joystick_size, joystick_size)
 	movement_joystick_area.position = Vector2.ZERO
-	movement_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS  # IMPORTANTE
+	movement_joystick_area.visibility_mode = TouchScreenButton.VISIBILITY_TOUCHSCREEN_ONLY
 	movement_joystick_base.add_child(movement_joystick_area)
 	
 	# Base más visible y grande
@@ -507,8 +504,6 @@ func create_movement_joystick_large():
 	movement_joystick_base.add_child(movement_joystick_knob)
 	movement_joystick_center = movement_joystick_base.global_position + Vector2(movement_joystick_max_distance, movement_joystick_max_distance)
 
-
-
 func create_shooting_joystick_large():
 	"""Crear joystick de disparo GIGANTE - ANDROID COMPATIBLE"""
 	var viewport_size = get_viewport().get_visible_rect().size
@@ -523,12 +518,13 @@ func create_shooting_joystick_large():
 	)
 	mobile_controls.add_child(shooting_joystick_base)
 	
-	# USAR Control SIMPLE EN LUGAR DE TouchScreenButton
-	shooting_joystick_area = Control.new()  # CAMBIO CLAVE
+	# USAR TouchScreenButton PARA ANDROID
+	shooting_joystick_area = TouchScreenButton.new()
 	shooting_joystick_area.name = "ShootingJoystickArea"
-	shooting_joystick_area.size = Vector2(joystick_size, joystick_size)
+	shooting_joystick_area.shape = RectangleShape2D.new()
+	shooting_joystick_area.shape.size = Vector2(joystick_size, joystick_size)
 	shooting_joystick_area.position = Vector2.ZERO
-	shooting_joystick_area.mouse_filter = Control.MOUSE_FILTER_PASS  # IMPORTANTE
+	shooting_joystick_area.visibility_mode = TouchScreenButton.VISIBILITY_TOUCHSCREEN_ONLY
 	shooting_joystick_base.add_child(shooting_joystick_area)
 	
 	# Base roja más visible
