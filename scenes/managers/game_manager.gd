@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - REFERENCIAS CORREGIDAS
+# scenes/managers/game_manager.gd - CON NUEVO SISTEMA DE ANIMACIONES SIN DUPLICACIONES
 extends Node
 class_name GameManager
 
@@ -113,6 +113,14 @@ func _input(event):
 	if event.is_action_pressed("toggle_fullscreen"):
 		toggle_fullscreen()
 	
+	# DEBUG: Tecla F1 para depurar animaciones
+	if event.is_action_pressed("ui_accept") and Input.is_key_pressed(KEY_F1):
+		debug_animation_system()
+	
+	# DEBUG: Tecla F2 para resetear animaciones
+	if event.is_action_pressed("ui_accept") and Input.is_key_pressed(KEY_F2):
+		reset_animation_system()
+	
 	if not is_mobile or not game_started or game_state != "playing":
 		return
 	
@@ -166,7 +174,7 @@ func _on_character_selected(character_stats: CharacterStats):
 		player.max_health = selected_character_stats.max_health
 		
 		setup_player_collision_layers()
-		setup_animation_system()
+		setup_new_animation_system()  # NUEVO SISTEMA
 		
 		player.set_physics_process(true)
 		player.set_process(true)
@@ -179,17 +187,26 @@ func _on_character_selected(character_stats: CharacterStats):
 	await get_tree().create_timer(3.0).timeout
 	start_enemy_spawning_safely()
 
-func setup_animation_system():
-	"""Configurar animaciones"""
+func setup_new_animation_system():
+	"""CONFIGURAR NUEVO SISTEMA DE ANIMACIONES BASADO EN MOVIMIENTO"""
 	if not player or not player.animated_sprite:
+		print("❌ No se puede configurar animaciones: falta player o sprite")
 		return
 	
+	print("🎭 Configurando NUEVO sistema de animaciones...")
+	
+	# CREAR CONTROLADOR DE ANIMACIONES
 	animation_controller = AnimationController.new()
 	animation_controller.name = "AnimationController"
 	player.add_child(animation_controller)
 	
+	# CONFIGURAR EL CONTROLADOR
 	animation_controller.setup(player.animated_sprite, selected_character_stats.character_name)
+	
+	# ASIGNAR AL JUGADOR
 	player.set_animation_controller(animation_controller)
+	
+	print("✅ NUEVO sistema de animaciones configurado para: ", selected_character_stats.character_name)
 
 func setup_player_collision_layers():
 	"""Configurar colisiones del jugador"""
@@ -212,7 +229,7 @@ func setup_player_after_selection():
 			player.velocity = Vector2.ZERO
 
 func setup_unified_cod_system_safe():
-	"""Configurar sistemas COD con múltiples tipos de enemigos"""
+	"""Configurar sistemas COD"""
 	if not player:
 		return
 	
@@ -232,7 +249,7 @@ func setup_unified_cod_system_safe():
 		fixed_ui_manager.set_rounds_manager(rounds_manager)
 		fixed_ui_manager.set_player_reference(player)
 	
-	# EnemySpawner con múltiples tipos
+	# EnemySpawner
 	enemy_spawner = EnemySpawner.new()
 	enemy_spawner.name = "EnemySpawner"
 	enemy_spawner.spawn_radius_min = 400.0
@@ -333,12 +350,6 @@ func handle_movement_joystick(touch_pos: Vector2):
 		var strength = (distance - movement_joystick_dead_zone) / (movement_joystick_max_distance - movement_joystick_dead_zone)
 		strength = min(strength, 1.0)
 		current_movement = offset.normalized() * strength
-		
-		# Actualizar animaciones
-		if animation_controller and player:
-			if not is_shooting:
-				player.current_aim_direction = current_movement
-			animation_controller.update_animation(current_movement, player.current_aim_direction)
 	else:
 		current_movement = Vector2.ZERO
 		if player:
@@ -364,11 +375,6 @@ func handle_shooting_joystick(touch_pos: Vector2):
 		if player:
 			player.mobile_shoot_direction = current_shoot_direction
 			player.mobile_is_shooting = true
-			player.current_aim_direction = current_shoot_direction
-		
-		# Actualizar animaciones
-		if animation_controller and player:
-			animation_controller.update_animation(current_movement, current_shoot_direction)
 	else:
 		current_shoot_direction = Vector2.ZERO
 		is_shooting = false
@@ -559,6 +565,33 @@ func create_shooting_joystick_large():
 	
 	shooting_joystick_base.add_child(shooting_joystick_knob)
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
+
+# ===== FUNCIONES DE DEPURACIÓN PARA ANIMACIONES =====
+
+func debug_animation_system():
+	"""Depurar sistema de animaciones"""
+	print("🎭 [DEBUG GAME_MANAGER] Depurando sistema de animaciones...")
+	
+	if not player:
+		print("❌ No hay jugador")
+		return
+	
+	if not animation_controller:
+		print("❌ No hay animation_controller")
+		return
+	
+	print("🎭 [DEBUG] Player y AnimationController encontrados")
+	player.debug_animation_state()
+
+func reset_animation_system():
+	"""Resetear sistema de animaciones"""
+	print("🎭 [DEBUG GAME_MANAGER] Reseteando sistema de animaciones...")
+	
+	if player:
+		player.reset_animation_system()
+	
+	if animation_controller:
+		animation_controller.reset_animation_state()
 
 # ===== RESTO DE FUNCIONES =====
 
@@ -803,14 +836,14 @@ func restart_entire_game():
 	get_tree().reload_current_scene()
 
 func _on_enemy_killed(_enemy: Enemy):
-	"""Registrar kill de enemigo - CORREGIDO"""
+	"""Registrar kill de enemigo"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 
 func _on_enemy_spawned(_enemy: Enemy):
-	"""Enemigo spawneado - CORREGIDO"""
+	"""Enemigo spawneado"""
 	if rounds_manager:
 		rounds_manager.on_enemy_spawned()
 

@@ -1,4 +1,4 @@
-# scenes/player/player.gd - CON MINIHUD Y STATS DEL .tres CORREGIDOS
+# scenes/player/player.gd - CON NUEVO SISTEMA DE ANIMACIONES BASADO EN MOVIMIENTO
 extends CharacterBody2D
 class_name Player
 
@@ -21,14 +21,15 @@ var mobile_movement_direction: Vector2 = Vector2.ZERO
 var mobile_shoot_direction: Vector2 = Vector2.ZERO
 var mobile_is_shooting: bool = false
 
-# Direcciones para animaciones
-var current_aim_direction: Vector2 = Vector2.RIGHT
+# VARIABLES DE MOVIMIENTO Y ANIMACIÓN - SEPARADAS
+var current_movement_direction: Vector2 = Vector2.ZERO  # Para animaciones
+var current_aim_direction: Vector2 = Vector2.RIGHT     # Para disparo/arma
 
 # Referencias
 var score_system: ScoreSystem
 var weapon_renderer: WeaponRenderer
 var animation_controller: AnimationController
-var mini_hud: MiniHUD  # REFERENCIA AL MINIHUD
+var mini_hud: MiniHUD
 
 # Estado
 var is_fully_initialized: bool = false
@@ -128,6 +129,7 @@ func apply_character_stats():
 func set_animation_controller(controller: AnimationController):
 	"""Establecer controlador de animaciones"""
 	animation_controller = controller
+	print("🎭 AnimationController asignado al jugador")
 
 func set_score_system(score_sys: ScoreSystem):
 	"""Establecer sistema de puntuación"""
@@ -144,7 +146,7 @@ func _physics_process(delta):
 	move_and_slide()
 
 func handle_movement(_delta):
-	"""Manejar movimiento"""
+	"""Manejar movimiento - SEPARADO DEL SISTEMA DE DISPARO"""
 	var input_direction = Vector2.ZERO
 	
 	if is_mobile:
@@ -156,9 +158,20 @@ func handle_movement(_delta):
 	if input_direction.length() > 1.0:
 		input_direction = input_direction.normalized()
 	
+	# ACTUALIZAR DIRECCIÓN DE MOVIMIENTO PARA ANIMACIONES
+	current_movement_direction = input_direction
+	
 	velocity = input_direction * move_speed
 	apply_map_bounds()
-	update_animations(input_direction)
+	
+	# ACTUALIZAR ANIMACIONES BASADAS EN MOVIMIENTO
+	update_movement_animations()
+
+func update_movement_animations():
+	"""Actualizar animaciones - PRIORIDAD AL DISPARO"""
+	if animation_controller:
+		# Usar la función correcta del controlador
+		animation_controller.update_animation(current_movement_direction, current_aim_direction)
 
 func apply_map_bounds():
 	"""Aplicar límites del mapa"""
@@ -179,7 +192,7 @@ func apply_map_bounds():
 		global_position.y = map_bounds.position.y + map_bounds.size.y
 
 func handle_shooting():
-	"""Manejar disparo"""
+	"""Manejar disparo - SOLO PARA ARMAS, NO PARA ANIMACIONES"""
 	if not shooting_component:
 		return
 	
@@ -193,6 +206,7 @@ func handle_shooting():
 		shoot_direction.y = Input.get_action_strength("shoot_down") - Input.get_action_strength("shoot_up")
 	
 	if shoot_direction.length() > 0:
+		# ACTUALIZAR DIRECCIÓN DE APUNTADO SOLO PARA EL ARMA
 		current_aim_direction = shoot_direction.normalized()
 		perform_shoot(current_aim_direction)
 
@@ -201,6 +215,7 @@ func perform_shoot(direction: Vector2):
 	if not shooting_component:
 		return
 	
+	# SOLO ACTUALIZAR AIM DIRECTION PARA EL ARMA
 	current_aim_direction = direction
 	
 	var shoot_position = global_position
@@ -213,7 +228,7 @@ func perform_shoot(direction: Vector2):
 		weapon_renderer.start_shooting_animation()
 
 func update_weapon_position():
-	"""Actualizar posición del arma"""
+	"""Actualizar posición del arma usando AIM DIRECTION"""
 	if not weapon_renderer:
 		return
 	
@@ -222,11 +237,6 @@ func update_weapon_position():
 		aim_direction = Vector2.RIGHT
 	
 	weapon_renderer.update_weapon_position_and_rotation(aim_direction)
-
-func update_animations(movement_direction: Vector2):
-	"""Actualizar animaciones"""
-	if animation_controller:
-		animation_controller.update_animation(movement_direction, current_aim_direction)
 
 func take_damage(amount: int):
 	"""RECIBIR DAÑO - ACTUALIZA MINIHUD"""
@@ -292,7 +302,7 @@ func start_invulnerability():
 		var blink_count = int(invulnerability_duration * 8)
 		blink_tween.set_loops(blink_count)
 		blink_tween.tween_property(animated_sprite, "modulate:a", 0.3, 0.0625)
-		blink_tween.tween_property(animated_sprite, "modulate:a", 1.0, 0.0625)  # CORREGIDO: era tween_property sin blink_tween
+		blink_tween.tween_property(animated_sprite, "modulate:a", 1.0, 0.0625)
 	
 	var invul_timer = Timer.new()
 	invul_timer.wait_time = invulnerability_duration
@@ -404,6 +414,32 @@ func _input(event):
 	# DEBUG: Tecla H para curar
 	if event.is_action_pressed("ui_home"):
 		heal(1)
+
+# ===== FUNCIONES DE DEPURACIÓN PARA ANIMACIONES =====
+
+func debug_animation_state():
+	"""Depurar estado de animaciones"""
+	print("🎭 [DEBUG PLAYER] Estado de movimiento y animación:")
+	print("   Dirección de movimiento: ", current_movement_direction)
+	print("   Dirección de apuntado: ", current_aim_direction)
+	print("   Velocidad: ", velocity)
+	print("   Se está moviendo: ", current_movement_direction.length() > 0.1)
+	
+	if animation_controller:
+		animation_controller.debug_print_animation_state()
+
+func force_idle_animation():
+	"""Forzar animación idle (para depuración)"""
+	if animation_controller:
+		animation_controller.force_animation("idle")
+
+func reset_animation_system():
+	"""Resetear sistema de animaciones (para depuración)"""
+	current_movement_direction = Vector2.ZERO
+	current_aim_direction = Vector2.RIGHT
+	
+	if animation_controller:
+		animation_controller.reset_animation_state()
 
 func _exit_tree():
 	"""Limpiar al salir"""

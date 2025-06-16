@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - IA ESTILO WORLD AT WAR AGRESIVA
+# scenes/enemies/Enemy.gd - SOLUCIÓN SIMPLE: ANCLAJE EN ATAQUE
 extends CharacterBody2D
 class_name Enemy
 
@@ -8,10 +8,10 @@ signal damaged(enemy: Enemy, damage: int)
 @export var enemy_type: String = "zombie_basic"
 @export var max_health: int = 150
 @export var current_health: int = 150
-@export var base_move_speed: float = 100.0  # REDUCIDO: velocidad base más moderada
+@export var base_move_speed: float = 100.0
 @export var damage: int = 1
 @export var attack_range: float = 60.0
-@export var detection_range: float = 1000.0  # REDUCIDO un poco
+@export var detection_range: float = 1000.0
 @export var attack_cooldown: float = 1.0
 
 @onready var sprite = $Sprite2D
@@ -24,34 +24,30 @@ var is_dead: bool = false
 var last_attack_time: float = 0.0
 var current_move_speed: float = 150.0
 
-# ===== IA WORLD AT WAR - DIRECTA Y AGRESIVA =====
+# Variable que faltaba
+var enemy_sprite_frames: SpriteFrames
+
+# ===== SISTEMA SIMPLE ANTI-PEGADO =====
 enum WaWState {
 	SPAWNING,
-	HUNTING,      # Cazando AGRESIVAMENTE
-	CHARGING,     # Cargando directo al jugador
-	ATTACKING,    # Atacando
-	STUNNED       # Aturdido por daño
+	HUNTING,
+	CHARGING,
+	ATTACKING,    # ANCLADO: No se mueve cuando ataca
+	STUNNED
 }
 
 var current_state: WaWState = WaWState.SPAWNING
 var state_timer: float = 0.0
 
-# Variables World at War - SIN TORPE BÚSQUEDA
+# Variables simples
 var last_known_player_position: Vector2
 var charge_speed_multiplier: float = 1.5
 var min_separation_distance: float = 35.0
 var max_separation_distance: float = 50.0
 
-# Sistema anti-pegado mejorado
-var separation_force: float = 200.0
-var is_slowing_player: bool = false
-var slow_effect_range: float = 70.0
-var slow_effect_strength: float = 0.4
-
-# Spawn y sprites
-var spawn_scale: float = 0.0
-var spawn_alpha: float = 0.0
-var enemy_sprite_frames: SpriteFrames
+# SOLUCIÓN SIMPLE: ANCLAJE EN ATAQUE
+var is_anchored: bool = false  # Anclado al suelo durante ataque
+var anchor_position: Vector2   # Posición donde se ancla
 
 func _ready():
 	add_to_group("enemies")
@@ -78,34 +74,34 @@ func setup_enemy():
 		attack_timer.timeout.connect(_on_attack_timer_timeout)
 
 func determine_waw_variant():
-	"""Variantes World at War - VELOCIDADES MÁS BALANCEADAS"""
+	"""Variantes World at War"""
 	var rand_val = randf()
 	
-	if rand_val < 0.15:  # 15% RUNNERS - SÚPER RÁPIDOS
+	if rand_val < 0.15:  # 15% RUNNERS
 		enemy_type = "zombie_runner"
-		charge_speed_multiplier = randf_range(1.8, 2.2)  # RÁPIDOS
-		max_health = int(float(max_health) * 0.6)  # MÁS FRÁGILES
+		charge_speed_multiplier = randf_range(1.8, 2.2)
+		max_health = int(float(max_health) * 0.6)
 		current_health = max_health
 		modulate = Color(1.4, 0.6, 0.6, 1.0)
 		detection_range = 1200.0
 		
-	elif rand_val < 0.25:  # 10% CHARGERS - RÁPIDOS
+	elif rand_val < 0.25:  # 10% CHARGERS
 		enemy_type = "zombie_charger"  
-		charge_speed_multiplier = randf_range(1.4, 1.7)  # MODERADAMENTE RÁPIDOS
+		charge_speed_multiplier = randf_range(1.4, 1.7)
 		max_health = int(float(max_health) * 0.8)
 		current_health = max_health
 		modulate = Color(1.2, 0.8, 0.6, 1.0)
 		attack_range = 70.0
 		
-	elif rand_val < 0.35:  # 10% CRAWLERS - LENTOS PERO RESISTENTES
+	elif rand_val < 0.35:  # 10% CRAWLERS
 		enemy_type = "zombie_crawler"
-		charge_speed_multiplier = randf_range(0.7, 0.9)  # LENTOS
-		max_health = int(float(max_health) * 1.3)  # MÁS RESISTENTES
+		charge_speed_multiplier = randf_range(0.7, 0.9)
+		max_health = int(float(max_health) * 1.3)
 		current_health = max_health
 		modulate = Color(0.8, 1.0, 0.8, 1.0)
 		
-	else:  # 65% BÁSICOS - VELOCIDAD NORMAL VARIADA
-		charge_speed_multiplier = randf_range(0.9, 1.3)  # VELOCIDAD NORMAL CON VARIACIÓN
+	else:  # 65% BÁSICOS
+		charge_speed_multiplier = randf_range(0.9, 1.3)
 		max_health = int(float(max_health) * 1.0)
 		current_health = max_health
 		modulate = Color(1.0, 0.9, 0.8, 1.0)
@@ -113,7 +109,7 @@ func determine_waw_variant():
 	current_move_speed = base_move_speed * charge_speed_multiplier
 
 func load_enemy_sprite_waw_size():
-	"""Cargar sprite del MISMO TAMAÑO que el jugador"""
+	"""Cargar sprite del enemigo"""
 	var atlas_path = "res://sprites/enemies/zombie/walk_Right_Down.png"
 	var atlas_texture = try_load_texture_safe(atlas_path)
 	
@@ -123,7 +119,7 @@ func load_enemy_sprite_waw_size():
 		create_default_enemy_sprite_player_size()
 
 func setup_animated_sprite_player_size(atlas_texture: Texture2D):
-	"""Sprite del MISMO TAMAÑO que el jugador - SIN INVISIBILIDAD"""
+	"""Configurar sprite animado"""
 	if sprite and sprite is Sprite2D:
 		sprite.queue_free()
 		
@@ -150,13 +146,10 @@ func setup_animated_sprite_player_size(atlas_texture: Texture2D):
 	var first_frame = extract_frame_from_zombie_atlas(atlas_texture, 0)
 	enemy_sprite_frames.add_frame("idle", first_frame)
 	
-	# ASEGURAR VISIBILIDAD INMEDIATA
 	animated_sprite.sprite_frames = enemy_sprite_frames
 	animated_sprite.play("idle")
 	animated_sprite.visible = true
-	animated_sprite.modulate = Color.WHITE  # ASEGURAR OPACIDAD COMPLETA
-	
-	# TAMAÑO IGUAL AL JUGADOR
+	animated_sprite.modulate = Color.WHITE
 	animated_sprite.scale = Vector2(1.0, 1.0)
 
 func extract_frame_from_zombie_atlas(atlas_texture: Texture2D, frame_index: int) -> Texture2D:
@@ -170,8 +163,8 @@ func extract_frame_from_zombie_atlas(atlas_texture: Texture2D, frame_index: int)
 	return atlas_frame
 
 func create_default_enemy_sprite_player_size():
-	"""Sprite por defecto del MISMO TAMAÑO que jugador"""
-	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)  # TAMAÑO COMPLETO
+	"""Sprite por defecto"""
+	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
 	
 	var base_color = Color.DARK_RED
 	match enemy_type:
@@ -202,7 +195,7 @@ func create_default_enemy_sprite_player_size():
 	if sprite is Sprite2D:
 		var normal_sprite = sprite as Sprite2D
 		normal_sprite.texture = default_texture
-		normal_sprite.scale = Vector2(1.0, 1.0)  # TAMAÑO COMPLETO
+		normal_sprite.scale = Vector2(1.0, 1.0)
 		normal_sprite.visible = true
 
 func add_glowing_eyes(image: Image):
@@ -226,8 +219,8 @@ func try_load_texture_safe(path: String) -> Texture2D:
 func setup_health_bar():
 	if not health_bar:
 		health_bar = ProgressBar.new()
-		health_bar.size = Vector2(80, 10)  # MÁS GRANDE
-		health_bar.position = Vector2(-40, -70)  # MÁS ARRIBA
+		health_bar.size = Vector2(80, 10)
+		health_bar.position = Vector2(-40, -70)
 		add_child(health_bar)
 	
 	health_bar.max_value = max_health
@@ -258,10 +251,12 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	is_dead = false
 	current_state = WaWState.SPAWNING
 	
+	# RESETEAR SISTEMA DE ANCLAJE
+	is_anchored = false
+	anchor_position = Vector2.ZERO
+	
 	modulate = Color(1, 1, 1, 0)
 	scale = Vector2.ZERO
-	spawn_scale = 0.0
-	spawn_alpha = 0.0
 	
 	call_deferred("_reactivate_collision")
 	update_health_bar()
@@ -273,8 +268,8 @@ func start_spawn_animation():
 	var spawn_tween = create_tween()
 	spawn_tween.set_parallel(true)
 	
-	spawn_tween.tween_method(set_spawn_scale, 0.0, 1.0, 0.5)  # MÁS RÁPIDO
-	spawn_tween.tween_method(set_spawn_alpha, 0.0, 1.0, 0.3)  # MÁS RÁPIDO
+	spawn_tween.tween_method(set_spawn_scale, 0.0, 1.0, 0.5)
+	spawn_tween.tween_method(set_spawn_alpha, 0.0, 1.0, 0.3)
 	
 	spawn_tween.tween_callback(func(): 
 		current_state = WaWState.HUNTING
@@ -282,14 +277,12 @@ func start_spawn_animation():
 	)
 
 func set_spawn_scale(value: float):
-	spawn_scale = value
-	var base_scale = Vector2(1.0, 1.0)  # TAMAÑO COMPLETO
-	scale = base_scale * spawn_scale
+	var base_scale = Vector2(1.0, 1.0)
+	scale = base_scale * value
 
 func set_spawn_alpha(value: float):
-	spawn_alpha = value
 	var current_color = modulate
-	current_color.a = spawn_alpha
+	current_color.a = value
 	modulate = current_color
 
 func _reactivate_collision():
@@ -302,15 +295,14 @@ func _physics_process(delta):
 	
 	update_waw_ai_state_machine(delta)
 	handle_waw_movement(delta)
-	handle_player_slow_effect()
 	update_movement_animation()
 	
 	move_and_slide()
 
-# ===== IA WORLD AT WAR - DIRECTA Y SIN TONTERÍAS =====
+# ===== IA SIMPLE CON ANCLAJE =====
 
 func update_waw_ai_state_machine(delta):
-	"""IA World at War - CON DETECCIÓN POR DISTANCIA"""
+	"""IA con anclaje en ataque"""
 	state_timer += delta
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
@@ -320,124 +312,102 @@ func update_waw_ai_state_machine(delta):
 			pass
 		
 		WaWState.HUNTING:
-			# DETECCIÓN INSTANTÁNEA
 			if distance_to_player <= detection_range:
 				current_state = WaWState.CHARGING
 				last_known_player_position = player.global_position
 				state_timer = 0.0
 		
 		WaWState.CHARGING:
-			# CARGA DIRECTA
 			last_known_player_position = player.global_position
 			
 			if distance_to_player <= attack_range:
 				current_state = WaWState.ATTACKING
 				state_timer = 0.0
+				# ANCLAR AL ENTRAR EN ATAQUE
+				anchor_at_current_position()
 				start_waw_attack()
 		
 		WaWState.ATTACKING:
-			# ATAQUE POR DISTANCIA - NO POR COLISIÓN
+			# MANTENERSE ANCLADO DURANTE EL ATAQUE
 			if distance_to_player <= attack_range and can_attack():
 				execute_waw_attack()
 			elif distance_to_player > attack_range * 1.5:
+				# DESANCLAR Y VOLVER A CARGAR
+				unanchor()
 				current_state = WaWState.CHARGING
 				state_timer = 0.0
 		
 		WaWState.STUNNED:
 			if state_timer > 0.1:
+				# DESANCLAR AL SALIR DE STUN
+				unanchor()
 				current_state = WaWState.CHARGING
 				state_timer = 0.0
 
+func anchor_at_current_position():
+	"""ANCLAR: Fijar posición durante ataque"""
+	is_anchored = true
+	anchor_position = global_position
+	print("🔒 Enemigo anclado en: ", anchor_position)
+
+func unanchor():
+	"""DESANCLAR: Permitir movimiento normal"""
+	is_anchored = false
+	anchor_position = Vector2.ZERO
+	print("🔓 Enemigo desanclado")
+
 func handle_waw_movement(delta):
-	"""Movimiento World at War - DIRECTO Y AGRESIVO"""
+	"""Movimiento con anclaje"""
 	var movement_direction = Vector2.ZERO
+	
+	# SI ESTÁ ANCLADO, NO SE MUEVE
+	if is_anchored:
+		velocity = Vector2.ZERO
+		# FORZAR POSICIÓN DE ANCLAJE
+		global_position = anchor_position
+		return
 	
 	match current_state:
 		WaWState.SPAWNING:
 			movement_direction = Vector2.ZERO
 		
 		WaWState.HUNTING:
-			# MOVIMIENTO DE CAZA - HACIA EL JUGADOR
 			if player:
 				movement_direction = (player.global_position - global_position).normalized()
 		
 		WaWState.CHARGING:
-			# CARGA DIRECTA - SIN OBSTÁCULOS
 			movement_direction = get_waw_charge_movement()
 		
 		WaWState.ATTACKING:
-			# MOVIMIENTO DE ATAQUE - MANTENER PRESIÓN
-			movement_direction = get_waw_attack_movement()
+			# NO DEBERÍA LLEGAR AQUÍ SI ESTÁ ANCLADO
+			movement_direction = Vector2.ZERO
 		
 		WaWState.STUNNED:
 			movement_direction = velocity * 0.1
 	
-	# Aplicar separación anti-pegado
-	movement_direction += get_waw_separation() * 0.3
+	# Aplicar separación básica
+	movement_direction += get_basic_separation() * 0.3
 	
 	if movement_direction != Vector2.ZERO:
 		velocity = movement_direction.normalized() * current_move_speed
-	
-	check_waw_stuck(delta)
 
 func get_waw_charge_movement() -> Vector2:
-	"""Carga directa - CON SISTEMA ANTI-PEGADO FUERTE"""
+	"""Carga directa simple"""
 	var direction_to_player = (player.global_position - global_position).normalized()
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	# SISTEMA ANTI-PEGADO CRÍTICO
+	# SEPARACIÓN BÁSICA
 	if distance_to_player < min_separation_distance:
-		# FUERZA DE REPULSIÓN FUERTE
 		var repulsion_dir = (global_position - player.global_position).normalized()
-		return repulsion_dir * 1.5  # FUERZA AUMENTADA
-	
-	# Si está muy cerca, hacer órbita en lugar de carga directa
-	if distance_to_player < min_separation_distance * 1.5:
-		var perpendicular = Vector2(-direction_to_player.y, direction_to_player.x)
-		if randf() > 0.5:
-			perpendicular = -perpendicular
-		return perpendicular * 0.8  # MOVIMIENTO LATERAL
+		return repulsion_dir * 1.2
 	
 	# CARGA DIRECTA NORMAL
 	return direction_to_player * charge_speed_multiplier
 
-func get_waw_attack_movement() -> Vector2:
-	"""Movimiento de ataque - ANTI-PEGADO EXTREMO"""
-	var distance_to_player = global_position.distance_to(player.global_position)
-	var direction_to_player = (player.global_position - global_position).normalized()
-	
-	# ANTI-PEGADO CRÍTICO - MÁXIMA PRIORIDAD
-	if distance_to_player < min_separation_distance:
-		var separation_dir = (global_position - player.global_position).normalized()
-		return separation_dir * 2.0  # FUERZA DE SEPARACIÓN MUY FUERTE
-	
-	# ZONA DE CONFORT - NO ACERCARSE DEMASIADO
-	if distance_to_player < min_separation_distance * 1.2:
-		# MOVIMIENTO LATERAL PARA FLANQUEAR
-		var lateral_direction = Vector2(-direction_to_player.y, direction_to_player.x)
-		if randf() > 0.5:
-			lateral_direction = -lateral_direction
-		return lateral_direction * 0.9
-	
-	# MANTENER DISTANCIA DE ATAQUE ÓPTIMA
-	if distance_to_player > max_separation_distance:
-		return direction_to_player * 0.6
-	else:
-		# POSICIÓN ÓPTIMA - MOVIMIENTO MÍNIMO
-		return Vector2.ZERO
-
-func get_waw_separation() -> Vector2:
-	"""Separación anti-pegado - MEJORADA"""
+func get_basic_separation() -> Vector2:
+	"""Separación básica de otros enemigos"""
 	var separation = Vector2.ZERO
-	var zombie_count = 0
-	var separation_radius = 80.0  # AUMENTADO
-	
-	# SEPARACIÓN DEL JUGADOR - MÁXIMA PRIORIDAD
-	var distance_to_player = global_position.distance_to(player.global_position)
-	if distance_to_player < min_separation_distance:
-		var player_separation = (global_position - player.global_position).normalized()
-		var player_strength = 1.0 - (distance_to_player / min_separation_distance)
-		separation += player_separation * player_strength * 3.0  # FUERZA TRIPLE
+	var separation_radius = 60.0
 	
 	# SEPARACIÓN DE OTROS ZOMBIES
 	for other_zombie in get_tree().get_nodes_in_group("enemies"):
@@ -448,57 +418,14 @@ func get_waw_separation() -> Vector2:
 		if distance < separation_radius and distance > 0:
 			var separation_dir = (global_position - other_zombie.global_position).normalized()
 			var strength = 1.0 - (distance / separation_radius)
-			separation += separation_dir * strength * 1.5  # FUERZA AUMENTADA
-			zombie_count += 1
+			separation += separation_dir * strength * 1.0
 	
-	if separation.length() > 0:
-		separation = separation.normalized() * min(separation.length(), 2.0)
-	
-	return separation
+	return separation.normalized() * min(separation.length(), 2.0)
 
-func check_waw_stuck(delta):
-	"""Anti-atasco World at War - SIN PRINTS"""
-	var last_pos_key = str(int(last_known_player_position.x / 50)) + "_" + str(int(last_known_player_position.y / 50))
-	
-	if global_position.distance_to(last_known_player_position) < 10.0:
-		state_timer += delta
-		
-		if state_timer > 0.5:
-			# SALTO AGRESIVO HACIA EL JUGADOR
-			var jump_direction = (player.global_position - global_position).normalized()
-			velocity = jump_direction * current_move_speed * 2.0
-			
-			# FORCE STATE CHANGE
-			current_state = WaWState.CHARGING
-			state_timer = 0.0
-
-func handle_player_slow_effect():
-	"""Ralentización del jugador"""
-	if not player or is_dead:
-		return
-	
-	var distance_to_player = global_position.distance_to(player.global_position)
-	
-	if distance_to_player <= slow_effect_range:
-		if not is_slowing_player:
-			is_slowing_player = true
-			apply_slow_effect_to_player(true)
-	else:
-		if is_slowing_player:
-			is_slowing_player = false
-			apply_slow_effect_to_player(false)
-
-func apply_slow_effect_to_player(apply: bool):
-	if not player or not player.has_method("apply_zombie_slow"):
-		return
-	
-	if apply:
-		player.apply_zombie_slow(slow_effect_strength)
-	else:
-		player.remove_zombie_slow()
+# ===== RESTO DE FUNCIONES (SIMPLIFICADAS) =====
 
 func start_waw_attack():
-	"""Ataque World at War - INMEDIATO"""
+	"""Ataque simple"""
 	if not player or not can_attack():
 		return
 	
@@ -507,11 +434,10 @@ func start_waw_attack():
 		var prep_tween = create_tween()
 		prep_tween.tween_property(sprite, "scale", sprite.scale * 1.15, 0.1)
 	
-	# ATAQUE INMEDIATO - SIN DELAY
 	execute_waw_attack()
 
 func execute_waw_attack():
-	"""Ejecutar ataque World at War"""
+	"""Ejecutar ataque"""
 	if not player or not is_instance_valid(player):
 		finish_attack()
 		return
@@ -521,21 +447,6 @@ func execute_waw_attack():
 	if distance_to_player <= attack_range:
 		if player.has_method("take_damage"):
 			player.take_damage(damage)
-		
-		# RALENTIZACIÓN FUERTE EN ATAQUE
-		if player.has_method("apply_zombie_slow"):
-			player.apply_zombie_slow(0.7)
-			
-			var slow_timer = Timer.new()
-			slow_timer.wait_time = 0.8
-			slow_timer.one_shot = true
-			slow_timer.timeout.connect(func():
-				if player and player.has_method("remove_zombie_slow"):
-					player.remove_zombie_slow()
-				slow_timer.queue_free()
-			)
-			add_child(slow_timer)
-			slow_timer.start()
 		
 		create_attack_effect()
 	
@@ -579,7 +490,7 @@ func update_movement_animation():
 			animated_sprite.play("idle")
 		return
 	
-	if velocity.length() > 30.0:
+	if velocity.length() > 30.0 and not is_anchored:
 		if animated_sprite.animation != "walk":
 			animated_sprite.play("walk")
 	else:
@@ -595,6 +506,9 @@ func take_damage(amount: int, is_headshot: bool = false):
 	
 	current_state = WaWState.STUNNED
 	state_timer = 0.0
+	
+	# DESANCLAR AL RECIBIR DAÑO
+	unanchor()
 	
 	if sprite:
 		if is_headshot:
@@ -616,10 +530,8 @@ func die():
 		return
 	
 	is_dead = true
-	current_state = WaWState.SPAWNING  # Reset state
-	
-	if is_slowing_player:
-		apply_slow_effect_to_player(false)
+	current_state = WaWState.SPAWNING
+	is_anchored = false
 	
 	call_deferred("_deactivate_collision")
 	
@@ -648,7 +560,8 @@ func reset_for_pool():
 	is_dead = false
 	current_state = WaWState.SPAWNING
 	current_health = max_health
-	is_slowing_player = false
+	is_anchored = false
+	anchor_position = Vector2.ZERO
 	
 	call_deferred("_deactivate_collision")
 	
@@ -681,8 +594,6 @@ func get_enemy_type() -> String:
 	return enemy_type
 
 func _exit_tree():
-	if is_slowing_player and player:
-		apply_slow_effect_to_player(false)
-	
+	"""Limpiar al salir"""
 	set_physics_process(false)
 	set_process(false)
