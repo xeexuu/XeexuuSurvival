@@ -1,4 +1,4 @@
-# scenes/projectiles/bullet.gd - COLISIONES Y PUNTUACIÓN CORREGIDAS
+# scenes/projectiles/bullet.gd - ERRORES CORREGIDOS Y SIN PRINTS REPETITIVOS
 extends Area2D
 class_name Bullet
 
@@ -129,8 +129,6 @@ func _on_area_entered(area: Area2D):
 	if not enemy_parent or not (enemy_parent is Enemy):
 		return
 	
-	print("🎯 Bala impactó área de enemigo: ", area.name)
-	
 	if area.name == "HeadArea":
 		handle_headshot_hit(enemy_parent)
 	else:
@@ -141,18 +139,12 @@ func _on_body_entered(body: Node2D):
 	if is_being_destroyed:
 		return
 	
-	print("💥 Bala impactó cuerpo: ", body.name, " - Tipo: ", type_string(typeof(body)))
-	
 	# SOLO PROCESAR ENEMIGOS
 	if body is Player:
-		print("❌ Ignorando jugador")
 		return
 		
 	if body is Enemy:
-		print("✅ Procesando impacto en enemigo")
 		handle_hit(body)
-	else:
-		print("❓ Cuerpo no reconocido como enemigo")
 
 func handle_headshot_hit(enemy: Node2D):
 	"""Manejar impacto headshot estilo COD Black Ops 1"""
@@ -163,9 +155,6 @@ func handle_headshot_hit(enemy: Node2D):
 		return
 	
 	var enemy_ref = enemy as Enemy
-	var enemy_initial_health = enemy_ref.current_health
-	
-	print("🎯 HEADSHOT en enemigo con ", enemy_initial_health, " de vida")
 	
 	# CALCULAR DAÑO DE HEADSHOT
 	var headshot_damage = int(float(damage) * headshot_multiplier)
@@ -193,9 +182,6 @@ func handle_hit(target: Node2D):
 		return
 	
 	var enemy_ref = target as Enemy
-	var enemy_initial_health = enemy_ref.current_health
-	
-	print("💥 IMPACTO NORMAL en enemigo con ", enemy_initial_health, " de vida")
 	
 	apply_damage_to_target(target, damage, false)
 	apply_knockback_to_target(target)
@@ -223,8 +209,8 @@ func handle_piercing_logic(target: Node2D):
 	else:
 		destroy_bullet("impact")
 
-func create_hit_effect(position: Vector2, is_headshot: bool):
-	"""Crear efecto visual de impacto"""
+func create_hit_effect(hit_position: Vector2, is_headshot: bool):
+	"""Crear efecto visual de impacto - CORREGIDO: parámetro renombrado"""
 	var effect_scene = get_tree().current_scene
 	if not effect_scene:
 		return
@@ -240,7 +226,7 @@ func create_hit_effect(position: Vector2, is_headshot: bool):
 			particle_image.fill(Color.RED)
 		
 		particle.texture = ImageTexture.create_from_image(particle_image)
-		particle.global_position = position + Vector2(randf_range(-10, 10), randf_range(-10, 10))
+		particle.global_position = hit_position + Vector2(randf_range(-10, 10), randf_range(-10, 10))
 		effect_scene.add_child(particle)
 		
 		# Animar partícula
@@ -252,10 +238,8 @@ func create_hit_effect(position: Vector2, is_headshot: bool):
 func apply_damage_to_target(target: Node2D, damage_amount: int, is_headshot: bool = false):
 	"""Aplicar daño al objetivo"""
 	if not target or not target.has_method("take_damage"):
-		print("❌ Target no tiene método take_damage")
 		return
 	
-	print("⚔️ Aplicando ", damage_amount, " de daño (headshot: ", is_headshot, ")")
 	target.take_damage(damage_amount, is_headshot)
 
 func apply_knockback_to_target(target: Node2D):
@@ -273,7 +257,6 @@ func destroy_bullet(reason: String):
 	if is_being_destroyed:
 		return
 	
-	print("💨 Destruyendo bala por: ", reason)
 	is_being_destroyed = true
 	
 	set_physics_process(false)

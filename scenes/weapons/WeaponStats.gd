@@ -1,11 +1,11 @@
-# scenes/weapons/WeaponStats.gd - CADENCIA MÁS RÁPIDA
+# scenes/weapons/WeaponStats.gd - VELOCIDAD DE DISPARO CORREGIDA
 extends Resource
 class_name WeaponStats
 
 @export var weapon_name: String = "Pistola"
 @export var weapon_type: String = "ranged"
 @export var damage: int = 25
-@export var attack_speed: float = 3.0  # CAMBIADO: 3 balas por segundo (mucho más rápido)
+@export var attack_speed: float = 3.0  # 3 balas por segundo
 @export var attack_range: int = 300
 @export var projectile_speed: int = 600
 @export var ammo_capacity: int = 30
@@ -39,9 +39,6 @@ var reload_timer: Timer
 
 func _init():
 	current_ammo = ammo_capacity
-	# CADENCIA RÁPIDA: 3 balas por segundo = cada 0.33 segundos
-	attack_speed = 3.0  # CAMBIADO: era 0.3, ahora 3 balas/segundo
-	
 	call_deferred("ensure_sprites_exist")
 	call_deferred("setup_reload_timer")
 
@@ -194,7 +191,7 @@ static func create_pelao_pistol() -> WeaponStats:
 	var weapon = WeaponStats.new()
 	weapon.weapon_name = "Pistola de Pelao"
 	weapon.damage = 25
-	weapon.attack_speed = 0.3  # 0.3 balas por segundo
+	weapon.attack_speed = 3.0  # 3 balas por segundo
 	weapon.attack_range = 500
 	weapon.projectile_speed = 600
 	weapon.ammo_capacity = 30
@@ -212,7 +209,7 @@ static func create_juancar_rifle() -> WeaponStats:
 	var weapon = WeaponStats.new()
 	weapon.weapon_name = "Rifle de Juancar"
 	weapon.damage = 35
-	weapon.attack_speed = 0.5  # Más lento que la pistola
+	weapon.attack_speed = 2.0  # 2 balas por segundo (más lento que pistola)
 	weapon.attack_range = 600
 	weapon.projectile_speed = 800
 	weapon.ammo_capacity = 25
@@ -230,7 +227,7 @@ static func create_basic_pistol() -> WeaponStats:
 	var weapon = WeaponStats.new()
 	weapon.weapon_name = "Pistola Básica"
 	weapon.damage = 20
-	weapon.attack_speed = 0.3  # 0.3 balas por segundo
+	weapon.attack_speed = 3.0  # 3 balas por segundo
 	weapon.attack_range = 400
 	weapon.projectile_speed = 500
 	weapon.ammo_capacity = 25

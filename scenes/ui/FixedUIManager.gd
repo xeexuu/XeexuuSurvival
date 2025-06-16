@@ -1,4 +1,4 @@
-# scenes/ui/FixedUIManager.gd - UI FIJA CON MUNICIÓN
+# scenes/ui/FixedUIManager.gd - CONTADOR DE ENEMIGOS CORREGIDO
 extends CanvasLayer
 class_name FixedUIManager
 
@@ -17,17 +17,41 @@ var score_system_ref: ScoreSystem
 var player_ref: Player
 
 var ammo_update_timer: Timer
+var enemy_counter_timer: Timer  # NUEVO: Timer para actualizar contador
 
 func _ready():
 	layer = 100
 	follow_viewport_enabled = false
 	setup_fixed_ui()
 	setup_ammo_update_timer()
+	setup_enemy_counter_timer()  # NUEVO
+
+func setup_enemy_counter_timer():
+	"""Timer para actualizar contador de enemigos constantemente"""
+	enemy_counter_timer = Timer.new()
+	enemy_counter_timer.wait_time = 0.5  # Actualizar cada 0.5 segundos
+	enemy_counter_timer.autostart = true
+	enemy_counter_timer.timeout.connect(_force_update_enemy_counter)
+	add_child(enemy_counter_timer)
+
+func _force_update_enemy_counter():
+	"""Forzar actualización del contador de enemigos"""
+	if rounds_manager_ref and enemies_label:
+		var remaining = rounds_manager_ref.get_enemies_remaining()
+		enemies_label.text = "Zombies: " + str(remaining)
+		
+		# Cambiar color según cantidad
+		if remaining <= 1:
+			enemies_label.add_theme_color_override("font_color", Color.GREEN)
+		elif remaining <= 5:
+			enemies_label.add_theme_color_override("font_color", Color.YELLOW)
+		else:
+			enemies_label.add_theme_color_override("font_color", Color.RED)
 
 func setup_ammo_update_timer():
 	"""Timer para actualizar munición regularmente"""
 	ammo_update_timer = Timer.new()
-	ammo_update_timer.wait_time = 0.1  # Actualizar cada 0.1 segundos
+	ammo_update_timer.wait_time = 0.1
 	ammo_update_timer.autostart = true
 	ammo_update_timer.timeout.connect(_update_ammo_display)
 	add_child(ammo_update_timer)
@@ -36,13 +60,8 @@ func setup_fixed_ui():
 	"""Configurar UI fija completa"""
 	var is_mobile = OS.has_feature("mobile")
 	
-	# ===== UI DE RONDAS (ESQUINA INFERIOR IZQUIERDA) =====
 	setup_rounds_ui(is_mobile)
-	
-	# ===== UI DE PUNTUACIÓN (ESQUINA INFERIOR DERECHA) =====
 	setup_score_ui(is_mobile)
-	
-	# ===== UI DE MUNICIÓN (ESQUINA INFERIOR CENTRO) =====
 	setup_ammo_ui(is_mobile)
 
 func setup_rounds_ui(is_mobile: bool):
@@ -146,17 +165,15 @@ func setup_ammo_ui(is_mobile: bool):
 	ammo_ui.name = "AmmoUI"
 	ammo_ui.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	
-	# Posicionar en el centro inferior
 	var viewport_size = get_viewport().get_visible_rect().size
 	var ammo_size = Vector2(200, 100) if not is_mobile else Vector2(250, 120)
 	ammo_ui.size = ammo_size
 	ammo_ui.position = Vector2(
-		(viewport_size.x - ammo_size.x) / 2,  # Centrar horizontalmente
-		-ammo_size.y - 15  # Inferior con margen
+		(viewport_size.x - ammo_size.x) / 2,
+		-ammo_size.y - 15
 	)
 	add_child(ammo_ui)
 	
-	# Fondo de la UI de munición
 	var ammo_bg = Panel.new()
 	ammo_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var ammo_style = StyleBoxFlat.new()
@@ -179,7 +196,6 @@ func setup_ammo_ui(is_mobile: bool):
 	ammo_vbox.size = Vector2(ammo_size.x - 30, ammo_size.y - 30)
 	ammo_ui.add_child(ammo_vbox)
 	
-	# Etiqueta de munición
 	ammo_label = Label.new()
 	ammo_label.text = "30 / 30"
 	var ammo_font_size = 36 if not is_mobile else 42
@@ -191,7 +207,6 @@ func setup_ammo_ui(is_mobile: bool):
 	ammo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ammo_vbox.add_child(ammo_label)
 	
-	# Etiqueta de recarga
 	reload_label = Label.new()
 	reload_label.text = ""
 	var reload_font_size = 20 if not is_mobile else 24
@@ -216,7 +231,6 @@ func _update_ammo_display():
 	var ammo_info = player_ref.get_ammo_info()
 	
 	if ammo_info.reloading:
-		# Mostrar estado de recarga
 		ammo_label.text = "-- / --"
 		ammo_label.add_theme_color_override("font_color", Color.GRAY)
 		
@@ -224,15 +238,12 @@ func _update_ammo_display():
 		var progress = ammo_info.reload_progress * 100
 		reload_label.text = "RECARGANDO... " + str(int(progress)) + "%"
 		
-		# Animación de parpadeo durante recarga
 		var alpha = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.01)
 		reload_label.modulate = Color(1, 1, 1, alpha)
 	else:
-		# Mostrar munición normal
 		reload_label.visible = false
 		ammo_label.text = str(ammo_info.current) + " / " + str(ammo_info.max)
 		
-		# Cambiar color según munición restante
 		var ammo_percentage = float(ammo_info.current) / float(ammo_info.max) if ammo_info.max > 0 else 1.0
 		
 		if ammo_percentage > 0.5:
@@ -242,7 +253,6 @@ func _update_ammo_display():
 		else:
 			ammo_label.add_theme_color_override("font_color", Color.RED)
 			
-			# Parpadeo cuando munición baja
 			if ammo_info.current <= 5:
 				var alpha = 0.3 + 0.7 * sin(Time.get_ticks_msec() * 0.015)
 				ammo_label.modulate = Color(1, 1, 1, alpha)
@@ -267,11 +277,19 @@ func _on_round_changed(new_round: int):
 	if round_label and rounds_manager_ref:
 		var roman_round = rounds_manager_ref.int_to_roman(new_round)
 		round_label.text = "RONDA " + roman_round
-		update_enemies_ui()
+		_force_update_enemy_counter()  # FORZAR ACTUALIZACIÓN
 
-func _on_enemies_remaining_changed(_remaining: int):
-	"""Actualizar UI de enemigos restantes"""
-	update_enemies_ui()
+func _on_enemies_remaining_changed(remaining: int):
+	"""Actualizar UI de enemigos restantes - INMEDIATO"""
+	if enemies_label:
+		enemies_label.text = "Zombies: " + str(remaining)
+		
+		if remaining <= 1:
+			enemies_label.add_theme_color_override("font_color", Color.GREEN)
+		elif remaining <= 5:
+			enemies_label.add_theme_color_override("font_color", Color.YELLOW)
+		else:
+			enemies_label.add_theme_color_override("font_color", Color.RED)
 
 func _on_score_changed(new_score: int):
 	"""Actualizar UI de puntuación"""
@@ -279,28 +297,12 @@ func _on_score_changed(new_score: int):
 		var formatted_score = format_score(new_score)
 		score_label.text = formatted_score
 		
-		# Efecto de parpadeo dorado
 		var flash_tween = create_tween()
 		score_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.0, 1.0))
 		flash_tween.tween_property(score_label, "modulate", Color.WHITE, 0.15)
 		flash_tween.tween_callback(func(): 
 			score_label.add_theme_color_override("font_color", Color.WHITE)
 		)
-
-func update_enemies_ui():
-	"""Actualizar UI de enemigos restantes"""
-	if not enemies_label or not rounds_manager_ref:
-		return
-	
-	var total_remaining = rounds_manager_ref.get_enemies_remaining()
-	enemies_label.text = "Zombies: " + str(total_remaining)
-	
-	if total_remaining <= 1:
-		enemies_label.add_theme_color_override("font_color", Color.GREEN)
-	elif total_remaining <= 5:
-		enemies_label.add_theme_color_override("font_color", Color.YELLOW)
-	else:
-		enemies_label.add_theme_color_override("font_color", Color.RED)
 
 func format_score(score: int) -> String:
 	"""Formatear puntuación con separadores de miles"""

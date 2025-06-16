@@ -1,4 +1,4 @@
-# scenes/world/WallSystem.gd - SOLO PAREDES DEL PERÍMETRO
+# scenes/world/WallSystem.gd - ERRORES DE SHADOWING CORREGIDOS
 extends Node2D
 class_name WallSystem
 
@@ -6,7 +6,6 @@ var walls: Array[StaticBody2D] = []
 
 func _ready():
 	create_boundary_walls()
-	# ELIMINADO: create_interior_walls() - No más muros interiores
 
 func create_boundary_walls():
 	"""Crear SOLO paredes del perímetro del mapa"""
@@ -26,11 +25,11 @@ func create_boundary_walls():
 	# Pared derecha
 	create_wall(Vector2(half_size + wall_thickness/2, 0), Vector2(wall_thickness, map_size))
 
-func create_wall(position: Vector2, size: Vector2) -> StaticBody2D:
-	"""Crear una pared individual"""
+func create_wall(wall_position: Vector2, wall_size: Vector2) -> StaticBody2D:
+	"""Crear una pared individual - CORREGIDO: parámetros renombrados"""
 	var wall = StaticBody2D.new()
 	wall.name = "Wall_" + str(walls.size())
-	wall.position = position
+	wall.position = wall_position
 	
 	# Configurar capas de colisión
 	wall.collision_layer = 3  # Capa para paredes
@@ -39,14 +38,14 @@ func create_wall(position: Vector2, size: Vector2) -> StaticBody2D:
 	# Crear forma de colisión
 	var collision_shape = CollisionShape2D.new()
 	var rect_shape = RectangleShape2D.new()
-	rect_shape.size = size
+	rect_shape.size = wall_size
 	collision_shape.shape = rect_shape
 	wall.add_child(collision_shape)
 	
 	# Crear sprite visual - MÁS SUTIL
 	var sprite = ColorRect.new()
-	sprite.size = size
-	sprite.position = Vector2(-size.x/2, -size.y/2)
+	sprite.size = wall_size
+	sprite.position = Vector2(-wall_size.x/2, -wall_size.y/2)
 	sprite.color = Color(0.3, 0.2, 0.1, 0.6)  # Color marrón más sutil
 	
 	# Agregar borde más sutil
@@ -65,9 +64,9 @@ func create_wall(position: Vector2, size: Vector2) -> StaticBody2D:
 	
 	return wall
 
-func add_custom_wall(position: Vector2, size: Vector2) -> StaticBody2D:
-	"""Agregar una pared personalizada en tiempo de ejecución"""
-	return create_wall(position, size)
+func add_custom_wall(wall_position: Vector2, wall_size: Vector2) -> StaticBody2D:
+	"""Agregar una pared personalizada - CORREGIDO: parámetros renombrados"""
+	return create_wall(wall_position, wall_size)
 
 func remove_wall(wall: StaticBody2D):
 	"""Remover una pared"""

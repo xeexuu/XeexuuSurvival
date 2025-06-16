@@ -1,4 +1,4 @@
-# scenes/managers/RoundsManager.gd - SIN PRINTS REPETITIVOS
+# scenes/managers/RoundsManager.gd - CONTADOR DE ENEMIGOS CORREGIDO
 extends Node
 class_name RoundsManager
 
@@ -7,8 +7,9 @@ signal enemies_remaining_changed(remaining: int)
 
 var current_round: int = 1
 var enemies_remaining_in_round: int = 0
-var total_enemies_spawned: int = 0
-var enemies_killed_in_round: int = 0
+var total_enemies_this_round: int = 0
+var enemies_spawned_this_round: int = 0
+var enemies_killed_this_round: int = 0
 
 # Variables de configuración estilo COD zombies
 var base_enemies_per_round: int = 6
@@ -49,6 +50,8 @@ func set_enemy_spawner(spawner: EnemySpawner):
 	enemy_spawner = spawner
 	if enemy_spawner:
 		enemy_spawner.round_complete.connect(_on_round_complete)
+		enemy_spawner.enemy_killed.connect(_on_enemy_killed_from_spawner)
+		enemy_spawner.enemy_spawned.connect(_on_enemy_spawned_from_spawner)
 
 func enable_auto_start():
 	"""Habilitar inicio automático de spawning"""
@@ -59,12 +62,14 @@ func start_round(round_number: int):
 	current_round = round_number
 	
 	var enemies_this_round = calculate_enemies_for_round(current_round)
+	total_enemies_this_round = enemies_this_round
 	enemies_remaining_in_round = enemies_this_round
-	total_enemies_spawned = 0
-	enemies_killed_in_round = 0
+	enemies_spawned_this_round = 0
+	enemies_killed_this_round = 0
 	
 	show_round_start_message()
 	round_changed.emit(current_round)
+	enemies_remaining_changed.emit(enemies_remaining_in_round)
 	
 	if auto_start_enabled and enemy_spawner:
 		var enemy_health = calculate_enemy_health_for_round(current_round)
@@ -90,24 +95,55 @@ func calculate_enemies_for_round(round_num: int) -> int:
 	return min(enemies, 50)
 
 func calculate_enemy_health_for_round(round_num: int) -> int:
-	"""Calcular la salud de los enemigos para una ronda específica - Estilo COD"""
-	if round_num <= 9:
-		return base_enemy_health + ((round_num - 1) * 100)
+	"""SISTEMA DE SALUD BLACK OPS 1 - ESCALADO REAL"""
+	
+	# RONDAS 1-10: Escalado lineal
+	if round_num <= 10:
+		match round_num:
+			1: return 150    # Ronda 1
+			2: return 250    # Ronda 2  
+			3: return 400    # Ronda 3
+			4: return 500    # Ronda 4
+			5: return 600    # Ronda 5
+			6: return 700    # Ronda 6
+			7: return 800    # Ronda 7
+			8: return 900    # Ronda 8
+			9: return 950    # Ronda 9
+			10: return 1100  # Ronda 10
+			_: return 150
+	
+	# RONDAS 11+: Escalado exponencial Black Ops style
 	else:
-		var round_9_health = base_enemy_health + (8 * 100)
-		var additional_rounds = round_num - 9
-		return int(float(round_9_health) * pow(1.1, additional_rounds))
+		var base_health_round_10 = 1100
+		var additional_rounds = round_num - 10
+		
+		# Escalado Black Ops: cada ronda después de 10 multiplica por 1.1
+		var final_health = float(base_health_round_10) * pow(1.1, additional_rounds)
+		
+		# Límite máximo para evitar números absurdos
+		return min(int(final_health), 50000)
+
+func _on_enemy_killed_from_spawner(enemy: Enemy):
+	"""Cuando el spawner reporta un enemigo muerto"""
+	enemies_killed_this_round += 1
+	enemies_remaining_in_round = max(0, enemies_remaining_in_round - 1)
+	
+	enemies_remaining_changed.emit(enemies_remaining_in_round)
+
+func _on_enemy_spawned_from_spawner(enemy: Enemy):
+	"""Cuando el spawner reporta un enemigo spawneado"""
+	enemies_spawned_this_round += 1
 
 func on_enemy_killed():
-	"""Llamar cuando un enemigo es eliminado"""
-	enemies_killed_in_round += 1
+	"""FUNCIÓN PÚBLICA: Para llamar desde otros sistemas"""
+	enemies_killed_this_round += 1
 	enemies_remaining_in_round = max(0, enemies_remaining_in_round - 1)
 	
 	enemies_remaining_changed.emit(enemies_remaining_in_round)
 
 func on_enemy_spawned():
-	"""Llamar cuando un enemigo es spawneado"""
-	total_enemies_spawned += 1
+	"""FUNCIÓN PÚBLICA: Para llamar desde otros sistemas"""
+	enemies_spawned_this_round += 1
 
 func _on_round_complete():
 	"""Cuando el spawner confirma que la ronda está completa"""
@@ -165,13 +201,25 @@ func get_current_round() -> int:
 	return current_round
 
 func get_enemies_remaining() -> int:
-	"""Obtener enemigos restantes en la ronda"""
+	"""FUNCIÓN CORREGIDA: Obtener enemigos restantes REAL"""
 	if enemy_spawner:
-		var active = enemy_spawner.get_active_enemy_count()
-		var to_spawn = enemy_spawner.get_enemies_remaining_to_spawn()
-		return active + to_spawn
-	return enemies_remaining_in_round
+		var active_count = enemy_spawner.get_active_enemy_count()
+		var to_spawn_count = enemy_spawner.get_enemies_remaining_to_spawn()
+		return active_count + to_spawn_count
+	else:
+		# Fallback usando nuestro contador interno
+		return enemies_remaining_in_round
 
 func get_enemy_health_for_current_round() -> int:
 	"""Obtener la salud de enemigos para la ronda actual"""
 	return calculate_enemy_health_for_round(current_round)
+
+func get_round_stats() -> Dictionary:
+	"""Obtener estadísticas completas de la ronda"""
+	return {
+		"current_round": current_round,
+		"total_enemies": total_enemies_this_round,
+		"enemies_spawned": enemies_spawned_this_round,
+		"enemies_killed": enemies_killed_this_round,
+		"enemies_remaining": get_enemies_remaining()
+	}

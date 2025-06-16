@@ -1,4 +1,4 @@
-# scenes/enemies/EnemySpawner.gd - SIN SPAWN EN LOS PIES DEL JUGADOR
+# scenes/enemies/EnemySpawner.gd - CON GRUPO DE ENEMIGOS PARA LA IA
 extends Node2D
 class_name EnemySpawner
 
@@ -6,10 +6,10 @@ signal enemy_spawned(enemy: Enemy)
 signal enemy_killed(enemy: Enemy)
 signal round_complete()
 
-@export var spawn_radius_min: float = 500.0  # AUMENTADO para evitar spawn en los pies
+@export var spawn_radius_min: float = 500.0  
 @export var spawn_radius_max: float = 800.0
 @export var despawn_distance: float = 1200.0
-@export var min_spawn_distance: float = 400.0  # DISTANCIA MÍNIMA OBLIGATORIA
+@export var min_spawn_distance: float = 400.0  
 
 var player: Player
 var active_enemies: Array[Enemy] = []
@@ -49,6 +49,10 @@ func initialize_enemy_pool():
 			enemy.set_physics_process(false)
 			enemy.set_process(false)
 			enemy.global_position = Vector2(10000 + i * 100, 10000)
+			
+			# AÑADIR AL GRUPO DE ENEMIGOS
+			enemy.add_to_group("enemies")
+			
 			enemy_pool.append(enemy)
 			add_child(enemy)
 
@@ -97,7 +101,7 @@ func setup(player_ref: Player, rounds_manager_ref: RoundsManager):
 	player = player_ref
 	rounds_manager = rounds_manager_ref
 
-func start_round(enemies_count: int, enemy_health: int):
+func start_round(enemies_count: int, _enemy_health: int):
 	"""Iniciar nueva ronda"""
 	current_round_number = rounds_manager.get_current_round() if rounds_manager else 1
 	enemies_to_spawn = enemies_count
@@ -106,8 +110,6 @@ func start_round(enemies_count: int, enemy_health: int):
 	
 	# Ajustar velocidad de spawn
 	spawn_delay = max(0.5, 2.5 - (current_round_number * 0.1))
-	
-	print("🧟 Iniciando ronda ", current_round_number, " - Enemigos: ", enemies_count, " - Vida: ", enemy_health)
 	
 	# Iniciar spawn
 	_try_spawn_enemy()
@@ -145,13 +147,11 @@ func spawn_enemy() -> bool:
 	
 	var spawn_position = get_safe_spawn_position()
 	if spawn_position == Vector2.ZERO:
-		print("❌ No se pudo encontrar posición segura para spawn")
 		return false
 	
 	# Obtener enemigo del pool
 	var enemy = get_enemy_from_pool()
 	if not enemy:
-		print("❌ No hay enemigos disponibles en el pool")
 		return false
 	
 	# Determinar tipo de enemigo según la ronda
@@ -177,9 +177,6 @@ func spawn_enemy() -> bool:
 	
 	active_enemies.append(enemy)
 	enemy_spawned.emit(enemy)
-	
-	var distance_to_player = spawn_position.distance_to(player.global_position)
-	print("✅ Enemigo spawneado: ", enemy_type, " a distancia: ", int(distance_to_player))
 	
 	return true
 
@@ -226,7 +223,6 @@ func get_safe_spawn_position() -> Vector2:
 		return spawn_pos
 	
 	# Fallback: forzar spawn en distancia mínima segura
-	print("⚠️ Usando posición de emergencia para spawn")
 	var emergency_angle = randf() * TAU
 	var emergency_distance = max(min_spawn_distance, spawn_radius_min)
 	return player_pos + Vector2.from_angle(emergency_angle) * emergency_distance
@@ -252,6 +248,7 @@ func get_enemy_from_pool() -> Enemy:
 		var new_enemy = create_unified_enemy()
 		if new_enemy:
 			new_enemy.global_position = Vector2(10000, 10000)
+			new_enemy.add_to_group("enemies")  # AÑADIR AL GRUPO
 			enemy_pool.append(new_enemy)
 			add_child(new_enemy)
 			return new_enemy
@@ -275,7 +272,6 @@ func check_round_completion():
 	"""Verificar si ronda completa"""
 	if enemies_spawned_this_round >= enemies_to_spawn and active_enemies.size() == 0:
 		can_spawn = false
-		print("🎉 Ronda ", current_round_number, " completada!")
 		round_complete.emit()
 
 func despawn_enemy(enemy: Enemy):

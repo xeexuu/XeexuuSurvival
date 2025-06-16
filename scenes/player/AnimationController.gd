@@ -1,4 +1,4 @@
-# scenes/player/AnimationController.gd - PRIORIZAR DISPARO Y FALLBACK A CHICA
+# scenes/player/AnimationController.gd - SISTEMA UNIVERSAL DE SPRITES CON FALLBACK A CHICA
 extends Node
 class_name AnimationController
 
@@ -23,53 +23,119 @@ func setup(sprite: AnimatedSprite2D, char_name: String):
 	# Resetear estado
 	is_system_ready = false
 	
-	load_required_atlases()
+	load_required_atlases_universal()
 	create_animations_safely()
 
-func load_required_atlases():
-	"""Cargar atlas con FALLBACK AUTOMÁTICO A CHICA"""
+func load_required_atlases_universal():
+	"""SISTEMA UNIVERSAL: Cargar atlas con fallback automático a chica para TODOS los personajes"""
 	var folder_name = get_character_folder_name()
 	
-	print("🎭 Cargando atlas para: ", character_name, " (folder: ", folder_name, ")")
+	print("🎭 [UNIVERSAL] Cargando atlas para: ", character_name, " (folder: ", folder_name, ")")
 	
-	# Intentar cargar walk_Right_Down del personaje
-	var right_down_path = "res://sprites/player/" + folder_name + "/walk_Right_Down.png"
-	walk_right_down_atlas = try_load_texture(right_down_path)
+	# CARGAR walk_Right_Down con fallback universal
+	walk_right_down_atlas = load_atlas_with_universal_fallback(folder_name, "walk_Right_Down")
 	
-	# FALLBACK A CHICA SI NO EXISTE
-	if not walk_right_down_atlas and folder_name != "chica":
-		print("⚠️ Atlas no encontrado para ", folder_name, ", usando chica como fallback")
-		walk_right_down_atlas = try_load_texture("res://sprites/player/chica/walk_Right_Down.png")
+	# CARGAR walk_Right_Up con fallback universal
+	walk_right_up_atlas = load_atlas_with_universal_fallback(folder_name, "walk_Right_Up")
 	
-	# Intentar cargar walk_Right_Up del personaje
-	var right_up_path = "res://sprites/player/" + folder_name + "/walk_Right_Up.png"
-	walk_right_up_atlas = try_load_texture(right_up_path)
+	print("✅ [UNIVERSAL] Atlas cargados - Down: ", walk_right_down_atlas != null, " Up: ", walk_right_up_atlas != null)
+
+func load_atlas_with_universal_fallback(folder_name: String, atlas_name: String) -> Texture2D:
+	"""FALLBACK UNIVERSAL: Intentar cargar atlas, fallback a chica si falla"""
 	
-	# FALLBACK A CHICA SI NO EXISTE
-	if not walk_right_up_atlas and folder_name != "chica":
-		print("⚠️ Atlas Right_Up no encontrado para ", folder_name, ", usando chica como fallback")
-		walk_right_up_atlas = try_load_texture("res://sprites/player/chica/walk_Right_Up.png")
+	# PASO 1: Intentar cargar del personaje específico
+	var primary_path = "res://sprites/player/" + folder_name + "/" + atlas_name + ".png"
+	var texture = try_load_texture(primary_path)
+	if texture:
+		print("✅ [UNIVERSAL] Cargado directo: ", primary_path)
+		return texture
 	
-	print("✅ Atlas cargados - Down: ", walk_right_down_atlas != null, " Up: ", walk_right_up_atlas != null)
+	# PASO 2: FALLBACK AUTOMÁTICO A CHICA si no es chica
+	if folder_name != "chica":
+		var chica_path = "res://sprites/player/chica/" + atlas_name + ".png"
+		texture = try_load_texture(chica_path)
+		if texture:
+			print("⚠️ [UNIVERSAL] Fallback a chica para ", folder_name, ": ", chica_path)
+			return texture
+	
+	# PASO 3: Intentar variantes del nombre del atlas
+	var atlas_variants = [
+		atlas_name.to_lower(),
+		atlas_name.replace("_", ""),
+		atlas_name.replace("Right", "right"),
+		atlas_name.replace("Down", "down"),
+		atlas_name.replace("Up", "up")
+	]
+	
+	# Probar variantes en el personaje específico
+	for variant in atlas_variants:
+		var variant_path = "res://sprites/player/" + folder_name + "/" + variant + ".png"
+		texture = try_load_texture(variant_path)
+		if texture:
+			print("✅ [UNIVERSAL] Variante encontrada para ", folder_name, ": ", variant_path)
+			return texture
+	
+	# Probar variantes en chica si no es chica
+	if folder_name != "chica":
+		for variant in atlas_variants:
+			var chica_variant_path = "res://sprites/player/chica/" + variant + ".png"
+			texture = try_load_texture(chica_variant_path)
+			if texture:
+				print("⚠️ [UNIVERSAL] Variante de chica para ", folder_name, ": ", chica_variant_path)
+				return texture
+	
+	# PASO 4: Buscar cualquier archivo de imagen en la carpeta del personaje
+	texture = find_any_image_in_folder(folder_name)
+	if texture:
+		print("⚠️ [UNIVERSAL] Imagen genérica encontrada para ", folder_name)
+		return texture
+	
+	# PASO 5: Buscar cualquier archivo en la carpeta de chica
+	if folder_name != "chica":
+		texture = find_any_image_in_folder("chica")
+		if texture:
+			print("⚠️ [UNIVERSAL] Imagen genérica de chica para ", folder_name)
+			return texture
+	
+	# PASO 6: Crear textura por defecto
+	print("❌ [UNIVERSAL] No se encontró ningún atlas para ", folder_name, " - ", atlas_name)
+	return null
+
+func find_any_image_in_folder(folder_name: String) -> Texture2D:
+	"""Buscar cualquier imagen válida en una carpeta de personaje"""
+	var possible_files = [
+		"walk_Right_Down.png",
+		"walk_right_down.png", 
+		"walk.png",
+		"idle.png",
+		"sprite.png",
+		"character.png",
+		folder_name + ".png"
+	]
+	
+	for file in possible_files:
+		var path = "res://sprites/player/" + folder_name + "/" + file
+		var texture = try_load_texture(path)
+		if texture:
+			print("✅ [UNIVERSAL] Imagen alternativa encontrada: ", path)
+			return texture
+	
+	return null
 
 func try_load_texture(path: String) -> Texture2D:
 	"""Cargar textura de forma segura"""
 	if not ResourceLoader.exists(path):
-		print("❌ No existe: ", path)
 		return null
 	
 	var texture = load(path) as Texture2D
 	if texture:
-		print("✅ Cargado: ", path, " (", texture.get_size(), ")")
 		return texture
 	else:
-		print("❌ Error cargando: ", path)
 		return null
 
 func create_animations_safely():
 	"""Crear animaciones de forma segura"""
 	if not animated_sprite:
-		print("❌ No hay AnimatedSprite2D")
 		return
 	
 	# Crear nuevo SpriteFrames limpio
@@ -95,7 +161,6 @@ func create_animations_safely():
 		current_animation = "walk_Right_Down"
 		current_flip = false
 		is_system_ready = true
-		print("✅ Sistema de animación listo")
 
 func create_animation_from_atlas(anim_name: String, atlas: Texture2D):
 	"""Crear animación desde atlas 1024x128"""
@@ -111,8 +176,6 @@ func create_animation_from_atlas(anim_name: String, atlas: Texture2D):
 		var frame = extract_frame_from_atlas(atlas, i)
 		if frame:
 			sprite_frames.add_frame(anim_name, frame)
-	
-	print("✅ Animación creada: ", anim_name, " con ", sprite_frames.get_frame_count(anim_name), " frames")
 
 func extract_frame_from_atlas(atlas: Texture2D, frame_index: int) -> Texture2D:
 	"""Extraer frame específico del atlas"""
@@ -126,7 +189,6 @@ func extract_frame_from_atlas(atlas: Texture2D, frame_index: int) -> Texture2D:
 	
 	# Verificar que el frame esté dentro del atlas
 	if x_offset + frame_width > atlas_size.x:
-		print("❌ Frame ", frame_index, " fuera de rango en atlas de ", atlas_size.x, "x", atlas_size.y)
 		return null
 	
 	var atlas_frame = AtlasTexture.new()
@@ -138,7 +200,6 @@ func extract_frame_from_atlas(atlas: Texture2D, frame_index: int) -> Texture2D:
 func duplicate_animation(source_anim: String, target_anim: String):
 	"""Duplicar una animación existente"""
 	if not sprite_frames or not sprite_frames.has_animation(source_anim):
-		print("❌ No se puede duplicar animación: ", source_anim)
 		return
 	
 	sprite_frames.add_animation(target_anim)
@@ -149,8 +210,6 @@ func duplicate_animation(source_anim: String, target_anim: String):
 	for i in range(frame_count):
 		var frame_texture = sprite_frames.get_frame_texture(source_anim, i)
 		sprite_frames.add_frame(target_anim, frame_texture)
-	
-	print("✅ Animación duplicada: ", source_anim, " -> ", target_anim)
 
 func create_fallback_animation(anim_name: String):
 	"""Crear animación por defecto"""
@@ -163,8 +222,6 @@ func create_fallback_animation(anim_name: String):
 	
 	var default_texture = create_default_texture()
 	sprite_frames.add_frame(anim_name, default_texture)
-	
-	print("⚠️ Animación por defecto creada: ", anim_name)
 
 func create_default_texture() -> Texture2D:
 	"""Crear textura por defecto"""
@@ -188,56 +245,47 @@ func create_default_texture() -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 func update_animation(movement_direction: Vector2, aim_direction: Vector2):
-	"""SISTEMA QUE PRIORIZA DIRECCIÓN DE DISPARO SOBRE MOVIMIENTO"""
+	"""SISTEMA EXACTO: Usa atlas según dirección de disparo O dirección de movimiento"""
 	if not is_system_ready or not animated_sprite or not sprite_frames:
 		return
 	
-	# PRIORIZAR DIRECCIÓN DE DISPARO SI EXISTE
 	var direction_to_use = Vector2.ZERO
 	
+	# PRIORIDAD 1: Si está disparando, usar dirección de disparo
 	if aim_direction.length() > 0.1:
-		# SI ESTÁ DISPARANDO, USAR DIRECCIÓN DE DISPARO
 		direction_to_use = aim_direction
+	# PRIORIDAD 2: Si no dispara pero se mueve, usar dirección de movimiento
 	elif movement_direction.length() > 0.1:
-		# SI NO ESTÁ DISPARANDO PERO SE MUEVE, USAR DIRECCIÓN DE MOVIMIENTO
 		direction_to_use = movement_direction
+	# PRIORIDAD 3: Si no hay nada, mantener última animación
 	else:
-		# NO HAY MOVIMIENTO NI DISPARO, MANTENER ANIMACIÓN ACTUAL
 		return
 	
-	# Determinar animación y flip
+	# APLICAR EXACTAMENTE EL MISMO SISTEMA QUE PARA DISPARO:
+	# Determinar qué atlas usar según la dirección (Up o Down)
 	var target_animation: String
 	var target_flip: bool
 	
-	if direction_to_use.y < 0:  # Apuntando hacia arriba
+	# Sistema idéntico al de disparo: Y negativo = Up, Y positivo = Down
+	if direction_to_use.y < 0:  # Hacia arriba -> usar atlas Up
 		target_animation = "walk_Right_Up"
-		target_flip = direction_to_use.x < 0  # Flip si va hacia la izquierda
-	else:  # Apuntando hacia abajo
-		target_animation = "walk_Right_Down" 
-		target_flip = direction_to_use.x < 0  # Flip si va hacia la izquierda
+		target_flip = direction_to_use.x < 0  # Flip horizontal si va izquierda
+	else:  # Hacia abajo o horizontal -> usar atlas Down
+		target_animation = "walk_Right_Down"
+		target_flip = direction_to_use.x < 0  # Flip horizontal si va izquierda
 	
 	# Verificar que la animación existe
 	if not sprite_frames.has_animation(target_animation):
 		target_animation = "walk_Right_Down"  # Fallback seguro
 	
-	# APLICAR CAMBIOS SOLO SI SON DIFERENTES
-	var animation_changed = false
-	var flip_changed = false
-	
+	# Aplicar cambios solo si son diferentes (evitar parpadeos)
 	if target_animation != current_animation:
 		animated_sprite.play(target_animation)
 		current_animation = target_animation
-		animation_changed = true
 	
 	if target_flip != current_flip:
 		animated_sprite.flip_h = target_flip
 		current_flip = target_flip
-		flip_changed = true
-	
-	# Log solo cuando hay cambios
-	if animation_changed or flip_changed:
-		var direction_source = "disparo" if aim_direction.length() > 0.1 else "movimiento"
-		print("🎭 Animación por ", direction_source, ": ", target_animation, " flip: ", target_flip)
 
 func get_character_folder_name() -> String:
 	"""Obtener nombre de carpeta del personaje"""
@@ -259,7 +307,6 @@ func force_animation(anim_name: String):
 	if sprite_frames.has_animation(anim_name):
 		animated_sprite.play(anim_name)
 		current_animation = anim_name
-		print("🎭 Forzada animación: ", anim_name)
 
 func get_available_animations() -> Array[String]:
 	"""Obtener animaciones disponibles"""
