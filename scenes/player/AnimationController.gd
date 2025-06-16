@@ -365,6 +365,12 @@ func get_available_animations() -> Array[String]:
 		return sprite_frames.get_animation_names()
 	return []
 
+# ===== ALIAS PARA COMPATIBILIDAD =====
+
+func update_animation(movement_direction: Vector2, aim_direction: Vector2):
+	"""Alias para update_animation_for_movement - Compatibilidad"""
+	update_animation_for_movement(movement_direction, aim_direction)
+
 # ===== FUNCIONES DE DEPURACIÓN =====
 
 func debug_print_animation_state():

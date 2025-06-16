@@ -171,8 +171,8 @@ func update_movement_animations():
 	"""Actualizar animaciones - PRIORIDAD AL DISPARO"""
 	if animation_controller:
 		# Usar la función correcta del controlador
-		animation_controller.update_animation(current_movement_direction, current_aim_direction)
-
+		animation_controller.update_animation(current_movement_direction, current_aim_direction)  # ❌ ESTA LÍNEA
+		
 func apply_map_bounds():
 	"""Aplicar límites del mapa"""
 	var next_position = global_position + velocity * get_physics_process_delta_time()
