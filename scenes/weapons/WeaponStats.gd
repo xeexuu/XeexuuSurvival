@@ -1,43 +1,37 @@
-# scenes/weapons/WeaponStats.gd
+# scenes/weapons/WeaponStats.gd - CADENCIA MÁS RÁPIDA
 extends Resource
 class_name WeaponStats
 
 @export var weapon_name: String = "Pistola"
 @export var weapon_type: String = "ranged"
 @export var damage: int = 25
-@export var attack_speed: float = 0.3  # 0.3 balas por segundo (cada 3.33 segundos)
+@export var attack_speed: float = 3.0  # CAMBIADO: 3 balas por segundo (mucho más rápido)
 @export var attack_range: int = 300
 @export var projectile_speed: int = 600
-@export var ammo_capacity: int = 30  # Capacidad del cargador
-@export var reload_time: float = 2.0  # Tiempo de recarga en segundos
+@export var ammo_capacity: int = 30
+@export var reload_time: float = 2.0
 @export var accuracy: float = 1.0
 @export var spread_angle: float = 0.0
 @export var bullets_per_shot: int = 1
 
-# MULTIPLICADOR DE DAÑO POR HEADSHOT
-@export var headshot_multiplier: float = 1.4  # Para pistola
+@export var headshot_multiplier: float = 1.4
 
-# SPRITES Y ANIMACIONES DEL ARMA
 @export var weapon_sprite: Texture2D
 @export var weapon_shooting_sprite: Texture2D
 @export var muzzle_flash_sprite: Texture2D
 @export var attack_sound: AudioStream
 
-# POSICIONAMIENTO DEL ARMA EN LAS MANOS - CENTRO DERECHA DEL JUGADOR
-@export var weapon_offset: Vector2 = Vector2(32, 0)  # A la derecha del centro del jugador
+@export var weapon_offset: Vector2 = Vector2(32, 0)
 @export var weapon_rotation_offset: float = 0.0
-@export var muzzle_offset: Vector2 = Vector2(20, 0)  # Desde donde salen las balas
+@export var muzzle_offset: Vector2 = Vector2(20, 0)
 
-# Efectos especiales
 @export var has_piercing: bool = false
 @export var has_explosive: bool = false
 @export var knockback_force: float = 0.0
 
-# ANIMACIÓN DE DISPARO
-@export var shooting_animation_duration: float = 0.2  # Duración de la animación de disparo
+@export var shooting_animation_duration: float = 0.2
 @export var recoil_distance: float = 2.0
 
-# Estados del arma (no exportados)
 var current_ammo: int
 var is_reloading: bool = false
 var is_shooting: bool = false
@@ -45,10 +39,8 @@ var reload_timer: Timer
 
 func _init():
 	current_ammo = ammo_capacity
-	
-	# CONFIGURAR CADENCIA CORRECTA COD WORLD AT WAR
-	# M1911 en COD WaW: 1200 RPM = 20 balas por segundo
-	attack_speed = 20.0  # CORREGIDO: era 0.3, ahora 20 balas/segundo como COD WaW
+	# CADENCIA RÁPIDA: 3 balas por segundo = cada 0.33 segundos
+	attack_speed = 3.0  # CAMBIADO: era 0.3, ahora 3 balas/segundo
 	
 	call_deferred("ensure_sprites_exist")
 	call_deferred("setup_reload_timer")

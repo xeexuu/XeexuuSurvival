@@ -9,7 +9,7 @@ signal damaged(enemy: Enemy, damage: int)
 @export var max_health: int = 150
 @export var current_health: int = 150
 @export var base_move_speed: float = 80.0  # REDUCIDO para primeras rondas
-@export var damage: int = 50
+@export var damage: int = 1
 @export var attack_range: float = 45.0
 @export var detection_range: float = 800.0
 @export var attack_cooldown: float = 1.5  # ESTILO COD
@@ -576,26 +576,20 @@ func execute_cod_attack():
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	# VERIFICAR QUE EL JUGADOR SIGA EN RANGO
 	if distance_to_player <= grab_range:
-		# GOLPE EXITOSO
 		print("🧟 Zombie golpea al jugador!")
 		
 		if player.has_method("take_damage"):
-			player.take_damage(damage)
+			player.take_damage(1)  # CAMBIADO: siempre 1 corazón de daño
 		
-		# KNOCKBACK ESTILO COD
 		var knockback_direction = (player.global_position - global_position).normalized()
 		if player.has_method("apply_knockback"):
 			player.apply_knockback(knockback_direction, 200.0)
 		
-		# Efecto visual de golpe exitoso
 		create_attack_effect()
 	else:
-		# GOLPE FALLIDO
 		print("🧟 Zombie falla el ataque - jugador fuera de rango")
 	
-	# FASE DE RECOVERY
 	start_attack_recovery()
 
 func create_attack_effect():
