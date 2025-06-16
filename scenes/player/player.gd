@@ -1,4 +1,4 @@
-# scenes/player/player.gd - LIMPIO Y OPTIMIZADO
+# scenes/player/player.gd - CON MINIHUD Y STATS DEL .tres
 extends CharacterBody2D
 class_name Player
 
@@ -10,7 +10,7 @@ signal player_died
 @onready var shooting_component = $ShootingComponent
 @onready var camera = $Camera2D
 
-# Variables básicas
+# Variables básicas - SE ACTUALIZAN DESDE EL .tres
 var current_health: int = 4
 var max_health: int = 4
 var move_speed: float = 300.0
@@ -28,11 +28,12 @@ var current_aim_direction: Vector2 = Vector2.RIGHT
 var score_system: ScoreSystem
 var weapon_renderer: WeaponRenderer
 var animation_controller: AnimationController
+var mini_hud: MiniHUD  # REFERENCIA AL MINIHUD
 
 # Estado
 var is_fully_initialized: bool = false
 var is_invulnerable: bool = false
-var invulnerability_duration: float = 1.0
+var invulnerability_duration: float = 2.0
 
 # Límites del mapa
 var map_bounds: Rect2 = Rect2(-800, -800, 1600, 1600)
@@ -41,9 +42,12 @@ func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_camera()
 	setup_weapon_renderer()
+	setup_mini_hud()  # CREAR MINIHUD
 	
 	collision_layer = 1
 	collision_mask = 2 | 3
+	
+	print("🛡️ Jugador inicializado")
 
 func setup_camera():
 	"""Configurar cámara"""
@@ -61,19 +65,50 @@ func setup_weapon_renderer():
 	weapon_renderer.set_player_reference(self)
 	add_child(weapon_renderer)
 
+func setup_mini_hud():
+	"""CREAR Y CONFIGURAR MINIHUD"""
+	mini_hud = MiniHUD.new()
+	mini_hud.name = "MiniHUD"
+	
+	# Obtener CanvasLayer del juego para añadir el HUD
+	var game_manager = get_tree().get_first_node_in_group("game_manager")
+	if game_manager and game_manager.has_node("UIManager"):
+		var ui_manager = game_manager.get_node("UIManager")
+		ui_manager.add_child(mini_hud)
+		print("✅ MiniHUD añadido a UIManager")
+	else:
+		# Fallback: añadir directamente a la escena
+		get_tree().current_scene.add_child(mini_hud)
+		print("✅ MiniHUD añadido a escena principal")
+
 func update_character_stats(new_stats: CharacterStats):
-	"""Actualizar estadísticas del personaje"""
+	"""ACTUALIZAR ESTADÍSTICAS DESDE EL ARCHIVO .tres"""
 	character_stats = new_stats
 	apply_character_stats()
 
 func apply_character_stats():
-	"""Aplicar estadísticas"""
+	"""APLICAR ESTADÍSTICAS RESPETANDO EL .tres"""
 	if not character_stats:
+		print("❌ No hay CharacterStats para aplicar")
 		return
 	
+	# USAR VALORES EXACTOS DEL ARCHIVO .tres
 	max_health = character_stats.max_health
 	current_health = character_stats.current_health
 	move_speed = float(character_stats.movement_speed)
+	
+	print("📊 APLICANDO STATS DEL .tres:")
+	print("   Personaje: ", character_stats.character_name)
+	print("   Vida: ", current_health, "/", max_health)
+	print("   Velocidad: ", move_speed)
+	print("   Suerte: ", character_stats.luck)
+	
+	# ACTUALIZAR MINIHUD CON LAS ESTADÍSTICAS
+	if mini_hud:
+		mini_hud.update_character_stats(character_stats)
+		print("✅ MiniHUD actualizado con stats del .tres")
+	else:
+		print("❌ MiniHUD no encontrado")
 	
 	if shooting_component:
 		shooting_component.update_stats_from_player()
@@ -187,16 +222,34 @@ func update_animations(movement_direction: Vector2):
 		animation_controller.update_animation(movement_direction, current_aim_direction)
 
 func take_damage(amount: int):
-	"""Recibir daño"""
+	"""RECIBIR DAÑO - ACTUALIZA MINIHUD"""
 	if is_invulnerable or not is_alive():
+		print("🛡️ Daño bloqueado - Invulnerable o muerto")
 		return
 	
 	if not is_fully_initialized:
+		print("❌ Jugador no inicializado, ignorando daño")
 		return
 	
+	# APLICAR DAÑO
+	var old_health = current_health
 	current_health -= amount
 	current_health = max(current_health, 0)
 	
+	print("💔 DAÑO RECIBIDO:")
+	print("   Daño: ", amount)
+	print("   Vida anterior: ", old_health, "/", max_health)
+	print("   Vida actual: ", current_health, "/", max_health)
+	
+	# ACTUALIZAR MINIHUD CON NUEVA VIDA
+	if mini_hud:
+		mini_hud.update_health(current_health, max_health)
+	
+	# ACTUALIZAR TAMBIÉN EL CHARACTERSTATS
+	if character_stats:
+		character_stats.current_health = current_health
+	
+	# EFECTOS VISUALES
 	flash_damage_effect()
 	start_invulnerability()
 	
@@ -205,8 +258,12 @@ func take_damage(amount: int):
 	
 	apply_screen_shake()
 	
+	# VERIFICAR MUERTE
 	if current_health <= 0:
+		print("💀 Jugador va a morir")
 		die()
+	else:
+		print("✅ Jugador sobrevive con ", current_health, " corazones")
 
 func flash_damage_effect():
 	"""Efecto visual de daño"""
@@ -215,17 +272,19 @@ func flash_damage_effect():
 	
 	animated_sprite.modulate = Color(2.0, 0.3, 0.3, 1.0)
 	var tween = create_tween()
-	tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.2)
+	tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.3)
 
 func start_invulnerability():
 	"""Iniciar invulnerabilidad"""
 	is_invulnerable = true
+	print("🛡️ Invulnerabilidad activada por ", invulnerability_duration, " segundos")
 	
 	if animated_sprite:
 		var blink_tween = create_tween()
-		blink_tween.set_loops(int(invulnerability_duration * 6))
-		blink_tween.tween_property(animated_sprite, "modulate:a", 0.3, 0.083)
-		blink_tween.tween_property(animated_sprite, "modulate:a", 1.0, 0.083)
+		var blink_count = int(invulnerability_duration * 8)
+		blink_tween.set_loops(blink_count)
+		blink_tween.tween_property(animated_sprite, "modulate:a", 0.3, 0.0625)
+		blink_tween.tween_property(animated_sprite, "modulate:a", 1.0, 0.0625)
 	
 	var invul_timer = Timer.new()
 	invul_timer.wait_time = invulnerability_duration
@@ -240,6 +299,7 @@ func start_invulnerability():
 func end_invulnerability():
 	"""Terminar invulnerabilidad"""
 	is_invulnerable = false
+	print("🛡️ Invulnerabilidad terminada")
 	if animated_sprite:
 		animated_sprite.modulate = Color.WHITE
 
@@ -249,17 +309,17 @@ func apply_screen_shake():
 		return
 	
 	var shake_tween = create_tween()
-	var shake_intensity = 5.0
-	var shake_duration = 0.3
+	var shake_intensity = 8.0
+	var shake_duration = 0.4
 	
-	for i in range(6):
+	for i in range(8):
 		var shake_offset = Vector2(
 			randf_range(-shake_intensity, shake_intensity),
 			randf_range(-shake_intensity, shake_intensity)
 		)
-		shake_tween.tween_property(camera, "offset", shake_offset, shake_duration / 6.0)
+		shake_tween.tween_property(camera, "offset", shake_offset, shake_duration / 8.0)
 	
-	shake_tween.tween_property(camera, "offset", Vector2.ZERO, shake_duration / 6.0)
+	shake_tween.tween_property(camera, "offset", Vector2.ZERO, shake_duration / 8.0)
 
 func apply_knockback(direction: Vector2, force: float):
 	"""Aplicar knockback"""
@@ -268,6 +328,7 @@ func apply_knockback(direction: Vector2, force: float):
 
 func die():
 	"""Manejar muerte"""
+	print("💀 JUGADOR HA MUERTO - Vida final: ", current_health, "/", max_health)
 	velocity = Vector2.ZERO
 	set_physics_process(false)
 	
@@ -279,21 +340,20 @@ func die():
 	
 	player_died.emit()
 
-func on_enemy_killed():
-	"""Callback cuando mata enemigo"""
-	pass  # Simplificado
-
-func start_manual_reload():
-	"""Iniciar recarga manual"""
-	if shooting_component:
-		return shooting_component.start_manual_reload()
-	return false
-
-func get_ammo_info() -> Dictionary:
-	"""Obtener información de munición"""
-	if shooting_component:
-		return shooting_component.get_ammo_info()
-	return {"current": 0, "max": 0, "reloading": false, "reload_progress": 0.0}
+func heal(amount: int):
+	"""Curar jugador y actualizar MiniHUD"""
+	var old_health = current_health
+	current_health = min(current_health + amount, max_health)
+	
+	# Actualizar MiniHUD
+	if mini_hud:
+		mini_hud.update_health(current_health, max_health)
+	
+	# Actualizar CharacterStats
+	if character_stats:
+		character_stats.current_health = current_health
+	
+	print("💚 Curación: ", old_health, " -> ", current_health, "/", max_health)
 
 func get_current_health() -> int:
 	return current_health
@@ -312,10 +372,30 @@ func get_weapon_stats() -> WeaponStats:
 func get_camera() -> Camera2D:
 	return camera
 
+func on_enemy_killed():
+	"""Callback cuando mata enemigo"""
+	pass
+
+func start_manual_reload():
+	"""Iniciar recarga manual"""
+	if shooting_component:
+		return shooting_component.start_manual_reload()
+	return false
+
+func get_ammo_info() -> Dictionary:
+	"""Obtener información de munición"""
+	if shooting_component:
+		return shooting_component.get_ammo_info()
+	return {"current": 0, "max": 0, "reloading": false, "reload_progress": 0.0}
+
 func _input(event):
 	"""Manejar inputs adicionales"""
 	if event.is_action_pressed("ui_accept") and Input.is_key_pressed(KEY_R):
 		start_manual_reload()
+	
+	# DEBUG: Tecla H para curar
+	if event.is_action_pressed("ui_home"):
+		heal(1)
 
 func _exit_tree():
 	"""Limpiar al salir"""

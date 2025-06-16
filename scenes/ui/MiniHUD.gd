@@ -37,7 +37,7 @@ func _on_update_timer_timeout():
 		if not game_manager:
 			game_manager = get_node_or_null("/root/Main/GameManager")
 		
-		if game_manager and game_manager.has_method("get") and game_manager.get("player"):
+		if game_manager and game_manager.has_method("get_current_score") and game_manager.player:
 			var player = game_manager.player
 			if player and player.has_method("get_current_health"):
 				update_health(player.get_current_health(), player.get_max_health())
@@ -96,16 +96,12 @@ func create_title_label(text: String) -> Label:
 	label.text = text
 	var title_size = 20 if not is_mobile else 24
 	
-	if label.has_method("add_theme_font_size_override"):
-		label.add_theme_font_size_override("font_size", title_size)
-	
-	if label.has_method("add_theme_color_override"):
-		label.add_theme_color_override("font_color", Color.WHITE)
-		# SOMBRA MÁS PRONUNCIADA PARA MEJOR LEGIBILIDAD SIN FONDO
-		label.add_theme_color_override("font_shadow_color", Color.BLACK)
-		label.add_theme_constant_override("shadow_offset_x", 3)
-		label.add_theme_constant_override("shadow_offset_y", 3)
-	
+	label.add_theme_font_size_override("font_size", title_size)
+	label.add_theme_color_override("font_color", Color.WHITE)
+	# SOMBRA MÁS PRONUNCIADA PARA MEJOR LEGIBILIDAD SIN FONDO
+	label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	label.add_theme_constant_override("shadow_offset_x", 3)
+	label.add_theme_constant_override("shadow_offset_y", 3)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
 	return label
@@ -122,19 +118,16 @@ func create_stat_label(text: String, color: Color = Color.WHITE) -> Label:
 	label.text = text
 	var stat_size = 16 if not is_mobile else 20
 	
-	if label.has_method("add_theme_font_size_override"):
-		label.add_theme_font_size_override("font_size", stat_size)
+	label.add_theme_font_size_override("font_size", stat_size)
+	label.add_theme_color_override("font_color", color)
+	# SOMBRA MÁS PRONUNCIADA PARA LEGIBILIDAD SIN FONDO
+	label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
 	
-	if label.has_method("add_theme_color_override"):
-		label.add_theme_color_override("font_color", color)
-		# SOMBRA MÁS PRONUNCIADA PARA LEGIBILIDAD SIN FONDO
-		label.add_theme_color_override("font_shadow_color", Color.BLACK)
-		label.add_theme_constant_override("shadow_offset_x", 2)
-		label.add_theme_constant_override("shadow_offset_y", 2)
-		
-		# OUTLINE ADICIONAL PARA MEJOR CONTRASTE
-		label.add_theme_color_override("font_outline_color", Color.BLACK)
-		label.add_theme_constant_override("outline_size", 1)
+	# OUTLINE ADICIONAL PARA MEJOR CONTRASTE
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 1)
 	
 	return label
 

@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - LIMPIO Y OPTIMIZADO
+# scenes/managers/game_manager.gd - REFERENCIAS CORREGIDAS
 extends Node
 class_name GameManager
 
@@ -802,15 +802,15 @@ func restart_entire_game():
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
-func _on_enemy_killed(enemy: BaseEnemy):
-	"""Registrar kill de enemigo"""
+func _on_enemy_killed(enemy: Enemy):
+	"""Registrar kill de enemigo - CORREGIDO"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
 
-func _on_enemy_spawned(_enemy: BaseEnemy):
-	"""Enemigo spawneado"""
+func _on_enemy_spawned(_enemy: Enemy):
+	"""Enemigo spawneado - CORREGIDO"""
 	if rounds_manager:
 		rounds_manager.on_enemy_spawned()
 
