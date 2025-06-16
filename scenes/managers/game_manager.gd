@@ -802,7 +802,7 @@ func restart_entire_game():
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
-func _on_enemy_killed(enemy: Enemy):
+func _on_enemy_killed(_enemy: Enemy):
 	"""Registrar kill de enemigo - CORREGIDO"""
 	enemies_killed += 1
 	

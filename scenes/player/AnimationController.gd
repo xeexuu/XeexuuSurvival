@@ -1,4 +1,4 @@
-# scenes/player/AnimationController.gd - SISTEMA CORREGIDO SIN BUGS
+# scenes/player/AnimationController.gd - PRIORIZAR DISPARO Y FALLBACK A CHICA
 extends Node
 class_name AnimationController
 
@@ -27,26 +27,27 @@ func setup(sprite: AnimatedSprite2D, char_name: String):
 	create_animations_safely()
 
 func load_required_atlases():
-	"""Cargar atlas necesarios con fallback a chica"""
+	"""Cargar atlas con FALLBACK AUTOMÁTICO A CHICA"""
 	var folder_name = get_character_folder_name()
 	
 	print("🎭 Cargando atlas para: ", character_name, " (folder: ", folder_name, ")")
 	
-	# Intentar cargar walk_Right_Down
+	# Intentar cargar walk_Right_Down del personaje
 	var right_down_path = "res://sprites/player/" + folder_name + "/walk_Right_Down.png"
 	walk_right_down_atlas = try_load_texture(right_down_path)
 	
-	# Intentar cargar walk_Right_Up
+	# FALLBACK A CHICA SI NO EXISTE
+	if not walk_right_down_atlas and folder_name != "chica":
+		print("⚠️ Atlas no encontrado para ", folder_name, ", usando chica como fallback")
+		walk_right_down_atlas = try_load_texture("res://sprites/player/chica/walk_Right_Down.png")
+	
+	# Intentar cargar walk_Right_Up del personaje
 	var right_up_path = "res://sprites/player/" + folder_name + "/walk_Right_Up.png"
 	walk_right_up_atlas = try_load_texture(right_up_path)
 	
-	# Fallback a chica si es necesario
-	if not walk_right_down_atlas:
-		print("⚠️ walk_Right_Down no encontrado, usando chica")
-		walk_right_down_atlas = try_load_texture("res://sprites/player/chica/walk_Right_Down.png")
-	
-	if not walk_right_up_atlas:
-		print("⚠️ walk_Right_Up no encontrado, usando chica")
+	# FALLBACK A CHICA SI NO EXISTE
+	if not walk_right_up_atlas and folder_name != "chica":
+		print("⚠️ Atlas Right_Up no encontrado para ", folder_name, ", usando chica como fallback")
 		walk_right_up_atlas = try_load_texture("res://sprites/player/chica/walk_Right_Up.png")
 	
 	print("✅ Atlas cargados - Down: ", walk_right_down_atlas != null, " Up: ", walk_right_up_atlas != null)
@@ -187,26 +188,33 @@ func create_default_texture() -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 func update_animation(movement_direction: Vector2, aim_direction: Vector2):
-	"""SISTEMA SIMPLIFICADO Y ROBUSTO"""
+	"""SISTEMA QUE PRIORIZA DIRECCIÓN DE DISPARO SOBRE MOVIMIENTO"""
 	if not is_system_ready or not animated_sprite or not sprite_frames:
 		return
 	
-	# Usar dirección de apuntado si existe, sino movimiento
-	var direction = aim_direction if aim_direction.length() > 0.1 else movement_direction
+	# PRIORIZAR DIRECCIÓN DE DISPARO SI EXISTE
+	var direction_to_use = Vector2.ZERO
 	
-	if direction.length() < 0.1:
-		return  # Sin movimiento, mantener animación actual
+	if aim_direction.length() > 0.1:
+		# SI ESTÁ DISPARANDO, USAR DIRECCIÓN DE DISPARO
+		direction_to_use = aim_direction
+	elif movement_direction.length() > 0.1:
+		# SI NO ESTÁ DISPARANDO PERO SE MUEVE, USAR DIRECCIÓN DE MOVIMIENTO
+		direction_to_use = movement_direction
+	else:
+		# NO HAY MOVIMIENTO NI DISPARO, MANTENER ANIMACIÓN ACTUAL
+		return
 	
 	# Determinar animación y flip
 	var target_animation: String
 	var target_flip: bool
 	
-	if direction.y < 0:  # Apuntando hacia arriba
+	if direction_to_use.y < 0:  # Apuntando hacia arriba
 		target_animation = "walk_Right_Up"
-		target_flip = direction.x < 0  # Flip si va hacia la izquierda
+		target_flip = direction_to_use.x < 0  # Flip si va hacia la izquierda
 	else:  # Apuntando hacia abajo
 		target_animation = "walk_Right_Down" 
-		target_flip = direction.x < 0  # Flip si va hacia la izquierda
+		target_flip = direction_to_use.x < 0  # Flip si va hacia la izquierda
 	
 	# Verificar que la animación existe
 	if not sprite_frames.has_animation(target_animation):
@@ -228,7 +236,8 @@ func update_animation(movement_direction: Vector2, aim_direction: Vector2):
 	
 	# Log solo cuando hay cambios
 	if animation_changed or flip_changed:
-		print("🎭 Animación actualizada: ", target_animation, " flip: ", target_flip)
+		var direction_source = "disparo" if aim_direction.length() > 0.1 else "movimiento"
+		print("🎭 Animación por ", direction_source, ": ", target_animation, " flip: ", target_flip)
 
 func get_character_folder_name() -> String:
 	"""Obtener nombre de carpeta del personaje"""

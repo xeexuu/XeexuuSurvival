@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - CON ANIMACIÓN DE SPAWN Y MOVIMIENTO
+# scenes/enemies/Enemy.gd - SPRITES INMEDIATOS Y ATAQUE CALL OF DUTY STYLE
 extends CharacterBody2D
 class_name Enemy
 
@@ -8,11 +8,11 @@ signal damaged(enemy: Enemy, damage: int)
 @export var enemy_type: String = "zombie_basic"
 @export var max_health: int = 150
 @export var current_health: int = 150
-@export var base_move_speed: float = 120.0
+@export var base_move_speed: float = 80.0  # REDUCIDO para primeras rondas
 @export var damage: int = 50
 @export var attack_range: float = 45.0
-@export var detection_range: float = 800.0  # Más grande para detectar mejor
-@export var attack_cooldown: float = 2.0
+@export var detection_range: float = 800.0
+@export var attack_cooldown: float = 1.5  # ESTILO COD
 
 @onready var sprite = $Sprite2D
 @onready var collision_shape = $CollisionShape2D
@@ -22,12 +22,12 @@ signal damaged(enemy: Enemy, damage: int)
 var player: Player = null
 var is_dead: bool = false
 var last_attack_time: float = 0.0
-var current_move_speed: float = 120.0
+var current_move_speed: float = 80.0
 
 # Estados con spawn animado
 enum EnemyState {
 	SPAWNING,
-	EMERGING,     # Saliendo del suelo
+	EMERGING,
 	WANDERING,
 	PURSUING,
 	ATTACKING,
@@ -55,6 +55,12 @@ var spawn_alpha: float = 0.0
 # Animación de movimiento
 var enemy_sprite_frames: SpriteFrames
 
+# SISTEMA DE ATAQUE ESTILO COD
+var is_attacking: bool = false
+var attack_wind_up_time: float = 0.3  # Tiempo antes del golpe
+var attack_recovery_time: float = 0.5  # Tiempo después del golpe
+var grab_range: float = 60.0  # Rango extendido para agarrar
+
 func _ready():
 	setup_enemy()
 	setup_attack_system()
@@ -72,11 +78,8 @@ func setup_enemy():
 	last_position = global_position
 	target_position = global_position
 	
-	# INICIAR INVISIBLE PARA ANIMACIÓN DE SPAWN
-	modulate = Color(1, 1, 1, 0)
-	scale = Vector2.ZERO
-	
-	load_enemy_sprite()
+	# CARGAR SPRITE INMEDIATAMENTE VISIBLE
+	load_enemy_sprite_immediately()
 	setup_health_bar()
 	
 	if attack_timer:
@@ -88,26 +91,26 @@ func determine_enemy_variant():
 	"""Determinar variante según el tipo"""
 	match enemy_type:
 		"zombie_basic":
-			# 30% probabilidad de corredor
-			if randf() < 0.3:
+			# REDUCIR VELOCIDAD EN PRIMERAS RONDAS
+			if randf() < 0.2:  # Solo 20% corredores
 				is_runner = true
-				speed_multiplier = randf_range(1.8, 2.5)
+				speed_multiplier = randf_range(1.4, 1.8)  # Menos rápido
 				max_health = int(max_health * 0.8)
 				current_health = max_health
 				modulate = Color(1.2, 0.8, 0.8, modulate.a)
 			else:
-				speed_multiplier = randf_range(1.2, 1.6)
+				speed_multiplier = randf_range(0.8, 1.2)  # Más lento
 		
 		"zombie_dog":
-			speed_multiplier = 2.0
+			speed_multiplier = 1.6  # Reducido
 			max_health = int(max_health * 0.6)
 			current_health = max_health
-			attack_cooldown = 0.8
+			attack_cooldown = 1.0
 			attack_range = 35.0
 			modulate = Color(0.8, 0.6, 0.4, modulate.a)
 		
 		"zombie_crawler":
-			speed_multiplier = 0.8
+			speed_multiplier = 0.6  # Más lento
 			max_health = int(max_health * 0.4)
 			current_health = max_health
 			attack_cooldown = 1.2
@@ -116,55 +119,58 @@ func determine_enemy_variant():
 	
 	current_move_speed = base_move_speed * speed_multiplier
 
-func load_enemy_sprite():
-	"""Cargar sprite del zombie con animación"""
+func load_enemy_sprite_immediately():
+	"""CARGAR SPRITE INMEDIATAMENTE VISIBLE"""
+	# INTENTAR CARGAR ATLAS ESPECÍFICO PRIMERO
 	var atlas_path = "res://sprites/enemies/zombie/walk_Right_Down.png"
 	var atlas_texture = try_load_texture_safe(atlas_path)
 	
 	if atlas_texture:
-		setup_animated_sprite_with_movement(atlas_texture)
+		# REEMPLAZAR SPRITE2D CON ANIMATEDSPRITE2D INMEDIATAMENTE
+		setup_animated_sprite_immediate(atlas_texture)
 	else:
-		create_default_enemy_sprite()
+		# CREAR SPRITE POR DEFECTO VISIBLE
+		create_default_enemy_sprite_immediate()
 
-func setup_animated_sprite_with_movement(atlas_texture: Texture2D):
-	"""Configurar AnimatedSprite2D con movimiento desde atlas"""
-	# Reemplazar Sprite2D con AnimatedSprite2D
+func setup_animated_sprite_immediate(atlas_texture: Texture2D):
+	"""CONFIGURAR ANIMATEDSPRITE2D INMEDIATAMENTE VISIBLE"""
+	# Reemplazar Sprite2D existente
 	if sprite and sprite is Sprite2D:
 		sprite.queue_free()
-		var animated_sprite = AnimatedSprite2D.new()
-		animated_sprite.name = "AnimatedSprite2D"
-		add_child(animated_sprite)
-		sprite = animated_sprite
-	elif not sprite:
-		var animated_sprite = AnimatedSprite2D.new()
-		animated_sprite.name = "AnimatedSprite2D"
-		add_child(animated_sprite)
-		sprite = animated_sprite
+		
+	var animated_sprite = AnimatedSprite2D.new()
+	animated_sprite.name = "AnimatedSprite2D"
+	add_child(animated_sprite)
+	sprite = animated_sprite
 	
-	if sprite is AnimatedSprite2D:
-		var animated_sprite = sprite as AnimatedSprite2D
-		enemy_sprite_frames = SpriteFrames.new()
-		
-		# Crear animación de movimiento
-		enemy_sprite_frames.add_animation("walk")
-		enemy_sprite_frames.set_animation_speed("walk", 8.0)
-		enemy_sprite_frames.set_animation_loop("walk", true)
-		
-		# Extraer todos los frames del atlas
-		for i in range(8):
-			var frame = extract_frame_from_zombie_atlas(atlas_texture, i)
-			enemy_sprite_frames.add_frame("walk", frame)
-		
-		# Crear animación idle (primer frame)
-		enemy_sprite_frames.add_animation("idle")
-		enemy_sprite_frames.set_animation_speed("idle", 2.0)
-		enemy_sprite_frames.set_animation_loop("idle", true)
-		var first_frame = extract_frame_from_zombie_atlas(atlas_texture, 0)
-		enemy_sprite_frames.add_frame("idle", first_frame)
-		
-		animated_sprite.sprite_frames = enemy_sprite_frames
-		animated_sprite.play("idle")
-		scale_zombie_sprite(animated_sprite, first_frame)
+	# CREAR SPRITEFRAMES INMEDIATAMENTE
+	enemy_sprite_frames = SpriteFrames.new()
+	
+	# Crear animación de movimiento
+	enemy_sprite_frames.add_animation("walk")
+	enemy_sprite_frames.set_animation_speed("walk", 8.0)
+	enemy_sprite_frames.set_animation_loop("walk", true)
+	
+	# Extraer todos los frames del atlas
+	for i in range(8):
+		var frame = extract_frame_from_zombie_atlas(atlas_texture, i)
+		enemy_sprite_frames.add_frame("walk", frame)
+	
+	# Crear animación idle (primer frame)
+	enemy_sprite_frames.add_animation("idle")
+	enemy_sprite_frames.set_animation_speed("idle", 2.0)
+	enemy_sprite_frames.set_animation_loop("idle", true)
+	var first_frame = extract_frame_from_zombie_atlas(atlas_texture, 0)
+	enemy_sprite_frames.add_frame("idle", first_frame)
+	
+	# ASIGNAR Y HACER VISIBLE INMEDIATAMENTE
+	animated_sprite.sprite_frames = enemy_sprite_frames
+	animated_sprite.play("idle")
+	animated_sprite.visible = true
+	
+	scale_zombie_sprite(animated_sprite, first_frame)
+	
+	print("✅ Sprite animado de zombie cargado inmediatamente")
 
 func extract_frame_from_zombie_atlas(atlas_texture: Texture2D, frame_index: int) -> Texture2D:
 	"""Extraer frame del atlas de zombie 1024x128"""
@@ -189,8 +195,8 @@ func scale_zombie_sprite(animated_sprite: AnimatedSprite2D, reference_texture: T
 	var scale_factor = target_height / float(current_height)
 	animated_sprite.scale = Vector2(scale_factor, scale_factor)
 
-func create_default_enemy_sprite():
-	"""Crear sprite por defecto si no hay atlas"""
+func create_default_enemy_sprite_immediate():
+	"""CREAR SPRITE POR DEFECTO INMEDIATAMENTE VISIBLE"""
 	var image = Image.create(96, 96, false, Image.FORMAT_RGBA8)
 	
 	var base_color = Color.DARK_RED
@@ -216,11 +222,19 @@ func create_default_enemy_sprite():
 	
 	var default_texture = ImageTexture.create_from_image(image)
 	
-	if sprite:
-		if sprite is Sprite2D:
-			var normal_sprite = sprite as Sprite2D
-			normal_sprite.texture = default_texture
-			normal_sprite.scale = Vector2(0.75, 0.75)
+	# ASEGURAR QUE SPRITE EXISTA Y SEA VISIBLE
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		add_child(sprite)
+	
+	if sprite is Sprite2D:
+		var normal_sprite = sprite as Sprite2D
+		normal_sprite.texture = default_texture
+		normal_sprite.scale = Vector2(0.75, 0.75)
+		normal_sprite.visible = true
+	
+	print("✅ Sprite por defecto de zombie creado e inmediatamente visible")
 
 func add_glowing_eyes(image: Image):
 	"""Añadir ojos brillantes"""
@@ -253,7 +267,7 @@ func setup_health_bar():
 	health_bar.max_value = max_health
 	health_bar.value = current_health
 	health_bar.show_percentage = false
-	health_bar.visible = true  # ASEGURAR QUE SEA VISIBLE
+	health_bar.visible = true
 	
 	var style_bg = StyleBoxFlat.new()
 	style_bg.bg_color = Color.BLACK
@@ -264,7 +278,8 @@ func setup_health_bar():
 	health_bar.add_theme_stylebox_override("fill", style_fill)
 
 func setup_attack_system():
-	"""Configurar sistema de ataque"""
+	"""Configurar sistema de ataque estilo COD"""
+	# El sistema de ataque se maneja en perform_cod_attack()
 	pass
 
 func setup_for_spawn(target_player: Player, round_health: int = -1):
@@ -287,16 +302,13 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	is_dead = false
 	current_state = EnemyState.SPAWNING
 	
-	# INICIAR ANIMACIÓN DE SPAWN
+	# INICIAR ANIMACIÓN DE SPAWN (el sprite ya es visible)
 	modulate = Color(1, 1, 1, 0)
 	scale = Vector2.ZERO
 	spawn_scale = 0.0
 	spawn_alpha = 0.0
 	
 	call_deferred("_reactivate_collision")
-	
-	if sprite:
-		sprite.visible = true
 	
 	update_health_bar()
 	start_spawn_animation()
@@ -323,7 +335,7 @@ func start_spawn_animation():
 func set_spawn_scale(value: float):
 	"""Establecer escala durante spawn"""
 	spawn_scale = value
-	var base_scale = Vector2(0.75, 0.75)  # Escala base del zombie
+	var base_scale = Vector2(0.75, 0.75)
 	scale = base_scale * spawn_scale
 
 func set_spawn_alpha(value: float):
@@ -343,11 +355,12 @@ func reset_for_pool():
 	is_dead = false
 	current_state = EnemyState.SPAWNING
 	current_health = max_health
+	is_attacking = false
 	
 	call_deferred("_deactivate_collision")
 	
 	if sprite:
-		sprite.visible = false
+		sprite.visible = true  # MANTENER VISIBLE
 	
 	set_physics_process(false)
 	set_process(false)
@@ -380,7 +393,7 @@ func update_state_machine(delta):
 			pass
 		
 		EnemyState.EMERGING:
-			if state_timer > 0.5:  # Tiempo adicional emergiendo
+			if state_timer > 0.5:
 				current_state = EnemyState.WANDERING
 				state_timer = 0.0
 		
@@ -390,15 +403,18 @@ func update_state_machine(delta):
 				state_timer = 0.0
 		
 		EnemyState.PURSUING:
-			if distance_to_player <= attack_range:
+			# RANGO EXTENDIDO PARA AGARRAR ESTILO COD
+			if distance_to_player <= grab_range:
 				current_state = EnemyState.ATTACKING
 				state_timer = 0.0
+				start_cod_attack()
 			elif distance_to_player > detection_range * 1.5:
 				current_state = EnemyState.WANDERING
 				state_timer = 0.0
 		
 		EnemyState.ATTACKING:
-			if distance_to_player > attack_range * 1.5:
+			# El ataque se maneja en start_cod_attack()
+			if not is_attacking and distance_to_player > grab_range * 1.5:
 				current_state = EnemyState.PURSUING
 				state_timer = 0.0
 		
@@ -413,12 +429,19 @@ func handle_movement(delta):
 	
 	match current_state:
 		EnemyState.SPAWNING, EnemyState.EMERGING:
-			movement_direction = Vector2.ZERO  # No moverse durante spawn
+			movement_direction = Vector2.ZERO
+		
+		EnemyState.ATTACKING:
+			# DURANTE ATAQUE, MOVIMIENTO REDUCIDO
+			if is_attacking:
+				movement_direction = Vector2.ZERO
+			else:
+				movement_direction = get_improved_pursuit_direction() * 0.3
 		
 		EnemyState.WANDERING:
 			movement_direction = get_wander_movement()
 		
-		EnemyState.PURSUING, EnemyState.ATTACKING:
+		EnemyState.PURSUING:
 			movement_direction = get_improved_pursuit_direction()
 		
 		EnemyState.STUNNED:
@@ -434,10 +457,9 @@ func get_wander_movement() -> Vector2:
 	path_update_timer += get_physics_process_delta_time()
 	
 	if target_position.distance_to(global_position) < 40 or path_update_timer > 2.0:
-		# Actualizar target hacia el jugador pero con randomización
 		if player:
 			var direction_to_player = (player.global_position - global_position).normalized()
-			var random_angle = randf_range(-PI/3, PI/3)  # ±60 grados
+			var random_angle = randf_range(-PI/3, PI/3)
 			var wandering_direction = direction_to_player.rotated(random_angle)
 			target_position = global_position + wandering_direction * randf_range(100, 200)
 		else:
@@ -456,9 +478,9 @@ func get_improved_pursuit_direction() -> Vector2:
 	var direction_to_player = (player.global_position - global_position).normalized()
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	# Distancia mínima para evitar apilamiento
-	if distance_to_player < 30.0:
-		return direction_to_player * 0.3
+	# PARAR CERCA PARA PREPARAR ATAQUE
+	if distance_to_player < grab_range * 0.8:
+		return direction_to_player * 0.1
 	
 	return direction_to_player
 
@@ -492,40 +514,131 @@ func check_if_stuck(delta):
 			var random_direction = Vector2.from_angle(randf() * TAU)
 			velocity += random_direction * current_move_speed * 0.8
 			stuck_timer = 0.0
-			# Forzar nuevo target
 			path_update_timer = 999.0
 	else:
 		stuck_timer = 0.0
 		last_position = global_position
 
 func handle_combat():
-	"""Manejo de combate"""
+	"""Manejo de combate estilo COD"""
 	if not player or current_state != EnemyState.ATTACKING:
 		return
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	if distance_to_player <= attack_range and can_attack():
-		perform_attack()
+	# SISTEMA DE ATAQUE COD: Agarrar en rango extendido
+	if distance_to_player <= grab_range and can_attack():
+		start_cod_attack()
 
 func can_attack() -> bool:
 	"""Verificar si puede atacar"""
 	var current_time = Time.get_ticks_msec() / 1000.0
-	return current_time - last_attack_time >= attack_cooldown
+	return current_time - last_attack_time >= attack_cooldown and not is_attacking
 
-func perform_attack():
-	"""Realizar ataque"""
-	if not player or not player.has_method("take_damage"):
+func start_cod_attack():
+	"""INICIAR ATAQUE ESTILO CALL OF DUTY ZOMBIES"""
+	if not player or is_attacking:
 		return
 	
+	is_attacking = true
 	last_attack_time = Time.get_ticks_msec() / 1000.0
 	
-	player.take_damage(damage)
+	print("🧟 Zombie iniciando ataque COD style")
 	
+	# FASE 1: WIND-UP (Preparación del ataque)
+	perform_attack_windup()
+
+func perform_attack_windup():
+	"""FASE DE PREPARACIÓN DEL ATAQUE"""
+	# Efecto visual de preparación
 	if sprite:
 		sprite.modulate = Color.ORANGE_RED
-		var tween = create_tween()
-		tween.tween_property(sprite, "modulate", Color.WHITE, 0.3)
+		# Crecer ligeramente durante preparación
+		var prep_tween = create_tween()
+		prep_tween.tween_property(sprite, "scale", sprite.scale * 1.2, attack_wind_up_time)
+	
+	# Timer para ejecutar el golpe después del wind-up
+	var windup_timer = Timer.new()
+	windup_timer.wait_time = attack_wind_up_time
+	windup_timer.one_shot = true
+	windup_timer.timeout.connect(func():
+		execute_cod_attack()
+		windup_timer.queue_free()
+	)
+	add_child(windup_timer)
+	windup_timer.start()
+
+func execute_cod_attack():
+	"""EJECUTAR EL GOLPE FINAL"""
+	if not player or not is_instance_valid(player):
+		finish_attack()
+		return
+	
+	var distance_to_player = global_position.distance_to(player.global_position)
+	
+	# VERIFICAR QUE EL JUGADOR SIGA EN RANGO
+	if distance_to_player <= grab_range:
+		# GOLPE EXITOSO
+		print("🧟 Zombie golpea al jugador!")
+		
+		if player.has_method("take_damage"):
+			player.take_damage(damage)
+		
+		# KNOCKBACK ESTILO COD
+		var knockback_direction = (player.global_position - global_position).normalized()
+		if player.has_method("apply_knockback"):
+			player.apply_knockback(knockback_direction, 200.0)
+		
+		# Efecto visual de golpe exitoso
+		create_attack_effect()
+	else:
+		# GOLPE FALLIDO
+		print("🧟 Zombie falla el ataque - jugador fuera de rango")
+	
+	# FASE DE RECOVERY
+	start_attack_recovery()
+
+func create_attack_effect():
+	"""Crear efecto visual del ataque"""
+	# Efecto de impacto
+	for i in range(5):
+		var particle = Sprite2D.new()
+		var particle_image = Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		particle_image.fill(Color.YELLOW)
+		particle.texture = ImageTexture.create_from_image(particle_image)
+		particle.global_position = global_position + Vector2(randf_range(-20, 20), randf_range(-20, 20))
+		get_tree().current_scene.add_child(particle)
+		
+		var effect_tween = create_tween()
+		effect_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.8)
+		effect_tween.parallel().tween_property(particle, "global_position", 
+			particle.global_position + Vector2(randf_range(-30, 30), randf_range(-30, 30)), 0.8)
+		effect_tween.tween_callback(func(): particle.queue_free())
+
+func start_attack_recovery():
+	"""FASE DE RECOVERY DESPUÉS DEL ATAQUE"""
+	# Recovery timer
+	var recovery_timer = Timer.new()
+	recovery_timer.wait_time = attack_recovery_time
+	recovery_timer.one_shot = true
+	recovery_timer.timeout.connect(func():
+		finish_attack()
+		recovery_timer.queue_free()
+	)
+	add_child(recovery_timer)
+	recovery_timer.start()
+
+func finish_attack():
+	"""TERMINAR ATAQUE Y RESTAURAR ESTADO"""
+	is_attacking = false
+	
+	# Restaurar apariencia normal
+	if sprite:
+		sprite.modulate = Color.WHITE
+		var restore_tween = create_tween()
+		restore_tween.tween_property(sprite, "scale", Vector2(0.75, 0.75), 0.2)
+	
+	print("🧟 Zombie termina ataque")
 
 func _on_attack_timer_timeout():
 	"""Timeout del timer de ataque"""
@@ -541,6 +654,13 @@ func take_damage(amount: int, is_headshot: bool = false):
 	
 	current_state = EnemyState.STUNNED
 	state_timer = 0.0
+	
+	# INTERRUMPIR ATAQUE SI ESTÁ ATACANDO
+	if is_attacking:
+		is_attacking = false
+		if sprite:
+			sprite.modulate = Color.WHITE
+			sprite.scale = Vector2(0.75, 0.75)
 	
 	if sprite:
 		if is_headshot:
@@ -563,6 +683,7 @@ func die():
 		return
 	
 	is_dead = true
+	is_attacking = false
 	current_state = EnemyState.DEAD
 	
 	call_deferred("_deactivate_collision")
@@ -587,7 +708,7 @@ func update_health_bar():
 	
 	health_bar.value = current_health
 	health_bar.max_value = max_health
-	health_bar.visible = true  # ASEGURAR VISIBILIDAD
+	health_bar.visible = true
 
 func get_current_health() -> int:
 	return current_health

@@ -83,7 +83,7 @@ func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee:
 	score_changed.emit(current_score)
 	score_popup.emit(points, hit_position, popup_type)
 
-func add_damage_points(hit_position: Vector2, damage_dealt: int, is_headshot: bool = false):
+func add_damage_points(hit_position: Vector2, _damage_dealt: int, is_headshot: bool = false):
 	"""SISTEMA COD BO1: Puntos por daño sin kill (10 puntos por hit)"""
 	var points = 10  # Black Ops 1 da 10 puntos por hit sin kill
 	var popup_type = "damage"
@@ -336,12 +336,12 @@ func get_score_breakdown_for_ui() -> Dictionary:
 	}
 
 # FUNCIONES ESPECIALES PARA POWER-UPS (FUTURO)
-func enable_double_points(duration: float = 30.0):
+func enable_double_points(_duration: float = 30.0):
 	"""Habilitar doble puntos temporalmente"""
 	# TODO: Implementar cuando se añadan power-ups
 	pass
 
-func enable_insta_kill(duration: float = 30.0):
+func enable_insta_kill(_duration: float = 30.0):
 	"""Habilitar insta-kill temporalmente"""
 	# TODO: Implementar cuando se añadan power-ups
 	pass

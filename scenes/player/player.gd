@@ -1,4 +1,4 @@
-# scenes/player/player.gd - CON MINIHUD Y STATS DEL .tres
+# scenes/player/player.gd - CON MINIHUD Y STATS DEL .tres CORREGIDOS
 extends CharacterBody2D
 class_name Player
 
@@ -42,7 +42,6 @@ func _ready():
 	is_mobile = OS.has_feature("mobile")
 	setup_camera()
 	setup_weapon_renderer()
-	setup_mini_hud()  # CREAR MINIHUD
 	
 	collision_layer = 1
 	collision_mask = 2 | 3
@@ -65,8 +64,20 @@ func setup_weapon_renderer():
 	weapon_renderer.set_player_reference(self)
 	add_child(weapon_renderer)
 
-func setup_mini_hud():
-	"""CREAR Y CONFIGURAR MINIHUD"""
+func update_character_stats(new_stats: CharacterStats):
+	"""ACTUALIZAR ESTADÍSTICAS DESDE EL ARCHIVO .tres"""
+	character_stats = new_stats
+	apply_character_stats()
+	
+	# CREAR MINIHUD DESPUÉS DE TENER STATS
+	call_deferred("setup_mini_hud_with_stats")
+
+func setup_mini_hud_with_stats():
+	"""CREAR Y CONFIGURAR MINIHUD CON ESTADÍSTICAS"""
+	if mini_hud:
+		mini_hud.queue_free()
+		mini_hud = null
+	
 	mini_hud = MiniHUD.new()
 	mini_hud.name = "MiniHUD"
 	
@@ -76,15 +87,18 @@ func setup_mini_hud():
 		var ui_manager = game_manager.get_node("UIManager")
 		ui_manager.add_child(mini_hud)
 		print("✅ MiniHUD añadido a UIManager")
+		
+		# ACTUALIZAR INMEDIATAMENTE CON LAS ESTADÍSTICAS
+		if character_stats:
+			mini_hud.update_character_stats(character_stats)
+			print("✅ MiniHUD actualizado con stats iniciales")
 	else:
 		# Fallback: añadir directamente a la escena
 		get_tree().current_scene.add_child(mini_hud)
 		print("✅ MiniHUD añadido a escena principal")
-
-func update_character_stats(new_stats: CharacterStats):
-	"""ACTUALIZAR ESTADÍSTICAS DESDE EL ARCHIVO .tres"""
-	character_stats = new_stats
-	apply_character_stats()
+		
+		if character_stats:
+			mini_hud.update_character_stats(character_stats)
 
 func apply_character_stats():
 	"""APLICAR ESTADÍSTICAS RESPETANDO EL .tres"""
@@ -102,13 +116,6 @@ func apply_character_stats():
 	print("   Vida: ", current_health, "/", max_health)
 	print("   Velocidad: ", move_speed)
 	print("   Suerte: ", character_stats.luck)
-	
-	# ACTUALIZAR MINIHUD CON LAS ESTADÍSTICAS
-	if mini_hud:
-		mini_hud.update_character_stats(character_stats)
-		print("✅ MiniHUD actualizado con stats del .tres")
-	else:
-		print("❌ MiniHUD no encontrado")
 	
 	if shooting_component:
 		shooting_component.update_stats_from_player()
@@ -244,6 +251,7 @@ func take_damage(amount: int):
 	# ACTUALIZAR MINIHUD CON NUEVA VIDA
 	if mini_hud:
 		mini_hud.update_health(current_health, max_health)
+		print("✅ MiniHUD actualizado con nueva vida")
 	
 	# ACTUALIZAR TAMBIÉN EL CHARACTERSTATS
 	if character_stats:
@@ -284,7 +292,7 @@ func start_invulnerability():
 		var blink_count = int(invulnerability_duration * 8)
 		blink_tween.set_loops(blink_count)
 		blink_tween.tween_property(animated_sprite, "modulate:a", 0.3, 0.0625)
-		blink_tween.tween_property(animated_sprite, "modulate:a", 1.0, 0.0625)
+		blink_tween.tween_property(animated_sprite, "modulate:a", 1.0, 0.0625)  # CORREGIDO: era tween_property sin blink_tween
 	
 	var invul_timer = Timer.new()
 	invul_timer.wait_time = invulnerability_duration

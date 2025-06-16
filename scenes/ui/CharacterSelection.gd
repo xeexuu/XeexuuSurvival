@@ -1,4 +1,4 @@
-# scenes/ui/CharacterSelection.gd - LAYOUT HORIZONTAL PARA MÓVIL
+# scenes/ui/CharacterSelection.gd - CARGAR STATS REALES DEL .tres
 extends Control
 class_name CharacterSelection
 
@@ -23,7 +23,6 @@ func setup_selection_ui():
 	var main_scroll = ScrollContainer.new()
 	main_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if is_mobile:
-		# EN MÓVIL: Scroll horizontal
 		main_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		main_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	else:
@@ -36,7 +35,6 @@ func setup_selection_ui():
 	main_container.add_theme_constant_override("separation", 50 if is_mobile else 30)
 	
 	if is_mobile:
-		# Tamaño mínimo más ancho para permitir scroll horizontal
 		main_container.custom_minimum_size = Vector2(max(viewport_size.x, 1200), viewport_size.y - 20)
 	else:
 		main_container.custom_minimum_size = Vector2(viewport_size.x - 40, viewport_size.y - 40)
@@ -81,14 +79,12 @@ func setup_selection_ui():
 	# Contenedor de personajes - SIEMPRE HORIZONTAL PARA MÓVIL
 	var characters_container
 	if is_mobile:
-		# MÓVIL: Layout horizontal con scroll
 		characters_container = HBoxContainer.new()
-		characters_container.add_theme_constant_override("separation", 40)  # Separación entre tarjetas
+		characters_container.add_theme_constant_override("separation", 40)
 		characters_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		characters_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		characters_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	else:
-		# ESCRITORIO: Mantener horizontal también
 		characters_container = HBoxContainer.new()
 		characters_container.add_theme_constant_override("separation", 60)
 		characters_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -97,7 +93,7 @@ func setup_selection_ui():
 	
 	characters_area.add_child(characters_container)
 	
-	# Crear tarjetas más anchas para móvil horizontal
+	# Crear tarjetas
 	for character in characters:
 		var character_card = create_character_card_horizontal(character, is_mobile)
 		characters_container.add_child(character_card)
@@ -119,7 +115,7 @@ func setup_selection_ui():
 		main_container.add_child(instructions)
 
 func load_all_characters_with_original_values() -> Array[CharacterStats]:
-	"""Cargar personajes con valores ORIGINALES del .tres"""
+	"""CARGAR PERSONAJES MANTENIENDO VALORES EXACTOS DEL .tres"""
 	var characters: Array[CharacterStats] = []
 	
 	# CARGAR PERSONAJES ESPECÍFICOS CON VALORES ORIGINALES
@@ -130,41 +126,41 @@ func load_all_characters_with_original_values() -> Array[CharacterStats]:
 	]
 	
 	for path in character_paths:
-		var character = load_character_with_original_values(path)
+		var character = load_character_preserving_tres_values(path)
 		if character:
+			print("📄 Cargado desde .tres: ", character.character_name, " - Vida: ", character.max_health, "/", character.current_health, " - Velocidad: ", character.movement_speed)
 			characters.append(character)
 	
 	# Solo crear fallback si NO hay ningún personaje
 	if characters.is_empty():
-		characters = create_minimal_fallback()
+		print("⚠️ No se pudieron cargar archivos .tres, creando fallbacks")
+		characters = create_manual_fallback_characters()
 	
 	return characters
 
-func load_character_with_original_values(file_path: String) -> CharacterStats:
-	"""Cargar personaje manteniendo valores ORIGINALES del .tres"""
+func load_character_preserving_tres_values(file_path: String) -> CharacterStats:
+	"""CARGAR PERSONAJE PRESERVANDO EXACTAMENTE LOS VALORES DEL .tres"""
 	if not ResourceLoader.exists(file_path):
+		print("❌ Archivo no existe: ", file_path)
 		return null
 	
 	var resource = load(file_path)
 	if not resource or not resource is CharacterStats:
+		print("❌ Recurso inválido: ", file_path)
 		return null
 	
 	var character = resource as CharacterStats
 	
-	# FORZAR VALORES ORIGINALES SEGÚN EL ARCHIVO .tres
-	match character.character_name.to_lower():
-		"pelao":
-			character.max_health = 4
-			character.current_health = 4
-			character.movement_speed = 300
-		"juancar":
-			character.max_health = 4  
-			character.current_health = 4
-			character.movement_speed = 450  # Más rápido según el .tres
-		"chica":
-			character.max_health = 4
-			character.current_health = 4
-			character.movement_speed = 300
+	# VERIFICAR QUE LOS VALORES DEL .tres SEAN CORRECTOS
+	print("🔍 Valores leídos del .tres ", file_path, ":")
+	print("   Nombre: ", character.character_name)
+	print("   Vida máxima: ", character.max_health)
+	print("   Vida actual: ", character.current_health)
+	print("   Velocidad: ", character.movement_speed)
+	print("   Suerte: ", character.luck)
+	
+	# NO SOBRESCRIBIR - USAR VALORES EXACTOS DEL .tres
+	# Los archivos .tres ya tienen los valores correctos
 	
 	# Asegurar arma
 	ensure_character_has_weapon(character)
@@ -175,9 +171,9 @@ func ensure_character_has_weapon(character: CharacterStats):
 	"""Asegurar que el personaje tenga un arma"""
 	if not character.equipped_weapon:
 		character.equipped_weapon = WeaponStats.new()
-		character.equipped_weapon.weapon_name = "Arma de " + character.character_name
+		character.equipped_weapon.weapon_name = "Pistola de " + character.character_name
 		character.equipped_weapon.damage = 25
-		character.equipped_weapon.attack_speed = 12.0
+		character.equipped_weapon.attack_speed = 0.3  # 0.3 balas por segundo
 		character.equipped_weapon.attack_range = 400
 		character.equipped_weapon.projectile_speed = 600
 		character.equipped_weapon.ammo_capacity = 30
@@ -190,15 +186,17 @@ func ensure_character_has_weapon(character: CharacterStats):
 		var sound_path = "res://audio/" + character_name_lower + "_shoot.ogg"
 		if ResourceLoader.exists(sound_path):
 			character.equipped_weapon.attack_sound = load(sound_path)
+		
+		print("🔫 Arma creada para ", character.character_name)
 
-func create_minimal_fallback() -> Array[CharacterStats]:
-	"""Crear personajes básicos como último recurso"""
+func create_manual_fallback_characters() -> Array[CharacterStats]:
+	"""Crear personajes manualmente como último recurso"""
 	var characters: Array[CharacterStats] = []
 	
-	# Crear personajes manualmente
+	# VALORES CORRECTOS SEGÚN LOS .tres ORIGINALES
 	var character_configs = [
 		{"name": "pelao", "health": 4, "speed": 300},
-		{"name": "juancar", "health": 4, "speed": 450},
+		{"name": "juancar", "health": 4, "speed": 450},  # MÁS RÁPIDO según juancar_stats.tres
 		{"name": "chica", "health": 4, "speed": 300}
 	]
 	
@@ -212,16 +210,17 @@ func create_minimal_fallback() -> Array[CharacterStats]:
 		
 		ensure_character_has_weapon(character)
 		characters.append(character)
+		
+		print("🔧 Personaje manual creado: ", config.name, " - Vida: ", config.health, " - Velocidad: ", config.speed)
 	
 	return characters
 
 func create_character_card_horizontal(character: CharacterStats, is_mobile: bool) -> Control:
-	"""Crear tarjeta de personaje optimizada para layout horizontal"""
-	var viewport_size = get_viewport().get_visible_rect().size
+	"""Crear tarjeta de personaje mostrando valores reales del .tres"""
+	var _viewport_size = get_viewport().get_visible_rect().size
 	
-	# TARJETAS MÁS COMPACTAS PARA LAYOUT HORIZONTAL
-	var card_width = 280 if not is_mobile else 320   # Más estrecha
-	var card_height = 480 if not is_mobile else 520  # Más baja
+	var card_width = 280 if not is_mobile else 320
+	var card_height = 480 if not is_mobile else 520
 	
 	# Contenedor principal
 	var card_container = Control.new()
@@ -266,13 +265,13 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card_layout.add_child(name_label)
 	
-	# Área del sprite - MÁS COMPACTA
+	# Área del sprite
 	var sprite_container = Control.new()
 	sprite_container.custom_minimum_size = Vector2(0, 140 if not is_mobile else 160)
 	card_layout.add_child(sprite_container)
 	
-	# CARGAR SPRITE FORZANDO DIFERENTES MÉTODOS
-	var character_sprite = get_character_sprite_forced(character)
+	# CARGAR SPRITE CON FALLBACK A CHICA
+	var character_sprite = get_character_sprite_with_chica_fallback(character)
 	if character_sprite:
 		var sprite_rect = TextureRect.new()
 		sprite_rect.texture = character_sprite
@@ -308,7 +307,7 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 		initial.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		placeholder.add_child(initial)
 	
-	# Estadísticas - MÁS COMPACTAS
+	# ESTADÍSTICAS REALES DEL .tres
 	var stats_container = Control.new()
 	stats_container.custom_minimum_size = Vector2(0, 120 if not is_mobile else 140)
 	card_layout.add_child(stats_container)
@@ -325,7 +324,7 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 	stats_panel.add_theme_stylebox_override("panel", stats_bg)
 	stats_container.add_child(stats_panel)
 	
-	# Grid de estadísticas - 2x2 para ser más compacto
+	# Grid de estadísticas con valores REALES
 	var stats_grid = GridContainer.new()
 	stats_grid.columns = 2
 	stats_grid.add_theme_constant_override("h_separation", 15)
@@ -337,13 +336,14 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 	var stat_font_size = 20 if not is_mobile else 24
 	var icon_font_size = 24 if not is_mobile else 28
 	
+	# MOSTRAR VALORES EXACTOS DEL .tres
 	# Vida
 	var health_icon = create_stat_icon("❤", Color.LIGHT_GREEN, icon_font_size)
 	var health_value = create_stat_value(str(character.max_health), Color.LIGHT_GREEN, stat_font_size)
 	stats_grid.add_child(health_icon)
 	stats_grid.add_child(health_value)
 	
-	# Velocidad
+	# Velocidad (MOSTRAR VALOR REAL DEL .tres)
 	var speed_icon = create_stat_icon("⚡", Color.CYAN, icon_font_size)
 	var speed_value = create_stat_value(str(character.movement_speed), Color.CYAN, stat_font_size)
 	stats_grid.add_child(speed_icon)
@@ -365,7 +365,7 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 	stats_grid.add_child(luck_icon)
 	stats_grid.add_child(luck_value)
 	
-	# Botón de selección - MÁS COMPACTO
+	# Botón de selección
 	var select_button = Button.new()
 	select_button.text = "¡SELECCIONAR!"
 	var button_height = 60 if not is_mobile else 70
@@ -407,11 +407,15 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 			tween.tween_property(card_container, "scale", Vector2(1.0, 1.0), 0.15)
 		)
 	
-	# Acción del botón
+	# ACCIÓN DEL BOTÓN - ENVIAR PERSONAJE CON VALORES ORIGINALES
 	select_button.pressed.connect(func(): 
 		var tween = create_tween()
 		tween.tween_property(card_container, "scale", Vector2(0.95, 0.95), 0.1)
 		tween.tween_property(card_container, "scale", Vector2(1.0, 1.0), 0.1)
+		
+		print("🎮 Personaje seleccionado: ", character.character_name)
+		print("   Vida: ", character.current_health, "/", character.max_health)
+		print("   Velocidad: ", character.movement_speed)
 		
 		character_selected.emit(character)
 		queue_free()
@@ -419,29 +423,26 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 	
 	return card_container
 
-func get_character_sprite_forced(character: CharacterStats) -> Texture2D:
-	"""Obtener sprite del personaje FORZANDO DIFERENTES MÉTODOS"""
+func get_character_sprite_with_chica_fallback(character: CharacterStats) -> Texture2D:
+	"""Obtener sprite del personaje con FALLBACK AUTOMÁTICO A CHICA"""
 	var char_name = character.character_name.to_lower()
 	
-	# MÉTODO 1: Intentar carga directa por nombre
-	var direct_paths = [
+	# MÉTODO 1: Intentar carga directa del personaje
+	var character_paths = [
 		"res://sprites/player/" + char_name + "/walk_Right_Down.png",
 		"res://sprites/player/" + char_name + "/idle.png",
 		"res://sprites/player/" + char_name + "_idle.png"
 	]
 	
-	for path in direct_paths:
+	for path in character_paths:
 		var texture = try_load_texture_safe(path)
 		if texture:
+			print("✅ Sprite encontrado para ", char_name, ": ", path)
 			return extract_first_frame_if_atlas(texture)
 	
-	# MÉTODO 2: Intentar desde el sistema de efectos
-	var scaled_texture = character.get_idle_texture_scaled_128px()
-	if scaled_texture:
-		return scaled_texture
-	
-	# MÉTODO 3: Fallback a chica si no es chica
+	# MÉTODO 2: FALLBACK AUTOMÁTICO A CHICA
 	if char_name != "chica":
+		print("⚠️ Sprite no encontrado para ", char_name, ", usando chica como fallback")
 		var chica_paths = [
 			"res://sprites/player/chica/walk_Right_Down.png",
 			"res://sprites/player/chica/idle.png"
@@ -450,9 +451,16 @@ func get_character_sprite_forced(character: CharacterStats) -> Texture2D:
 		for path in chica_paths:
 			var texture = try_load_texture_safe(path)
 			if texture:
+				print("✅ Usando sprite de chica para ", char_name, ": ", path)
 				return extract_first_frame_if_atlas(texture)
 	
+	# MÉTODO 3: Intentar desde el sistema de efectos
+	var scaled_texture = character.get_idle_texture_scaled_128px()
+	if scaled_texture:
+		return scaled_texture
+	
 	# MÉTODO 4: Crear textura por defecto
+	print("⚠️ Creando sprite por defecto para ", char_name)
 	return create_default_character_preview(character.character_name)
 
 func extract_first_frame_if_atlas(texture: Texture2D) -> Texture2D:

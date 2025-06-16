@@ -45,6 +45,11 @@ var reload_timer: Timer
 
 func _init():
 	current_ammo = ammo_capacity
+	
+	# CONFIGURAR CADENCIA CORRECTA COD WORLD AT WAR
+	# M1911 en COD WaW: 1200 RPM = 20 balas por segundo
+	attack_speed = 20.0  # CORREGIDO: era 0.3, ahora 20 balas/segundo como COD WaW
+	
 	call_deferred("ensure_sprites_exist")
 	call_deferred("setup_reload_timer")
 
