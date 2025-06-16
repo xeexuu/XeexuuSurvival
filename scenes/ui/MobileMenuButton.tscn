@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://c9k4m7n2p8qx1"]
+
+[ext_resource type="Script" path="res://scenes/ui/MobileMenuButton.gd" id="1_mobile_menu"]
+
+[node name="MobileMenuButton" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_mobile_menu")

@@ -1,0 +1,52 @@
+cd X:\xeexuu_\Escritorio\Godot\Roguelike-roguelite-main
+
+# En tu carpeta del proyecto Godot
+git init
+git add .gitignore
+git add .
+git commit -m "Versión muy jugable"
+
+# Agregar remote (reemplaza con tu URL real)
+git remote add origin https://github.com/xeexuu/XeexuuSurvival.git
+
+# Push inicial						git branch -M main
+git push -u origin main					git push origin main
+
+
+las animaciones de movimiento no se estan aplicando correctamente, ya que solo se esta rotando el mismo sprite continuamente y no se esta dando la sensacion de animacion reproduciendo cada uno de los 8 frames de 128x128 pixeles del atlas de 1024x128 pixeles
+
+ quiero que se aplique el atlas walk_Down con rontacion entre 330 ° y 30 °
+
+ quiero que se aplique el atlas walk_Right_Down con rontacion entre 30 ° y 90 °
+
+ quiero que se aplique el atlas walk_Right_Up con rontacion entre 90 ° y 150 °
+
+ quiero que se aplique el atlas walk_Left_Up con rontacion entre 150 ° y 210 °
+
+ quiero que se aplique el atlas walk_Left_Down con rontacion entre 210 ° y 270 °
+
+ quiero que se aplique el atlas walk_Up con rontacion entre 270 ° y 330 °
+
+parece que el codigo se queda en bucle al configurar la cadencia del arma, solo debe hacerlo una vez
+
+🔫 Cadencia configurada: 12.0 balas/seg (0.08333333333333 seg entre disparos)
+
+💥 Disparo realizado - Próximo en 0.08333333333333 segundos
+
+🔫 Cadencia configurada: 12.0 balas/seg (0.08333333333333 seg entre disparos)
+
+💥 Disparo realizado - Próximo en 0.08333333333333 segundos
+
+🔫 Cadencia configurada: 12.0 balas/seg (0.08333333333333 seg entre disparos)
+
+💥 Disparo realizado - Próximo en 0.08333333333333 segundos
+
+🔫 Cadencia configurada: 12.0 balas/seg (0.08333333333333 seg entre disparos)
+
+💥 Disparo realizado - Próximo en 0.08333333333333 segundos
+
+🔫 Cadencia configurada: 12.0 balas/seg (0.08333333333333 seg entre disparos)
+
+los enemigos no atacan al jugador, adapta el sistema como el modo zombies de cod bo 1 
+
+dame solo el codigo necesario
