@@ -162,6 +162,20 @@ func get_weapon_world_position(player_position: Vector2, aim_direction: Vector2)
 func get_weapon_rotation(aim_direction: Vector2) -> float:
 	"""Obtener la rotación del arma"""
 	return aim_direction.angle() + deg_to_rad(weapon_rotation_offset)
+	
+func get_weapon_world_position_lower(player_position: Vector2, aim_direction: Vector2) -> Vector2:
+	"""Obtener la posición del arma MÁS ABAJO en el personaje"""
+	# OFFSET MÁS BAJO EN EL PERSONAJE (centro-derecha pero más abajo)
+	var lower_offset = Vector2(weapon_offset.x, weapon_offset.y + 20)  # +20 pixels más abajo
+	var rotated_offset = lower_offset.rotated(aim_direction.angle())
+	return player_position + rotated_offset
+
+func get_muzzle_world_position_lower(player_position: Vector2, aim_direction: Vector2) -> Vector2:
+	"""Obtener la posición del cañón desde la posición más baja"""
+	var weapon_position = get_weapon_world_position_lower(player_position, aim_direction)
+	var rotated_muzzle = muzzle_offset.rotated(aim_direction.angle())
+	return weapon_position + rotated_muzzle
+
 
 func get_muzzle_world_position(player_position: Vector2, aim_direction: Vector2) -> Vector2:
 	"""Obtener la posición del cañón (de donde salen las balas)"""

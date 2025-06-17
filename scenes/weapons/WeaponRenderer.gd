@@ -82,8 +82,9 @@ func update_weapon_sprites():
 		# POSICIONAR FLASH DEL CAÑÓN RELATIVO AL ARMA
 		muzzle_flash_sprite.position = weapon_stats.muzzle_offset
 
+
 func update_weapon_position_and_rotation(aim_direction: Vector2):
-	"""Actualizar posición y rotación del arma - CENTRO DERECHA DEL JUGADOR"""
+	"""Actualizar posición y rotación del arma - ROTA CON PERSONAJE + MÁS ABAJO"""
 	if not weapon_stats or not player_ref or not weapon_sprite:
 		return
 	
@@ -93,8 +94,8 @@ func update_weapon_position_and_rotation(aim_direction: Vector2):
 	
 	current_aim_direction = aim_direction.normalized()
 	
-	# CALCULAR POSICIÓN DEL ARMA EN EL CENTRO DERECHA DEL JUGADOR
-	var weapon_world_pos = weapon_stats.get_weapon_world_position(player_ref.global_position, current_aim_direction)
+	# CALCULAR POSICIÓN DEL ARMA MÁS ABAJO EN EL PERSONAJE
+	var weapon_world_pos = weapon_stats.get_weapon_world_position_lower(player_ref.global_position, current_aim_direction)
 	global_position = weapon_world_pos
 	
 	# CALCULAR ROTACIÓN DEL ARMA HACIA LA DIRECCIÓN DE APUNTADO
@@ -113,6 +114,7 @@ func update_weapon_position_and_rotation(aim_direction: Vector2):
 		if muzzle_flash_sprite:
 			muzzle_flash_sprite.flip_v = false
 			muzzle_flash_sprite.position = weapon_stats.muzzle_offset
+
 
 func start_shooting_animation():
 	"""Iniciar animación de disparo"""
@@ -171,12 +173,12 @@ func _on_shooting_finished():
 		weapon_stats.stop_shooting()
 
 func get_muzzle_world_position() -> Vector2:
-	"""Obtener la posición mundial del cañón - DESDE DONDE SALEN LAS BALAS"""
+	"""Obtener la posición mundial del cañón - DESDE POSICIÓN MÁS BAJA"""
 	if not weapon_stats or not player_ref:
 		return global_position
 	
-	# USAR LA FUNCIÓN DEL ARMA PARA OBTENER LA POSICIÓN EXACTA DEL CAÑÓN
-	var muzzle_world_pos = weapon_stats.get_muzzle_world_position(player_ref.global_position, current_aim_direction)
+	# USAR LA FUNCIÓN CORREGIDA CON POSICIÓN MÁS BAJA
+	var muzzle_world_pos = weapon_stats.get_muzzle_world_position_lower(player_ref.global_position, current_aim_direction)
 	
 	return muzzle_world_pos
 

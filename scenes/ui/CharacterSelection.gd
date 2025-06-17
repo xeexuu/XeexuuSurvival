@@ -8,96 +8,44 @@ func _ready():
 	setup_selection_ui()
 
 func setup_selection_ui():
+	"""INTERFAZ MINIMALISTA - SOLO PERSONAJES"""
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
-	# Fondo
+	# Fondo sutil
 	var bg = ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.05, 0.05, 0.15, 0.95)
+	bg.color = Color(0.02, 0.02, 0.1, 0.9)  # Fondo muy oscuro
 	add_child(bg)
 	
 	var is_mobile = OS.has_feature("mobile")
 	var viewport_size = get_viewport().get_visible_rect().size
 	
-	# ScrollContainer principal
-	var main_scroll = ScrollContainer.new()
-	main_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	if is_mobile:
-		main_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		main_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	else:
-		main_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		main_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	add_child(main_scroll)
+	# Contenedor principal SIN scroll
+	var main_container = Control.new()
+	main_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(main_container)
 	
-	# Contenedor principal
-	var main_container = VBoxContainer.new()
-	main_container.add_theme_constant_override("separation", 50 if is_mobile else 30)
-	
-	if is_mobile:
-		main_container.custom_minimum_size = Vector2(max(viewport_size.x, 1200), viewport_size.y - 20)
-	else:
-		main_container.custom_minimum_size = Vector2(viewport_size.x - 40, viewport_size.y - 40)
-		main_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		main_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	
-	main_scroll.add_child(main_container)
-	
-	# Espaciador superior
-	var top_spacer = Control.new()
-	top_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	top_spacer.custom_minimum_size = Vector2(0, 60 if is_mobile else 50)
-	main_container.add_child(top_spacer)
-	
-	# Título
-	var title_container = Control.new()
-	title_container.custom_minimum_size = Vector2(0, 120 if is_mobile else 100)
-	main_container.add_child(title_container)
-	
-	var title = Label.new()
-	title.text = "⚔ SELECCIONA TU GUERRERO ⚔"
-	var title_size = 64 if is_mobile else 48
-	title.add_theme_font_size_override("font_size", title_size)
-	title.add_theme_color_override("font_color", Color.GOLD)
-	title.add_theme_color_override("font_shadow_color", Color.BLACK)
-	title.add_theme_constant_override("shadow_offset_x", 4)
-	title.add_theme_constant_override("shadow_offset_y", 4)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	title_container.add_child(title)
-	
-	# Área de personajes
-	var characters_area = Control.new()
-	characters_area.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	characters_area.custom_minimum_size = Vector2(0, 550 if is_mobile else 500)
-	main_container.add_child(characters_area)
-	
-	# CARGAR PERSONAJES CON VALORES ORIGINALES DEL .tres
+	# CARGAR PERSONAJES
 	var characters = load_all_characters_with_original_values()
 	
-	# Contenedor de personajes - SIEMPRE HORIZONTAL PARA MÓVIL
-	var characters_container
-	if is_mobile:
-		characters_container = HBoxContainer.new()
-		characters_container.add_theme_constant_override("separation", 40)
-		characters_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		characters_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		characters_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	else:
-		characters_container = HBoxContainer.new()
-		characters_container.add_theme_constant_override("separation", 60)
-		characters_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		characters_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		characters_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	# Contenedor de personajes CENTRADO
+	var characters_container = HBoxContainer.new()
+	characters_container.add_theme_constant_override("separation", 60 if not is_mobile else 40)
+	characters_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	
-	characters_area.add_child(characters_container)
+	# Centrar en pantalla
+	var total_width = characters.size() * (320 if is_mobile else 280) + (characters.size() - 1) * (40 if is_mobile else 60)
+	var start_x = (viewport_size.x - total_width) / 2.0
+	var start_y = (viewport_size.y - (440 if is_mobile else 400)) / 2.0
 	
-	# Crear tarjetas
+	characters_container.position = Vector2(start_x, start_y)
+	main_container.add_child(characters_container)
+	
+	# Crear tarjetas SIN TEXTO
 	for character in characters:
 		var character_card = create_character_card_horizontal(character, is_mobile)
 		characters_container.add_child(character_card)
-	
+		
 	# Espaciador inferior
 	var bottom_spacer = Control.new()
 	bottom_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -216,19 +164,18 @@ func create_manual_fallback_characters() -> Array[CharacterStats]:
 	return characters
 
 func create_character_card_horizontal(character: CharacterStats, is_mobile: bool) -> Control:
-	"""Crear tarjeta de personaje mostrando valores reales del .tres"""
-	var _viewport_size = get_viewport().get_visible_rect().size
-	
+	"""Crear tarjeta de personaje - SOLO VISUAL, SIN TEXTO NI BOTONES"""
 	var card_width = 280 if not is_mobile else 320
-	var card_height = 480 if not is_mobile else 520
+	var card_height = 400 if not is_mobile else 440  # Más alto sin botón
 	
-	# Contenedor principal
+	# Contenedor principal CLICKEABLE
 	var card_container = Control.new()
 	card_container.custom_minimum_size = Vector2(card_width, card_height)
 	
-	# Panel
+	# Panel principal - ESTE ES EL ELEMENTO CLICKEABLE
 	var main_panel = Panel.new()
 	main_panel.size = Vector2(card_width, card_height)
+	main_panel.mouse_filter = Control.MOUSE_FILTER_STOP  # RECIBIR CLICKS
 	
 	var panel_style = StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.15, 0.15, 0.25, 0.95)
@@ -245,32 +192,13 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 	
 	card_container.add_child(main_panel)
 	
-	# Layout
-	var card_layout = VBoxContainer.new()
-	card_layout.add_theme_constant_override("separation", 20 if not is_mobile else 25)
-	var padding = 20 if not is_mobile else 25
-	card_layout.position = Vector2(padding, padding)
-	card_layout.size = Vector2(card_width - padding * 2, card_height - padding * 2)
-	main_panel.add_child(card_layout)
-	
-	# Nombre del personaje
-	var name_label = Label.new()
-	name_label.text = character.character_name.capitalize()
-	var name_font_size = 32 if not is_mobile else 38
-	name_label.add_theme_font_size_override("font_size", name_font_size)
-	name_label.add_theme_color_override("font_color", Color.GOLD)
-	name_label.add_theme_color_override("font_shadow_color", Color.BLACK)
-	name_label.add_theme_constant_override("shadow_offset_x", 3)
-	name_label.add_theme_constant_override("shadow_offset_y", 3)
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card_layout.add_child(name_label)
-	
-	# Área del sprite
+	# Layout SOLO para el sprite (centrado)
 	var sprite_container = Control.new()
-	sprite_container.custom_minimum_size = Vector2(0, 140 if not is_mobile else 160)
-	card_layout.add_child(sprite_container)
+	sprite_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	sprite_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_panel.add_child(sprite_container)
 	
-	# CARGAR SPRITE CON FALLBACK A CHICA
+	# CARGAR Y MOSTRAR SOLO EL SPRITE - MÁS GRANDE
 	var character_sprite = get_character_sprite_with_chica_fallback(character)
 	if character_sprite:
 		var sprite_rect = TextureRect.new()
@@ -278,150 +206,111 @@ func create_character_card_horizontal(character: CharacterStats, is_mobile: bool
 		sprite_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		sprite_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		
-		var display_size = 120 if not is_mobile else 140
+		# SPRITE MÁS GRANDE OCUPANDO TODA LA TARJETA
+		var display_size = min(card_width - 40, card_height - 40)
 		sprite_rect.size = Vector2(display_size, display_size)
 		sprite_rect.position = Vector2(
-			(card_width - padding * 2 - display_size) / 2.0,
-			(sprite_container.custom_minimum_size.y - display_size) / 2.0
+			(card_width - display_size) / 2.0,
+			(card_height - display_size) / 2.0
 		)
 		
 		sprite_container.add_child(sprite_rect)
 	else:
-		# Placeholder mejorado
+		# Placeholder mejorado MÁS GRANDE
 		var placeholder = ColorRect.new()
 		placeholder.color = get_character_color(character.character_name)
-		var placeholder_size = 100 if not is_mobile else 120
+		var placeholder_size = min(card_width - 60, card_height - 60)
 		placeholder.size = Vector2(placeholder_size, placeholder_size)
 		placeholder.position = Vector2(
-			(card_width - padding * 2 - placeholder_size) / 2.0,
-			(sprite_container.custom_minimum_size.y - placeholder_size) / 2.0
+			(card_width - placeholder_size) / 2.0,
+			(card_height - placeholder_size) / 2.0
 		)
 		sprite_container.add_child(placeholder)
 		
+		# Inicial del personaje en el placeholder
 		var initial = Label.new()
 		initial.text = get_character_initial(character.character_name)
-		initial.add_theme_font_size_override("font_size", 50 if not is_mobile else 60)
+		initial.add_theme_font_size_override("font_size", 120 if not is_mobile else 140)
 		initial.add_theme_color_override("font_color", Color.WHITE)
+		initial.add_theme_color_override("font_shadow_color", Color.BLACK)
+		initial.add_theme_constant_override("shadow_offset_x", 4)
+		initial.add_theme_constant_override("shadow_offset_y", 4)
 		initial.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		initial.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		initial.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		initial.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		placeholder.add_child(initial)
 	
-	# ESTADÍSTICAS REALES DEL .tres
-	var stats_container = Control.new()
-	stats_container.custom_minimum_size = Vector2(0, 120 if not is_mobile else 140)
-	card_layout.add_child(stats_container)
+	# INDICADOR VISUAL DE SELECCIÓN (opcional)
+	var selection_indicator = ColorRect.new()
+	selection_indicator.color = Color(1, 1, 0, 0)  # Transparente inicialmente
+	selection_indicator.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	selection_indicator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_panel.add_child(selection_indicator)
 	
-	var stats_bg = StyleBoxFlat.new()
-	stats_bg.bg_color = Color(0.1, 0.1, 0.15, 0.9)
-	stats_bg.corner_radius_top_left = 15
-	stats_bg.corner_radius_top_right = 15
-	stats_bg.corner_radius_bottom_left = 15
-	stats_bg.corner_radius_bottom_right = 15
-	
-	var stats_panel = Panel.new()
-	stats_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stats_panel.add_theme_stylebox_override("panel", stats_bg)
-	stats_container.add_child(stats_panel)
-	
-	# Grid de estadísticas con valores REALES
-	var stats_grid = GridContainer.new()
-	stats_grid.columns = 2
-	stats_grid.add_theme_constant_override("h_separation", 15)
-	stats_grid.add_theme_constant_override("v_separation", 12)
-	stats_grid.position = Vector2(15, 15)
-	stats_grid.size = Vector2(card_width - padding * 2 - 30, stats_container.custom_minimum_size.y - 30)
-	stats_panel.add_child(stats_grid)
-	
-	var stat_font_size = 20 if not is_mobile else 24
-	var icon_font_size = 24 if not is_mobile else 28
-	
-	# MOSTRAR VALORES EXACTOS DEL .tres
-	# Vida
-	var health_icon = create_stat_icon("❤", Color.LIGHT_GREEN, icon_font_size)
-	var health_value = create_stat_value(str(character.max_health), Color.LIGHT_GREEN, stat_font_size)
-	stats_grid.add_child(health_icon)
-	stats_grid.add_child(health_value)
-	
-	# Velocidad (MOSTRAR VALOR REAL DEL .tres)
-	var speed_icon = create_stat_icon("⚡", Color.CYAN, icon_font_size)
-	var speed_value = create_stat_value(str(character.movement_speed), Color.CYAN, stat_font_size)
-	stats_grid.add_child(speed_icon)
-	stats_grid.add_child(speed_value)
-	
-	# Daño del arma
-	var damage_icon = create_stat_icon("⚔", Color.RED, icon_font_size)
-	var damage_value = create_stat_value(
-		str(character.equipped_weapon.damage if character.equipped_weapon else 25), 
-		Color.RED, 
-		stat_font_size
-	)
-	stats_grid.add_child(damage_icon)
-	stats_grid.add_child(damage_value)
-	
-	# Suerte
-	var luck_icon = create_stat_icon("🍀", Color.MAGENTA, icon_font_size)
-	var luck_value = create_stat_value(str(character.luck), Color.MAGENTA, stat_font_size)
-	stats_grid.add_child(luck_icon)
-	stats_grid.add_child(luck_value)
-	
-	# Botón de selección
-	var select_button = Button.new()
-	select_button.text = "¡SELECCIONAR!"
-	var button_height = 60 if not is_mobile else 70
-	select_button.custom_minimum_size = Vector2(card_width - padding * 2, button_height)
-	var button_font_size = 24 if not is_mobile else 28
-	select_button.add_theme_font_size_override("font_size", button_font_size)
-	
-	var button_style = StyleBoxFlat.new()
-	button_style.bg_color = Color(0.2, 0.7, 0.2, 0.9)
-	button_style.corner_radius_top_left = 15
-	button_style.corner_radius_top_right = 15
-	button_style.corner_radius_bottom_left = 15
-	button_style.corner_radius_bottom_right = 15
-	select_button.add_theme_stylebox_override("normal", button_style)
-	
-	var button_hover = StyleBoxFlat.new()
-	button_hover.bg_color = Color(0.3, 0.8, 0.3, 1.0)
-	button_hover.corner_radius_top_left = 15
-	button_hover.corner_radius_top_right = 15
-	button_hover.corner_radius_bottom_left = 15
-	button_hover.corner_radius_bottom_right = 15
-	select_button.add_theme_stylebox_override("hover", button_hover)
-	
-	select_button.add_theme_color_override("font_color", Color.WHITE)
-	select_button.add_theme_color_override("font_shadow_color", Color.BLACK)
-	select_button.add_theme_constant_override("shadow_offset_x", 2)
-	select_button.add_theme_constant_override("shadow_offset_y", 2)
-	
-	card_layout.add_child(select_button)
-	
-	# Efectos hover solo en escritorio
+	# EFECTOS HOVER solo en escritorio
 	if not is_mobile:
-		select_button.mouse_entered.connect(func(): 
+		main_panel.mouse_entered.connect(func(): 
+			# Efecto hover
 			var tween = create_tween()
 			tween.tween_property(card_container, "scale", Vector2(1.05, 1.05), 0.15)
+			selection_indicator.color = Color(1, 1, 0, 0.2)  # Amarillo suave
 		)
-		select_button.mouse_exited.connect(func(): 
+		main_panel.mouse_exited.connect(func(): 
 			var tween = create_tween()
 			tween.tween_property(card_container, "scale", Vector2(1.0, 1.0), 0.15)
+			selection_indicator.color = Color(1, 1, 0, 0)  # Transparente
 		)
 	
-	# ACCIÓN DEL BOTÓN - ENVIAR PERSONAJE CON VALORES ORIGINALES
-	select_button.pressed.connect(func(): 
-		var tween = create_tween()
-		tween.tween_property(card_container, "scale", Vector2(0.95, 0.95), 0.1)
-		tween.tween_property(card_container, "scale", Vector2(1.0, 1.0), 0.1)
-		
-		print("🎮 Personaje seleccionado: ", character.character_name)
-		print("   Vida: ", character.current_health, "/", character.max_health)
-		print("   Velocidad: ", character.movement_speed)
-		
-		character_selected.emit(character)
-		queue_free()
+	# ACCIÓN DE SELECCIÓN - CLICK EN TODO EL PANEL
+	main_panel.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton:
+			var mouse_event = event as InputEventMouseButton
+			if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
+				# Efecto visual de selección
+				var tween = create_tween()
+				tween.tween_property(card_container, "scale", Vector2(0.95, 0.95), 0.1)
+				tween.tween_property(card_container, "scale", Vector2(1.0, 1.0), 0.1)
+				
+				# Flash de selección
+				selection_indicator.color = Color(0, 1, 0, 0.6)  # Verde brillante
+				var flash_tween = create_tween()
+				flash_tween.tween_property(selection_indicator, "color", Color(0, 1, 0, 0), 0.3)
+				
+				print("🎮 Personaje seleccionado: ", character.character_name)
+				print("   Vida: ", character.current_health, "/", character.max_health)
+				print("   Velocidad: ", character.movement_speed)
+				
+				# EMITIR SEÑAL DE SELECCIÓN
+				character_selected.emit(character)
+				queue_free()
 	)
 	
+	# SOPORTE TÁCTIL para móviles
+	if is_mobile:
+		var touch_button = TouchScreenButton.new()
+		touch_button.texture = ImageTexture.new()  # Textura invisible
+		touch_button.shape = RectangleShape2D.new()
+		touch_button.shape.size = Vector2(card_width, card_height)
+		touch_button.position = Vector2.ZERO
+		touch_button.pressed.connect(func():
+			# Misma acción que el click del mouse
+			var tween = create_tween()
+			tween.tween_property(card_container, "scale", Vector2(0.95, 0.95), 0.1)
+			tween.tween_property(card_container, "scale", Vector2(1.0, 1.0), 0.1)
+			
+			selection_indicator.color = Color(0, 1, 0, 0.6)
+			var flash_tween = create_tween()
+			flash_tween.tween_property(selection_indicator, "color", Color(0, 1, 0, 0), 0.3)
+			
+			print("📱 Personaje seleccionado (táctil): ", character.character_name)
+			character_selected.emit(character)
+			queue_free()
+		)
+		main_panel.add_child(touch_button)
+	
 	return card_container
+
 
 func get_character_sprite_with_chica_fallback(character: CharacterStats) -> Texture2D:
 	"""Obtener sprite del personaje con FALLBACK AUTOMÁTICO A CHICA"""

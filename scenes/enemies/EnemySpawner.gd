@@ -141,7 +141,7 @@ func _try_spawn_enemy():
 			spawn_timer.start()
 
 func spawn_enemy() -> bool:
-	"""Spawnear nuevo enemigo LEJOS del jugador"""
+	"""Spawnear nuevo enemigo LEJOS del jugador - SALUD COMPLETA"""
 	if not player:
 		return false
 	
@@ -154,21 +154,31 @@ func spawn_enemy() -> bool:
 	if not enemy:
 		return false
 	
-	# Determinar tipo de enemigo según la ronda
+	# Determinar tipo de enemigo según la ronda ANTES de configurar salud
 	var enemy_type = determine_enemy_type_by_round(current_round_number)
 	enemy.enemy_type = enemy_type
 	
-	# Configurar enemigo
+	# CONFIGURAR SALUD COMPLETA PARA LA RONDA
 	var round_health = rounds_manager.get_enemy_health_for_current_round() if rounds_manager else 150
+	
+	print("🏥 Configurando enemigo con salud de ronda: ", round_health)
+	
+	# Configurar enemigo CON SALUD COMPLETA
 	enemy.setup_for_spawn(player, round_health)
 	
-	# POSICIONAR ENEMIGO EN POSICIÓN SEGURA
+	# VERIFICAR QUE LA SALUD SEA CORRECTA
+	if enemy.current_health != enemy.max_health:
+		print("⚠️ ERROR: Enemigo spawneado sin salud completa!")
+		enemy.current_health = enemy.max_health
+		enemy.update_health_bar()
+	
+	# POSICIONAR ENEMIGO
 	enemy.global_position = spawn_position
 	enemy.visible = true
 	enemy.set_physics_process(true)
 	enemy.set_process(true)
 	
-	# VERIFICAR QUE EL SPRITE SEA VISIBLE
+	# VERIFICAR SPRITE
 	if enemy.sprite:
 		enemy.sprite.visible = true
 	
@@ -177,6 +187,8 @@ func spawn_enemy() -> bool:
 	
 	active_enemies.append(enemy)
 	enemy_spawned.emit(enemy)
+	
+	print("✅ Enemigo spawneado exitosamente - Salud final: ", enemy.current_health, "/", enemy.max_health)
 	
 	return true
 

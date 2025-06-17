@@ -146,7 +146,7 @@ func _physics_process(delta):
 	move_and_slide()
 
 func handle_movement(_delta):
-	"""Manejar movimiento - SEPARADO DEL SISTEMA DE DISPARO"""
+	"""Manejar movimiento - ASEGURAR QUE SE ACTUALICE current_movement_direction"""
 	var input_direction = Vector2.ZERO
 	
 	if is_mobile:
@@ -164,14 +164,19 @@ func handle_movement(_delta):
 	velocity = input_direction * move_speed
 	apply_map_bounds()
 	
-	# ACTUALIZAR ANIMACIONES BASADAS EN MOVIMIENTO
+	# ACTUALIZAR ANIMACIONES
 	update_movement_animations()
+	
+	# DEBUG: Verificar que las direcciones se estén pasando
+	print("🎮 [PLAYER] Movimiento: ", current_movement_direction, " Apuntado: ", current_aim_direction)
+
+
 
 func update_movement_animations():
-	"""Actualizar animaciones - PRIORIDAD AL DISPARO"""
+	"""Actualizar animaciones - PRIORIDAD AL APUNTADO"""
 	if animation_controller:
-		# Usar la función correcta del controlador
-		animation_controller.update_animation(current_movement_direction, current_aim_direction)  # ❌ ESTA LÍNEA
+		# CORREGIDO: Pasar apuntado como dirección principal
+		animation_controller.update_animation_for_movement(current_movement_direction, current_aim_direction)
 		
 func apply_map_bounds():
 	"""Aplicar límites del mapa"""
@@ -192,7 +197,7 @@ func apply_map_bounds():
 		global_position.y = map_bounds.position.y + map_bounds.size.y
 
 func handle_shooting():
-	"""Manejar disparo - SOLO PARA ARMAS, NO PARA ANIMACIONES"""
+	"""Manejar disparo - ASEGURAR QUE SE ACTUALICE current_aim_direction"""
 	if not shooting_component:
 		return
 	
@@ -206,9 +211,10 @@ func handle_shooting():
 		shoot_direction.y = Input.get_action_strength("shoot_down") - Input.get_action_strength("shoot_up")
 	
 	if shoot_direction.length() > 0:
-		# ACTUALIZAR DIRECCIÓN DE APUNTADO SOLO PARA EL ARMA
+		# ACTUALIZAR DIRECCIÓN DE APUNTADO
 		current_aim_direction = shoot_direction.normalized()
 		perform_shoot(current_aim_direction)
+	# NO resetear current_aim_direction aquí para mantener la orientación
 
 func perform_shoot(direction: Vector2):
 	"""Realizar disparo"""

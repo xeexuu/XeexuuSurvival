@@ -623,9 +623,8 @@ func _on_restart_game():
 	restart_entire_game()
 
 func _on_quit_game():
-	"""Salir del juego"""
-	clear_all_enemies()
-	get_tree().paused = false
+	"""Salir del juego CORRECTAMENTE"""
+	cleanup_before_exit()
 	get_tree().quit()
 
 func setup_pause_menu():
@@ -888,12 +887,45 @@ func _notification(what):
 	"""Manejar notificaciones del sistema"""
 	match what:
 		NOTIFICATION_WM_CLOSE_REQUEST:
+			# Limpiar todo antes de cerrar
+			cleanup_before_exit()
 			get_tree().quit()
 		NOTIFICATION_APPLICATION_PAUSED:
 			if is_game_active():
 				toggle_pause_menu()
 
-func _exit_tree():
-	"""Limpiar al salir"""
+func cleanup_before_exit():
+	"""Limpiar todo antes de salir del juego"""
+	# Detener todos los procesos
 	set_process(false)
 	set_physics_process(false)
+	
+	# Limpiar enemigos
+	if enemy_spawner:
+		enemy_spawner.clear_all_enemies()
+		enemy_spawner.pause_spawning()
+	
+	# Detener timers
+	if rounds_manager:
+		rounds_manager.set_process(false)
+		rounds_manager.set_physics_process(false)
+	
+	if score_system:
+		score_system.set_process(false)
+		score_system.set_physics_process(false)
+	
+	# Detener jugador
+	if player:
+		player.set_process(false)
+		player.set_physics_process(false)
+	
+	# Desactivar joysticks móviles
+	if is_mobile:
+		set_process_input(false)
+	
+	# Pausar el árbol antes de salir
+	get_tree().paused = false
+
+func _exit_tree():
+	"""Limpiar al salir del árbol de nodos"""
+	cleanup_before_exit()

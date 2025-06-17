@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - SOLUCIÓN SIMPLE: ANCLAJE EN ATAQUE
+# scenes/enemies/Enemy.gd - COMPLETO CORREGIDO SIN PRINTS
 extends CharacterBody2D
 class_name Enemy
 
@@ -23,36 +23,36 @@ var player: Player = null
 var is_dead: bool = false
 var last_attack_time: float = 0.0
 var current_move_speed: float = 150.0
-
-# Variable que faltaba
 var enemy_sprite_frames: SpriteFrames
 
-# ===== SISTEMA SIMPLE ANTI-PEGADO =====
 enum WaWState {
 	SPAWNING,
 	HUNTING,
 	CHARGING,
-	ATTACKING,    # ANCLADO: No se mueve cuando ataca
+	ATTACKING,
 	STUNNED
 }
 
 var current_state: WaWState = WaWState.SPAWNING
 var state_timer: float = 0.0
-
-# Variables simples
 var last_known_player_position: Vector2
 var charge_speed_multiplier: float = 1.5
 var min_separation_distance: float = 35.0
 var max_separation_distance: float = 50.0
-
-# SOLUCIÓN SIMPLE: ANCLAJE EN ATAQUE
-var is_anchored: bool = false  # Anclado al suelo durante ataque
-var anchor_position: Vector2   # Posición donde se ancla
+var is_anchored: bool = false
+var anchor_position: Vector2
 
 func _ready():
 	add_to_group("enemies")
 	setup_enemy()
 	determine_waw_variant()
+	call_deferred("verify_sprite_after_ready")
+
+func verify_sprite_after_ready():
+	"""Verificar sprite después de _ready"""
+	if not sprite or not sprite.visible:
+		load_enemy_sprite_waw_size()
+		force_sprite_visibility()
 
 func setup_enemy():
 	"""Configurar enemigo base"""
@@ -217,10 +217,11 @@ func try_load_texture_safe(path: String) -> Texture2D:
 	return null
 
 func setup_health_bar():
+	"""Configurar barra de vida CON NÚMEROS VISIBLES"""
 	if not health_bar:
 		health_bar = ProgressBar.new()
-		health_bar.size = Vector2(80, 10)
-		health_bar.position = Vector2(-40, -70)
+		health_bar.size = Vector2(100, 16)
+		health_bar.position = Vector2(-50, -70)
 		add_child(health_bar)
 	
 	health_bar.max_value = max_health
@@ -230,60 +231,127 @@ func setup_health_bar():
 	
 	var style_bg = StyleBoxFlat.new()
 	style_bg.bg_color = Color.BLACK
+	style_bg.border_color = Color.WHITE
+	style_bg.border_width_left = 1
+	style_bg.border_width_right = 1
+	style_bg.border_width_top = 1
+	style_bg.border_width_bottom = 1
 	health_bar.add_theme_stylebox_override("background", style_bg)
 	
 	var style_fill = StyleBoxFlat.new()
 	style_fill.bg_color = Color.RED
 	health_bar.add_theme_stylebox_override("fill", style_fill)
+	
+	setup_health_text()
+
+func setup_health_text():
+	"""Configurar texto de vida encima de la barra"""
+	var health_text = get_node_or_null("HealthText")
+	if health_text:
+		health_text.queue_free()
+	
+	health_text = Label.new()
+	health_text.name = "HealthText"
+	health_text.text = str(current_health) + "/" + str(max_health)
+	health_text.add_theme_font_size_override("font_size", 14)
+	health_text.add_theme_color_override("font_color", Color.WHITE)
+	health_text.add_theme_color_override("font_shadow_color", Color.BLACK)
+	health_text.add_theme_constant_override("shadow_offset_x", 1)
+	health_text.add_theme_constant_override("shadow_offset_y", 1)
+	health_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	health_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	
+	health_text.position = Vector2(-25, -90)
+	health_text.size = Vector2(50, 16)
+	
+	add_child(health_text)
+
+func force_sprite_visibility():
+	"""Forzar que el sprite sea visible"""
+	if sprite:
+		sprite.visible = true
+		sprite.modulate = Color.WHITE
+		sprite.scale = Vector2(1.0, 1.0)
+		
+		if sprite is AnimatedSprite2D:
+			var animated_sprite = sprite as AnimatedSprite2D
+			if animated_sprite.sprite_frames:
+				if not animated_sprite.is_playing():
+					animated_sprite.play("idle")
+			else:
+				load_enemy_sprite_waw_size()
 
 func setup_for_spawn(target_player: Player, round_health: int = -1):
+	"""Configurar para spawn - SIN RESETEAR BARRA DE VIDA"""
 	player = target_player
 	
+	# Configurar salud si se proporciona
 	if round_health > 0:
 		max_health = round_health
-		match enemy_type:
-			"zombie_runner":
-				max_health = int(float(max_health) * 0.7)
-			"zombie_charger":
-				max_health = int(float(max_health) * 0.9)
+	
+	# Aplicar modificadores de variante
+	match enemy_type:
+		"zombie_runner":
+			max_health = int(float(max_health) * 0.6)
+		"zombie_charger":
+			max_health = int(float(max_health) * 0.8)
+		"zombie_crawler":
+			max_health = int(float(max_health) * 1.3)
 	
 	current_health = max_health
 	is_dead = false
 	current_state = WaWState.SPAWNING
-	
-	# RESETEAR SISTEMA DE ANCLAJE
 	is_anchored = false
 	anchor_position = Vector2.ZERO
 	
-	modulate = Color(1, 1, 1, 0)
-	scale = Vector2.ZERO
+	modulate = Color(1, 1, 1, 1)
+	scale = Vector2(1.0, 1.0)
+	force_sprite_visibility()
 	
 	call_deferred("_reactivate_collision")
 	update_health_bar()
 	start_spawn_animation()
 
 func start_spawn_animation():
+	"""Spawn sin ocultar sprite"""
 	current_state = WaWState.SPAWNING
 	
-	var spawn_tween = create_tween()
-	spawn_tween.set_parallel(true)
-	
-	spawn_tween.tween_method(set_spawn_scale, 0.0, 1.0, 0.5)
-	spawn_tween.tween_method(set_spawn_alpha, 0.0, 1.0, 0.3)
-	
-	spawn_tween.tween_callback(func(): 
+	var spawn_timer = Timer.new()
+	spawn_timer.wait_time = 0.1
+	spawn_timer.one_shot = true
+	spawn_timer.timeout.connect(func():
 		current_state = WaWState.HUNTING
 		state_timer = 0.0
+		spawn_timer.queue_free()
 	)
+	add_child(spawn_timer)
+	spawn_timer.start()
 
-func set_spawn_scale(value: float):
-	var base_scale = Vector2(1.0, 1.0)
-	scale = base_scale * value
-
-func set_spawn_alpha(value: float):
-	var current_color = modulate
-	current_color.a = value
-	modulate = current_color
+func update_health_bar():
+	"""Actualizar barra de vida Y texto"""
+	if not health_bar:
+		setup_health_bar()
+		return
+	
+	health_bar.value = current_health
+	health_bar.max_value = max_health
+	health_bar.visible = true
+	
+	var health_text = get_node_or_null("HealthText")
+	if not health_text:
+		setup_health_text()
+		health_text = get_node_or_null("HealthText")
+	
+	if health_text:
+		health_text.text = str(current_health) + "/" + str(max_health)
+		
+		var health_percentage = float(current_health) / float(max_health)
+		if health_percentage > 0.7:
+			health_text.add_theme_color_override("font_color", Color.WHITE)
+		elif health_percentage > 0.3:
+			health_text.add_theme_color_override("font_color", Color.YELLOW)
+		else:
+			health_text.add_theme_color_override("font_color", Color.RED)
 
 func _reactivate_collision():
 	if collision_shape and is_instance_valid(collision_shape):
@@ -298,8 +366,6 @@ func _physics_process(delta):
 	update_movement_animation()
 	
 	move_and_slide()
-
-# ===== IA SIMPLE CON ANCLAJE =====
 
 func update_waw_ai_state_machine(delta):
 	"""IA con anclaje en ataque"""
@@ -323,47 +389,39 @@ func update_waw_ai_state_machine(delta):
 			if distance_to_player <= attack_range:
 				current_state = WaWState.ATTACKING
 				state_timer = 0.0
-				# ANCLAR AL ENTRAR EN ATAQUE
 				anchor_at_current_position()
 				start_waw_attack()
 		
 		WaWState.ATTACKING:
-			# MANTENERSE ANCLADO DURANTE EL ATAQUE
 			if distance_to_player <= attack_range and can_attack():
 				execute_waw_attack()
 			elif distance_to_player > attack_range * 1.5:
-				# DESANCLAR Y VOLVER A CARGAR
 				unanchor()
 				current_state = WaWState.CHARGING
 				state_timer = 0.0
 		
 		WaWState.STUNNED:
 			if state_timer > 0.1:
-				# DESANCLAR AL SALIR DE STUN
 				unanchor()
 				current_state = WaWState.CHARGING
 				state_timer = 0.0
 
 func anchor_at_current_position():
-	"""ANCLAR: Fijar posición durante ataque"""
+	"""Anclar posición durante ataque"""
 	is_anchored = true
 	anchor_position = global_position
-	print("🔒 Enemigo anclado en: ", anchor_position)
 
 func unanchor():
-	"""DESANCLAR: Permitir movimiento normal"""
+	"""Desanclar - permitir movimiento normal"""
 	is_anchored = false
 	anchor_position = Vector2.ZERO
-	print("🔓 Enemigo desanclado")
 
-func handle_waw_movement(delta):
+func handle_waw_movement(_delta):
 	"""Movimiento con anclaje"""
 	var movement_direction = Vector2.ZERO
 	
-	# SI ESTÁ ANCLADO, NO SE MUEVE
 	if is_anchored:
 		velocity = Vector2.ZERO
-		# FORZAR POSICIÓN DE ANCLAJE
 		global_position = anchor_position
 		return
 	
@@ -379,13 +437,11 @@ func handle_waw_movement(delta):
 			movement_direction = get_waw_charge_movement()
 		
 		WaWState.ATTACKING:
-			# NO DEBERÍA LLEGAR AQUÍ SI ESTÁ ANCLADO
 			movement_direction = Vector2.ZERO
 		
 		WaWState.STUNNED:
 			movement_direction = velocity * 0.1
 	
-	# Aplicar separación básica
 	movement_direction += get_basic_separation() * 0.3
 	
 	if movement_direction != Vector2.ZERO:
@@ -396,12 +452,10 @@ func get_waw_charge_movement() -> Vector2:
 	var direction_to_player = (player.global_position - global_position).normalized()
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	# SEPARACIÓN BÁSICA
 	if distance_to_player < min_separation_distance:
 		var repulsion_dir = (global_position - player.global_position).normalized()
 		return repulsion_dir * 1.2
 	
-	# CARGA DIRECTA NORMAL
 	return direction_to_player * charge_speed_multiplier
 
 func get_basic_separation() -> Vector2:
@@ -409,7 +463,6 @@ func get_basic_separation() -> Vector2:
 	var separation = Vector2.ZERO
 	var separation_radius = 60.0
 	
-	# SEPARACIÓN DE OTROS ZOMBIES
 	for other_zombie in get_tree().get_nodes_in_group("enemies"):
 		if other_zombie == self or not is_instance_valid(other_zombie):
 			continue
@@ -421,8 +474,6 @@ func get_basic_separation() -> Vector2:
 			separation += separation_dir * strength * 1.0
 	
 	return separation.normalized() * min(separation.length(), 2.0)
-
-# ===== RESTO DE FUNCIONES (SIMPLIFICADAS) =====
 
 func start_waw_attack():
 	"""Ataque simple"""
@@ -498,6 +549,7 @@ func update_movement_animation():
 			animated_sprite.play("idle")
 
 func take_damage(amount: int, is_headshot: bool = false):
+	"""Recibir daño con texto actualizado"""
 	if is_dead:
 		return
 	
@@ -507,7 +559,6 @@ func take_damage(amount: int, is_headshot: bool = false):
 	current_state = WaWState.STUNNED
 	state_timer = 0.0
 	
-	# DESANCLAR AL RECIBIR DAÑO
 	unanchor()
 	
 	if sprite:
@@ -520,12 +571,43 @@ func take_damage(amount: int, is_headshot: bool = false):
 		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
 	
 	update_health_bar()
+	show_damage_number(amount, is_headshot)
+	
 	damaged.emit(self, amount)
 	
 	if current_health <= 0:
 		die()
 
+func show_damage_number(damage_amount: int, is_headshot: bool = false):
+	"""Mostrar número de daño flotante"""
+	var damage_label = Label.new()
+	damage_label.text = "-" + str(damage_amount)
+	
+	if is_headshot:
+		damage_label.text = "HEADSHOT! -" + str(damage_amount)
+		damage_label.add_theme_color_override("font_color", Color.YELLOW)
+		damage_label.add_theme_font_size_override("font_size", 18)
+	else:
+		damage_label.add_theme_color_override("font_color", Color.RED)
+		damage_label.add_theme_font_size_override("font_size", 16)
+	
+	damage_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	damage_label.add_theme_constant_override("shadow_offset_x", 2)
+	damage_label.add_theme_constant_override("shadow_offset_y", 2)
+	damage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	
+	damage_label.position = Vector2(-25, -120)
+	damage_label.size = Vector2(50, 20)
+	
+	add_child(damage_label)
+	
+	var tween = create_tween()
+	tween.parallel().tween_property(damage_label, "position", damage_label.position + Vector2(0, -50), 1.0)
+	tween.parallel().tween_property(damage_label, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(func(): damage_label.queue_free())
+
 func die():
+	"""Muerte con texto"""
 	if is_dead:
 		return
 	
@@ -546,17 +628,14 @@ func die():
 	if health_bar:
 		health_bar.visible = false
 	
+	var health_text = get_node_or_null("HealthText")
+	if health_text:
+		health_text.visible = false
+	
 	died.emit(self)
 
-func update_health_bar():
-	if not health_bar:
-		return
-	
-	health_bar.value = current_health
-	health_bar.max_value = max_health
-	health_bar.visible = true
-
 func reset_for_pool():
+	"""Reset para pool SIN RESETEAR barra de vida"""
 	is_dead = false
 	current_state = WaWState.SPAWNING
 	current_health = max_health
@@ -567,6 +646,8 @@ func reset_for_pool():
 	
 	if sprite:
 		sprite.visible = true
+		sprite.modulate = Color.WHITE
+		sprite.scale = Vector2(1.0, 1.0)
 	
 	set_physics_process(false)
 	set_process(false)

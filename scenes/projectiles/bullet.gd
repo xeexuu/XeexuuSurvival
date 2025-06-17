@@ -252,7 +252,7 @@ func apply_knockback_to_target(target: Node2D):
 			var knockback_direction = direction.normalized()
 			target.apply_knockback(knockback_direction, knockback_force)
 
-func destroy_bullet(reason: String):
+func destroy_bullet(_reason: String):
 	"""Destruir bala de forma segura"""
 	if is_being_destroyed:
 		return

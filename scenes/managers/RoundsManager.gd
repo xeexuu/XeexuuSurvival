@@ -123,14 +123,14 @@ func calculate_enemy_health_for_round(round_num: int) -> int:
 		# Límite máximo para evitar números absurdos
 		return min(int(final_health), 50000)
 
-func _on_enemy_killed_from_spawner(enemy: Enemy):
+func _on_enemy_killed_from_spawner(_enemy: Enemy):
 	"""Cuando el spawner reporta un enemigo muerto"""
 	enemies_killed_this_round += 1
 	enemies_remaining_in_round = max(0, enemies_remaining_in_round - 1)
 	
 	enemies_remaining_changed.emit(enemies_remaining_in_round)
 
-func _on_enemy_spawned_from_spawner(enemy: Enemy):
+func _on_enemy_spawned_from_spawner(_enemy: Enemy):
 	"""Cuando el spawner reporta un enemigo spawneado"""
 	enemies_spawned_this_round += 1
 
