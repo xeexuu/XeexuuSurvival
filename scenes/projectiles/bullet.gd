@@ -1,4 +1,4 @@
-# scenes/projectiles/bullet.gd - ERRORES CORREGIDOS Y SIN PRINTS REPETITIVOS
+# scenes/projectiles/bullet.gd - CON DETECCIÓN DE HITBOXES ESPECÍFICAS
 extends Area2D
 class_name Bullet
 
@@ -6,7 +6,6 @@ class_name Bullet
 @export var max_range: float = 300.0
 @export var lifetime: float = 5.0
 
-# Propiedades de armas estilo COD Black Ops
 var has_piercing: bool = false
 var has_explosive: bool = false
 var knockback_force: float = 0.0
@@ -22,16 +21,14 @@ var distance_traveled: float = 0.0
 var lifetime_timer: Timer
 var is_being_destroyed: bool = false
 
-# REFERENCIA AL SCORE SYSTEM PARA PUNTUACIÓN BO1
 var score_system: ScoreSystem
 
 @onready var sprite = $Sprite2D
 @onready var collision = $CollisionShape2D
 
 func _ready():
-	# CONFIGURAR CAPAS DE COLISIÓN CORRECTAMENTE
-	collision_layer = 4  # Capa de proyectiles
-	collision_mask = 2   # SOLO DETECTAR ENEMIGOS (capa 2)
+	collision_layer = 4
+	collision_mask = 2
 	
 	add_to_group("bullets")
 	
@@ -41,16 +38,13 @@ func _ready():
 	lifetime_timer.timeout.connect(_on_lifetime_timeout)
 	add_child(lifetime_timer)
 	
-	# CREAR SPRITE SIEMPRE VISIBLE
 	setup_sprite()
 	
-	# CONECTAR SEÑALES CORRECTAMENTE
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
 	
 	lifetime_timer.start()
 	
-	# OBTENER SCORE SYSTEM
 	get_score_system_reference()
 
 func get_score_system_reference():
@@ -67,7 +61,6 @@ func setup_sprite():
 	if not sprite:
 		return
 		
-	# CREAR TEXTURA SIEMPRE VISIBLE
 	var image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
 	image.fill(Color.TRANSPARENT)
 	
@@ -77,7 +70,6 @@ func setup_sprite():
 	elif has_explosive:
 		base_color = Color.ORANGE
 	
-	# Crear bala visible estilo COD
 	for x in range(8):
 		for y in range(8):
 			var dist = Vector2(x - 4, y - 4).length()
@@ -90,7 +82,7 @@ func setup_sprite():
 	
 	sprite.texture = ImageTexture.create_from_image(image)
 	sprite.visible = true
-	sprite.z_index = 50  # Asegurar que esté visible encima de otros elementos
+	sprite.z_index = 50
 
 func setup(new_direction: Vector2, new_speed: float, weapon_range: float = 300.0):
 	"""Configurar la bala"""
@@ -120,61 +112,65 @@ func _on_lifetime_timeout():
 		destroy_bullet("lifetime")
 
 func _on_area_entered(area: Area2D):
-	"""DETECTAR ÁREA DE ENEMIGO (para headshots)"""
+	"""DETECTAR ÁREA DE ENEMIGO con hitboxes específicas"""
 	if area == self or is_being_destroyed:
 		return
 	
-	# Verificar si es área de headshot
 	var enemy_parent = area.get_parent()
 	if not enemy_parent or not (enemy_parent is Enemy):
 		return
 	
-	if area.name == "HeadArea":
-		handle_headshot_hit(enemy_parent)
-	else:
-		handle_hit(enemy_parent)
+	if has_piercing and enemy_parent in targets_hit:
+		return
+	
+	var is_headshot = false
+	var damage_multiplier = 1.0
+	
+	# Determinar tipo de hit según el área
+	match area.name:
+		"HeadArea":
+			is_headshot = true
+			damage_multiplier = headshot_multiplier
+		"BodyArea":
+			damage_multiplier = 1.0
+		"LegsArea":
+			damage_multiplier = 0.8
+		_:
+			damage_multiplier = 1.0
+	
+	# Calcular daño final
+	var final_damage = int(float(damage) * damage_multiplier)
+	
+	# Aplicar daño
+	apply_damage_to_target(enemy_parent, final_damage, is_headshot)
+	apply_knockback_to_target(enemy_parent)
+	
+	# Sistema de puntuación
+	if score_system:
+		var enemy_ref = enemy_parent as Enemy
+		if enemy_ref.current_health <= 0:
+			score_system.add_kill_points(global_position, is_headshot, false)
+		else:
+			score_system.add_damage_points(global_position, final_damage, is_headshot)
+	
+	# Crear efecto de impacto
+	create_hit_effect(global_position, is_headshot)
+	
+	handle_piercing_logic(enemy_parent)
 
 func _on_body_entered(body: Node2D):
 	"""DETECTAR CUERPO DE ENEMIGO"""
 	if is_being_destroyed:
 		return
 	
-	# SOLO PROCESAR ENEMIGOS
 	if body is Player:
 		return
 		
 	if body is Enemy:
 		handle_hit(body)
 
-func handle_headshot_hit(enemy: Node2D):
-	"""Manejar impacto headshot estilo COD Black Ops 1"""
-	if is_being_destroyed or not (enemy is Enemy):
-		return
-	
-	if has_piercing and enemy in targets_hit:
-		return
-	
-	var enemy_ref = enemy as Enemy
-	
-	# CALCULAR DAÑO DE HEADSHOT
-	var headshot_damage = int(float(damage) * headshot_multiplier)
-	apply_damage_to_target(enemy, headshot_damage, true)
-	apply_knockback_to_target(enemy)
-	
-	# SISTEMA DE PUNTUACIÓN BLACK OPS 1
-	if score_system:
-		if enemy_ref.current_health <= 0:
-			score_system.add_kill_points(global_position, true, false)
-		else:
-			score_system.add_damage_points(global_position, headshot_damage, true)
-	
-	# Crear efecto de headshot
-	create_hit_effect(global_position, true)
-	
-	handle_piercing_logic(enemy)
-
 func handle_hit(target: Node2D):
-	"""Manejar impacto normal estilo Black Ops 1"""
+	"""Manejar impacto normal"""
 	if is_being_destroyed or not (target is Enemy):
 		return
 	
@@ -186,14 +182,12 @@ func handle_hit(target: Node2D):
 	apply_damage_to_target(target, damage, false)
 	apply_knockback_to_target(target)
 	
-	# SISTEMA DE PUNTUACIÓN BLACK OPS 1
 	if score_system:
 		if enemy_ref.current_health <= 0:
 			score_system.add_kill_points(global_position, false, false)
 		else:
 			score_system.add_damage_points(global_position, damage, false)
 	
-	# Crear efecto de impacto
 	create_hit_effect(global_position, false)
 	
 	handle_piercing_logic(target)
@@ -210,12 +204,11 @@ func handle_piercing_logic(target: Node2D):
 		destroy_bullet("impact")
 
 func create_hit_effect(hit_position: Vector2, is_headshot: bool):
-	"""Crear efecto visual de impacto - CORREGIDO: parámetro renombrado"""
+	"""Crear efecto visual de impacto"""
 	var effect_scene = get_tree().current_scene
 	if not effect_scene:
 		return
 	
-	# Crear partículas simples de impacto
 	for i in range(3 if not is_headshot else 6):
 		var particle = Sprite2D.new()
 		var particle_image = Image.create(4, 4, false, Image.FORMAT_RGBA8)
@@ -229,7 +222,6 @@ func create_hit_effect(hit_position: Vector2, is_headshot: bool):
 		particle.global_position = hit_position + Vector2(randf_range(-10, 10), randf_range(-10, 10))
 		effect_scene.add_child(particle)
 		
-		# Animar partícula
 		var tween = effect_scene.create_tween()
 		tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
 		tween.parallel().tween_property(particle, "global_position", particle.global_position + Vector2(randf_range(-20, 20), randf_range(-20, 20)), 0.5)

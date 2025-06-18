@@ -9,7 +9,7 @@ func _ready():
 
 func create_boundary_walls():
 	"""Crear SOLO paredes del perímetro del mapa"""
-	var map_size = 1600
+	var map_size = 4320
 	var wall_thickness = 50
 	var half_size = map_size / 2
 	

@@ -1,4 +1,4 @@
-# scenes/managers/ScoreSystem.gd - SISTEMA DE PUNTUACIÓN CALL OF DUTY BLACK OPS 1 ZOMBIES
+# scenes/managers/ScoreSystem.gd - CON AUDIO ACELERADO PARA KILLS DE PELAO
 extends Node
 class_name ScoreSystem
 
@@ -11,38 +11,78 @@ var headshot_kills: int = 0
 var current_kill_streak: int = 0
 var best_kill_streak: int = 0
 
+# SISTEMA DE AUDIO PARA KILLS
+var audio_player: AudioStreamPlayer2D
+var is_audio_playing: bool = false
+var character_name: String = ""
+
 # PUNTUACIÓN EXACTA COD BLACK OPS 1 ZOMBIES
-var base_kill_points: int = 50        # Puntos por kill básico
-var headshot_bonus: int = 50          # Bonus adicional por headshot (50 + 50 = 100 total)
-var melee_kill_bonus: int = 130       # Bonus por kill cuerpo a cuerpo
+var base_kill_points: int = 50        
+var headshot_bonus: int = 50          
+var melee_kill_bonus: int = 130       
 var max_window_repair_points: int = 100
-var insta_kill_points: int = 50       # Puntos durante insta-kill
-var carpenter_points: int = 200       # Puntos por power-up carpenter
-var max_ammo_points: int = 400        # Puntos por power-up max ammo
+var insta_kill_points: int = 50       
+var carpenter_points: int = 200       
+var max_ammo_points: int = 400        
 
 # MULTIPLICADORES POR RONDA (BLACK OPS 1)
 var round_multipliers: Array[int] = [
-	1,   # Ronda 1
-	1,   # Ronda 2
-	1,   # Ronda 3
-	1,   # Ronda 4
-	1,   # Ronda 5
-	1,   # Ronda 6
-	1,   # Ronda 7
-	1,   # Ronda 8
-	1,   # Ronda 9
-	2,   # Ronda 10+
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 2   # Ronda 10+ = x2
 ]
 
 var current_round_multiplier: int = 1
 var current_round: int = 1
 
-# Efectos de puntuación
-var score_popup_scene: PackedScene
-
 func _ready():
-	if ResourceLoader.exists("res://scenes/ui/ScorePopup.tscn"):
-		score_popup_scene = load("res://scenes/ui/ScorePopup.tscn")
+	setup_audio_system()
+
+func setup_audio_system():
+	"""Configurar sistema de audio para kills"""
+	audio_player = AudioStreamPlayer2D.new()
+	audio_player.name = "KillAudioPlayer"
+	audio_player.volume_db = 0.0  # Volumen normal
+	audio_player.pitch_scale = 1.5  # VELOCIDAD ACELERADA 1.5x
+	audio_player.finished.connect(_on_audio_finished)
+	add_child(audio_player)
+
+func _on_audio_finished():
+	"""Cuando termina de reproducirse el audio"""
+	is_audio_playing = false
+
+func set_character_name(char_name: String):
+	"""Establecer el nombre del personaje para cargar su audio"""
+	character_name = char_name.to_lower()
+	load_character_kill_audio()
+
+func load_character_kill_audio():
+	"""Cargar audio específico del personaje"""
+	if character_name.is_empty():
+		return
+	
+	var audio_path = "res://audio/" + character_name + "_shoot.ogg"
+	
+	if ResourceLoader.exists(audio_path):
+		var audio_stream = load(audio_path) as AudioStream
+		if audio_stream:
+			audio_player.stream = audio_stream
+			print("✅ Audio de kill cargado para ", character_name, ": ", audio_path)
+		else:
+			print("❌ Error cargando audio para ", character_name)
+	else:
+		print("⚠️ Audio no encontrado para ", character_name, ": ", audio_path)
+
+func play_kill_audio():
+	"""Reproducir audio de kill SOLO SI NO SE ESTÁ REPRODUCIENDO"""
+	if is_audio_playing or not audio_player or not audio_player.stream:
+		return
+	
+	# SOLO PARA PELAO - otros personajes no tienen audio de kill
+	if character_name != "pelao":
+		return
+	
+	is_audio_playing = true
+	audio_player.play()
+	print("🔊 Reproduciendo audio de kill para pelao (velocidad 1.5x)")
 
 func set_current_round(round_number: int):
 	"""Establecer la ronda actual para ajustar multiplicadores"""
@@ -54,19 +94,19 @@ func set_current_round(round_number: int):
 		current_round_multiplier = 1
 
 func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee: bool = false):
-	"""SISTEMA COD BO1: Puntos por kill con multiplicadores de ronda"""
+	"""SISTEMA COD BO1: Puntos por kill con multiplicadores de ronda + AUDIO"""
 	var points = base_kill_points
 	var popup_type = "kill"
 	
 	# Aplicar bonus por headshot
 	if is_headshot:
-		points += headshot_bonus  # 50 + 50 = 100 total
+		points += headshot_bonus
 		popup_type = "headshot"
 		headshot_kills += 1
 	
 	# Aplicar bonus por melee
 	if is_melee:
-		points += melee_kill_bonus  # +130 adicional
+		points += melee_kill_bonus
 		popup_type = "melee"
 	
 	# APLICAR MULTIPLICADOR DE RONDA (BLACK OPS 1)
@@ -79,17 +119,20 @@ func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee:
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
 	
+	# REPRODUCIR AUDIO DE KILL (SOLO PELAO)
+	play_kill_audio()
+	
 	show_score_popup(points, hit_position, popup_type)
 	score_changed.emit(current_score)
 	score_popup.emit(points, hit_position, popup_type)
 
 func add_damage_points(hit_position: Vector2, _damage_dealt: int, is_headshot: bool = false):
 	"""SISTEMA COD BO1: Puntos por daño sin kill (10 puntos por hit)"""
-	var points = 10  # Black Ops 1 da 10 puntos por hit sin kill
+	var points = 10
 	var popup_type = "damage"
 	
 	if is_headshot:
-		points = 20  # Doble puntos por headshot sin kill
+		points = 20
 		popup_type = "headshot_damage"
 	
 	# APLICAR MULTIPLICADOR DE RONDA
@@ -102,7 +145,7 @@ func add_damage_points(hit_position: Vector2, _damage_dealt: int, is_headshot: b
 	score_popup.emit(points, hit_position, popup_type)
 
 func add_insta_kill_points(hit_position: Vector2):
-	"""Puntos durante power-up insta-kill"""
+	"""Puntos durante power-up insta-kill + AUDIO"""
 	var points = insta_kill_points * current_round_multiplier
 	
 	current_score += points
@@ -111,6 +154,9 @@ func add_insta_kill_points(hit_position: Vector2):
 	
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
+	
+	# REPRODUCIR AUDIO DE KILL (SOLO PELAO)
+	play_kill_audio()
 	
 	show_score_popup(points, hit_position, "insta_kill")
 	score_changed.emit(current_score)
@@ -134,11 +180,11 @@ func add_power_up_points(power_up_type: String, position: Vector2):
 		"max_ammo":
 			points = max_ammo_points
 		"double_points":
-			points = 0  # Double points no da puntos por sí mismo
+			points = 0
 		"insta_kill":
-			points = 0  # Insta-kill no da puntos por sí mismo
+			points = 0
 		_:
-			points = 100  # Power-up genérico
+			points = 100
 	
 	if points > 0:
 		current_score += points
@@ -181,37 +227,37 @@ func create_score_popup(points: int, popup_type: String) -> Control:
 	
 	match popup_type:
 		"headshot":
-			color = Color(1.0, 0.8, 0.0, 1.0)  # Dorado
+			color = Color(1.0, 0.8, 0.0, 1.0)
 			font_size = 32
 			label.text = "HEADSHOT! +" + str(points)
 		"melee":
-			color = Color(1.0, 0.2, 0.2, 1.0)  # Rojo
+			color = Color(1.0, 0.2, 0.2, 1.0)
 			font_size = 32
 			label.text = "MELEE! +" + str(points)
 		"headshot_damage":
-			color = Color(1.0, 0.6, 0.0, 1.0)  # Naranja
+			color = Color(1.0, 0.6, 0.0, 1.0)
 			font_size = 24
 			label.text = "+" + str(points)
 		"damage":
-			color = Color(0.8, 0.8, 0.8, 1.0)  # Gris claro
+			color = Color(0.8, 0.8, 0.8, 1.0)
 			font_size = 22
 		"insta_kill":
-			color = Color(1.0, 0.0, 1.0, 1.0)  # Magenta
+			color = Color(1.0, 0.0, 1.0, 1.0)
 			font_size = 30
 			label.text = "INSTA-KILL! +" + str(points)
 		"repair":
-			color = Color(0.0, 0.8, 1.0, 1.0)  # Cian
+			color = Color(0.0, 0.8, 1.0, 1.0)
 			font_size = 24
 		"carpenter":
-			color = Color(0.6, 0.4, 0.0, 1.0)  # Marrón
+			color = Color(0.6, 0.4, 0.0, 1.0)
 			font_size = 26
 			label.text = "CARPENTER! +" + str(points)
 		"max_ammo":
-			color = Color(0.0, 1.0, 0.0, 1.0)  # Verde
+			color = Color(0.0, 1.0, 0.0, 1.0)
 			font_size = 26
 			label.text = "MAX AMMO! +" + str(points)
 		"bonus":
-			color = Color(0.2, 1.0, 0.2, 1.0)  # Verde claro
+			color = Color(0.2, 1.0, 0.2, 1.0)
 			font_size = 26
 		_:
 			color = Color.WHITE
@@ -260,37 +306,29 @@ func format_score(score: int) -> String:
 	return formatted
 
 func get_current_score() -> int:
-	"""Obtener puntuación actual"""
 	return current_score
 
 func get_total_kills() -> int:
-	"""Obtener total de kills"""
 	return total_kills
 
 func get_headshot_kills() -> int:
-	"""Obtener kills por headshot"""
 	return headshot_kills
 
 func get_current_kill_streak() -> int:
-	"""Obtener racha actual"""
 	return current_kill_streak
 
 func get_best_kill_streak() -> int:
-	"""Obtener mejor racha"""
 	return best_kill_streak
 
 func get_headshot_percentage() -> float:
-	"""Obtener porcentaje de headshots"""
 	if total_kills == 0:
 		return 0.0
 	return (float(headshot_kills) / float(total_kills)) * 100.0
 
 func get_round_multiplier() -> int:
-	"""Obtener multiplicador actual de ronda"""
 	return current_round_multiplier
 
 func calculate_points_per_round(round_number: int) -> Dictionary:
-	"""Calcular información de puntos para una ronda específica"""
 	var multiplier = 1
 	if round_number >= 10:
 		multiplier = 2
@@ -305,7 +343,6 @@ func calculate_points_per_round(round_number: int) -> Dictionary:
 	}
 
 func get_stats_summary() -> Dictionary:
-	"""Obtener resumen de estadísticas"""
 	return {
 		"score": current_score,
 		"total_kills": total_kills,
@@ -318,7 +355,6 @@ func get_stats_summary() -> Dictionary:
 	}
 
 func get_score_breakdown_for_ui() -> Dictionary:
-	"""Obtener desglose de puntuación para la UI"""
 	var multiplier_info = calculate_points_per_round(current_round)
 	
 	return {
@@ -335,39 +371,8 @@ func get_score_breakdown_for_ui() -> Dictionary:
 		"round": current_round
 	}
 
-# FUNCIONES ESPECIALES PARA POWER-UPS (FUTURO)
-func enable_double_points(_duration: float = 30.0):
-	"""Habilitar doble puntos temporalmente"""
-	# TODO: Implementar cuando se añadan power-ups
-	pass
-
-func enable_insta_kill(_duration: float = 30.0):
-	"""Habilitar insta-kill temporalmente"""
-	# TODO: Implementar cuando se añadan power-ups
-	pass
-
-func trigger_max_ammo():
-	"""Activar max ammo power-up"""
-	# TODO: Implementar cuando se añadan power-ups
-	pass
-
-func trigger_carpenter():
-	"""Activar carpenter power-up"""
-	# TODO: Implementar cuando se añadan power-ups
-	pass
-
-# SISTEMA DE LOGROS (FUTURO)
-func check_achievements():
-	"""Verificar logros basados en puntuación y estadísticas"""
-	# TODO: Implementar sistema de logros
-	pass
-
-func save_high_score():
-	"""Guardar puntuación máxima"""
-	# TODO: Implementar guardado de puntuaciones
-	pass
-
-func load_high_score() -> int:
-	"""Cargar puntuación máxima guardada"""
-	# TODO: Implementar carga de puntuaciones
-	return 0
+func _exit_tree():
+	"""Limpiar al salir"""
+	if audio_player:
+		audio_player.stop()
+		is_audio_playing = false

@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - CON NUEVO SISTEMA DE ANIMACIONES SIN DUPLICACIONES
+# scenes/managers/game_manager.gd - PARTE 1 CON BOTONES MÓVILES
 extends Node
 class_name GameManager
 
@@ -48,6 +48,10 @@ var movement_joystick_dead_zone: float = 30.0
 var shooting_joystick_max_distance: float = 180.0
 var shooting_joystick_dead_zone: float = 30.0
 
+# Botones móviles adicionales
+var melee_button: Button
+var reload_button: Button
+
 # Variables de juego
 var selected_character_stats: CharacterStats
 var game_started: bool = false
@@ -93,10 +97,6 @@ func setup_fixed_ui():
 
 func setup_collision_layers():
 	"""Configurar capas de colisión"""
-	# Capa 1: Jugador
-	# Capa 2: Enemigos  
-	# Capa 3: Paredes
-	# Capa 4: Proyectiles
 	pass
 
 func _input(event):
@@ -112,14 +112,6 @@ func _input(event):
 	
 	if event.is_action_pressed("toggle_fullscreen"):
 		toggle_fullscreen()
-	
-	# DEBUG: Tecla F1 para depurar animaciones
-	if event.is_action_pressed("ui_accept") and Input.is_key_pressed(KEY_F1):
-		debug_animation_system()
-	
-	# DEBUG: Tecla F2 para resetear animaciones
-	if event.is_action_pressed("ui_accept") and Input.is_key_pressed(KEY_F2):
-		reset_animation_system()
 	
 	if not is_mobile or not game_started or game_state != "playing":
 		return
@@ -174,11 +166,10 @@ func _on_character_selected(character_stats: CharacterStats):
 		player.max_health = selected_character_stats.max_health
 		
 		setup_player_collision_layers()
-		setup_new_animation_system()  # NUEVO SISTEMA
+		setup_new_animation_system()
 		
 		player.set_physics_process(true)
 		player.set_process(true)
-		
 		if not player.player_died.is_connected(_on_player_died):
 			player.player_died.connect(_on_player_died)
 	
@@ -190,23 +181,14 @@ func _on_character_selected(character_stats: CharacterStats):
 func setup_new_animation_system():
 	"""CONFIGURAR NUEVO SISTEMA DE ANIMACIONES BASADO EN MOVIMIENTO"""
 	if not player or not player.animated_sprite:
-		print("❌ No se puede configurar animaciones: falta player o sprite")
 		return
 	
-	print("🎭 Configurando NUEVO sistema de animaciones...")
-	
-	# CREAR CONTROLADOR DE ANIMACIONES
 	animation_controller = AnimationController.new()
 	animation_controller.name = "AnimationController"
 	player.add_child(animation_controller)
 	
-	# CONFIGURAR EL CONTROLADOR
 	animation_controller.setup(player.animated_sprite, selected_character_stats.character_name)
-	
-	# ASIGNAR AL JUGADOR
 	player.set_animation_controller(animation_controller)
-	
-	print("✅ NUEVO sistema de animaciones configurado para: ", selected_character_stats.character_name)
 
 func setup_player_collision_layers():
 	"""Configurar colisiones del jugador"""
@@ -233,23 +215,19 @@ func setup_unified_cod_system_safe():
 	if not player:
 		return
 	
-	# ScoreSystem
 	score_system = ScoreSystem.new()
 	score_system.name = "ScoreSystem"
 	add_child(score_system)
 	
-	# RoundsManager
 	rounds_manager = RoundsManager.new()
 	rounds_manager.name = "RoundsManager"
 	add_child(rounds_manager)
 	
-	# Conectar con UI fija
 	if fixed_ui_manager:
 		fixed_ui_manager.set_score_system(score_system)
 		fixed_ui_manager.set_rounds_manager(rounds_manager)
 		fixed_ui_manager.set_player_reference(player)
 	
-	# EnemySpawner
 	enemy_spawner = EnemySpawner.new()
 	enemy_spawner.name = "EnemySpawner"
 	enemy_spawner.spawn_radius_min = 400.0
@@ -257,7 +235,6 @@ func setup_unified_cod_system_safe():
 	enemy_spawner.despawn_distance = 1200.0
 	add_child(enemy_spawner)
 	
-	# Conectar sistemas
 	enemy_spawner.setup(player, rounds_manager)
 	rounds_manager.set_enemy_spawner(enemy_spawner)
 	
@@ -417,6 +394,7 @@ func setup_mobile_controls():
 	
 	create_movement_joystick_large()
 	create_shooting_joystick_large()
+	create_mobile_action_buttons()
 	
 	if movement_joystick_base:
 		movement_joystick_base.visible = true
@@ -425,6 +403,61 @@ func setup_mobile_controls():
 	if shooting_joystick_base:
 		shooting_joystick_base.visible = true  
 		shooting_joystick_base.modulate = Color.WHITE
+
+func create_mobile_action_buttons():
+	"""Crear botones flotantes de melee y reload"""
+	if not is_mobile or not mobile_controls:
+		return
+	
+	var viewport_size = get_viewport().get_visible_rect().size
+	
+	# Botón MELEE (arriba del joystick de disparo)
+	melee_button = Button.new()
+	melee_button.text = "🗡"
+	melee_button.size = Vector2(80, 80)
+	melee_button.position = Vector2(
+		viewport_size.x * 0.78 + 50,
+		viewport_size.y * 0.25
+	)
+	melee_button.add_theme_font_size_override("font_size", 40)
+	
+	var melee_style = StyleBoxFlat.new()
+	melee_style.bg_color = Color(0.6, 0.1, 0.1, 0.9)
+	melee_style.corner_radius_top_left = 40
+	melee_style.corner_radius_top_right = 40
+	melee_style.corner_radius_bottom_left = 40
+	melee_style.corner_radius_bottom_right = 40
+	melee_button.add_theme_stylebox_override("normal", melee_style)
+	
+	melee_button.pressed.connect(func():
+		if player and player.has_method("perform_melee_attack"):
+			player.perform_melee_attack()
+	)
+	mobile_controls.add_child(melee_button)
+	
+	# Botón RELOAD (abajo del joystick de disparo)
+	reload_button = Button.new()
+	reload_button.text = "🔄"
+	reload_button.size = Vector2(80, 80)
+	reload_button.position = Vector2(
+		viewport_size.x * 0.78 + 50,
+		viewport_size.y * 0.65
+	)
+	reload_button.add_theme_font_size_override("font_size", 40)
+	
+	var reload_style = StyleBoxFlat.new()
+	reload_style.bg_color = Color(0.1, 0.4, 0.6, 0.9)
+	reload_style.corner_radius_top_left = 40
+	reload_style.corner_radius_top_right = 40
+	reload_style.corner_radius_bottom_left = 40
+	reload_style.corner_radius_bottom_right = 40
+	reload_button.add_theme_stylebox_override("normal", reload_style)
+	
+	reload_button.pressed.connect(func():
+		if player and player.has_method("start_manual_reload"):
+			player.start_manual_reload()
+	)
+	mobile_controls.add_child(reload_button)
 
 func create_movement_joystick_large():
 	"""Crear joystick movimiento"""
@@ -565,33 +598,6 @@ func create_shooting_joystick_large():
 	
 	shooting_joystick_base.add_child(shooting_joystick_knob)
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
-
-# ===== FUNCIONES DE DEPURACIÓN PARA ANIMACIONES =====
-
-func debug_animation_system():
-	"""Depurar sistema de animaciones"""
-	print("🎭 [DEBUG GAME_MANAGER] Depurando sistema de animaciones...")
-	
-	if not player:
-		print("❌ No hay jugador")
-		return
-	
-	if not animation_controller:
-		print("❌ No hay animation_controller")
-		return
-	
-	print("🎭 [DEBUG] Player y AnimationController encontrados")
-	player.debug_animation_state()
-
-func reset_animation_system():
-	"""Resetear sistema de animaciones"""
-	print("🎭 [DEBUG GAME_MANAGER] Reseteando sistema de animaciones...")
-	
-	if player:
-		player.reset_animation_system()
-	
-	if animation_controller:
-		animation_controller.reset_animation_state()
 
 # ===== RESTO DE FUNCIONES =====
 
@@ -784,7 +790,7 @@ func show_game_over_screen():
 	
 	var retry_btn = Button.new()
 	retry_btn.text = "🔄 REINTENTAR"
-	retry_btn.custom_minimum_size = Vector2(300, 50) if not is_mobile else Vector2(350, 60)
+	retry_btn.custom_minimum_size = Vector2(300,50) if not is_mobile else Vector2(350, 60)
 	retry_btn.add_theme_font_size_override("font_size", 20)
 	retry_btn.add_theme_color_override("font_color", Color.WHITE)
 	
@@ -887,7 +893,6 @@ func _notification(what):
 	"""Manejar notificaciones del sistema"""
 	match what:
 		NOTIFICATION_WM_CLOSE_REQUEST:
-			# Limpiar todo antes de cerrar
 			cleanup_before_exit()
 			get_tree().quit()
 		NOTIFICATION_APPLICATION_PAUSED:
@@ -896,16 +901,13 @@ func _notification(what):
 
 func cleanup_before_exit():
 	"""Limpiar todo antes de salir del juego"""
-	# Detener todos los procesos
 	set_process(false)
 	set_physics_process(false)
 	
-	# Limpiar enemigos
 	if enemy_spawner:
 		enemy_spawner.clear_all_enemies()
 		enemy_spawner.pause_spawning()
 	
-	# Detener timers
 	if rounds_manager:
 		rounds_manager.set_process(false)
 		rounds_manager.set_physics_process(false)
@@ -914,16 +916,13 @@ func cleanup_before_exit():
 		score_system.set_process(false)
 		score_system.set_physics_process(false)
 	
-	# Detener jugador
 	if player:
 		player.set_process(false)
 		player.set_physics_process(false)
 	
-	# Desactivar joysticks móviles
 	if is_mobile:
 		set_process_input(false)
 	
-	# Pausar el árbol antes de salir
 	get_tree().paused = false
 
 func _exit_tree():

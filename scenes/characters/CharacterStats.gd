@@ -1,4 +1,4 @@
-# scenes/characters/CharacterStats.gd - ARMA CON SPRITE DE PISTOLA ESPECÍFICO
+# scenes/characters/CharacterStats.gd - CON FRASES Y SONIDOS
 extends Resource
 class_name CharacterStats
 
@@ -21,8 +21,50 @@ class_name CharacterStats
 var ability1_ready: bool = true
 var ability2_ready: bool = true
 
+# Sistema de frases y sonidos
+@export var voice_lines_kill: Array[String] = []
+@export var voice_kill_chance: float = 0.3  # 30% probabilidad
+
 func _init():
 	call_deferred("ensure_weapon_exists")
+	call_deferred("setup_voice_lines")
+
+func setup_voice_lines():
+	"""Configurar frases de kill según personaje"""
+	match character_name.to_lower():
+		"pelao":
+			voice_lines_kill = [
+				"¡Toma esa!",
+				"¡Fuera de aquí!",
+				"¡Otro más!",
+				"¡Perfecto!"
+			]
+		"juancar":
+			voice_lines_kill = [
+				"¡Eliminado!",
+				"¡Buen tiro!",
+				"¡En el blanco!",
+				"¡Siguiente!"
+			]
+		"chica":
+			voice_lines_kill = [
+				"¡Muy bien!",
+				"¡Excelente!",
+				"¡Directo!",
+				"¡Listo!"
+			]
+		_:
+			voice_lines_kill = ["¡Eliminado!"]
+
+func get_random_kill_phrase() -> String:
+	"""Obtener frase aleatoria de kill"""
+	if voice_lines_kill.is_empty():
+		return "¡Eliminado!"
+	return voice_lines_kill[randi() % voice_lines_kill.size()]
+
+func should_say_kill_phrase() -> bool:
+	"""Verificar si debe decir frase (probabilidad)"""
+	return randf() < voice_kill_chance
 
 func ensure_weapon_exists():
 	"""Crear arma por defecto si no existe"""
@@ -30,7 +72,7 @@ func ensure_weapon_exists():
 		equipped_weapon = WeaponStats.new()
 		equipped_weapon.weapon_name = "Pistola Básica"
 		equipped_weapon.damage = 25
-		equipped_weapon.attack_speed = 0.3  # 0.3 balas por segundo
+		equipped_weapon.attack_speed = 0.3
 		equipped_weapon.attack_range = 400
 		equipped_weapon.projectile_speed = 600
 		equipped_weapon.ammo_capacity = 30
@@ -38,26 +80,43 @@ func ensure_weapon_exists():
 		equipped_weapon.accuracy = 0.95
 		equipped_weapon.headshot_multiplier = 1.4
 		
-		# CARGAR SPRITE ESPECÍFICO DE LA PISTOLA
 		load_pistol_sprite_for_weapon()
 		
-		# POSICIONAMIENTO EN EL CENTRO DERECHA DEL JUGADOR
-		equipped_weapon.weapon_offset = Vector2(32, 0)  # Centro derecha
-		equipped_weapon.muzzle_offset = Vector2(20, 0)   # Desde donde salen las balas
+		equipped_weapon.weapon_offset = Vector2(32, 0)
+		equipped_weapon.muzzle_offset = Vector2(20, 0)
 
 func load_pistol_sprite_for_weapon():
-	"""Cargar sprite específico de la pistola desde sprites/weapons/pistola.png"""
+	"""Cargar sprite Y sonido específico de la pistola"""
 	if not equipped_weapon:
 		return
 	
 	var pistol_path = "res://sprites/weapons/pistola.png"
-	
 	if ResourceLoader.exists(pistol_path):
 		equipped_weapon.weapon_sprite = load(pistol_path) as Texture2D
-		print("✅ Sprite de pistola cargado para ", character_name, " desde: ", pistol_path)
+	
+	# CARGAR SONIDO ESPECÍFICO DEL PERSONAJE
+	var sound_path = "res://audio/" + character_name.to_lower() + "_shoot.ogg"
+	if ResourceLoader.exists(sound_path):
+		equipped_weapon.attack_sound = load(sound_path)
 	else:
-		print("❌ No se encontró sprite en: ", pistol_path, " - Usando sprite por defecto para ", character_name)
-		# El WeaponStats se encargará de crear el sprite por defecto
+		# FALLBACK A PELAO
+		var pelao_sound_path = "res://audio/pelao_shoot.ogg"
+		if ResourceLoader.exists(pelao_sound_path):
+			equipped_weapon.attack_sound = load(pelao_sound_path)
+
+func load_character_sound_with_fallback(sound_type: String) -> AudioStream:
+	"""Cargar sonido del personaje con fallback a pelao"""
+	var char_name = character_name.to_lower()
+	var sound_path = "res://audio/" + char_name + "_" + sound_type + ".ogg"
+	
+	if ResourceLoader.exists(sound_path):
+		return load(sound_path)
+	else:
+		var pelao_path = "res://audio/pelao_" + sound_type + ".ogg"
+		if ResourceLoader.exists(pelao_path):
+			return load(pelao_path)
+		else:
+			return null
 
 # Funciones de acceso a estadísticas del arma
 func get_damage() -> int:
@@ -75,7 +134,6 @@ func get_projectile_speed() -> int:
 func get_attack_sound() -> AudioStream:
 	return equipped_weapon.attack_sound if equipped_weapon else null
 
-# Función para obtener el folder de sprites
 func get_sprite_folder() -> String:
 	"""Obtener carpeta de sprites basada en el nombre del personaje"""
 	var char_name_lower = character_name.to_lower().replace(" ", "")
@@ -88,7 +146,6 @@ func get_sprite_folder() -> String:
 	
 	return name_mappings.get(char_name_lower, char_name_lower)
 
-# Función para obtener textura idle usando el sistema separado
 func get_idle_texture() -> Texture2D:
 	"""Obtener textura idle del personaje"""
 	var sprite_frames = SpriteEffectsHandler.load_character_sprite_atlas(character_name)
@@ -96,7 +153,6 @@ func get_idle_texture() -> Texture2D:
 		return sprite_frames.get_frame_texture("idle", 0)
 	return null
 
-# Función para obtener textura escalada a 128px
 func get_idle_texture_scaled_128px() -> Texture2D:
 	"""Obtener textura idle escalada a 128px"""
 	var base_texture = get_idle_texture()
@@ -129,7 +185,6 @@ func create_default_character_texture_128px() -> Texture2D:
 	"""Crear textura por defecto de 128px para personajes"""
 	return SpriteEffectsHandler.create_default_character_texture(character_name)
 
-# Función para validar el personaje
 func is_valid() -> bool:
 	"""Verificar si el personaje es válido"""
 	return (character_name != "" and 
@@ -137,7 +192,6 @@ func is_valid() -> bool:
 			max_health > 0 and
 			movement_speed > 0)
 
-# Funciones de información
 func get_stats_summary() -> Dictionary:
 	"""Obtener resumen de estadísticas del personaje"""
 	var stats = {

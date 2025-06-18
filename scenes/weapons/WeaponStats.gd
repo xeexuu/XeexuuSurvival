@@ -70,23 +70,23 @@ func load_pistol_sprite():
 		create_default_weapon_sprite()
 
 func create_default_weapon_sprite():
-	var image = Image.create(24, 8, false, Image.FORMAT_RGBA8)
+	var image = Image.create(48, 16, false, Image.FORMAT_RGBA8)  # DOBLE DE TAMAÑO
 	image.fill(Color.TRANSPARENT)
 	
-	# Crear sprite básico de pistola horizontal
-	for x in range(24):
-		for y in range(8):
+	# Crear sprite básico de pistola horizontal MÁS GRANDE
+	for x in range(48):
+		for y in range(16):
 			# Cañón
-			if x >= 12 and x < 22 and y >= 3 and y < 5:
+			if x >= 24 and x < 44 and y >= 6 and y < 10:
 				image.set_pixel(x, y, Color.DARK_GRAY)
 			# Cuerpo del arma
-			elif x >= 2 and x < 12 and y >= 2 and y < 6:
+			elif x >= 4 and x < 24 and y >= 4 and y < 12:
 				image.set_pixel(x, y, Color.GRAY)
 			# Empuñadura
-			elif x >= 0 and x < 4 and y >= 4 and y < 8:
+			elif x >= 0 and x < 8 and y >= 8 and y < 16:
 				image.set_pixel(x, y, Color.DIM_GRAY)
 			# Mira
-			elif x >= 18 and x < 20 and y >= 1 and y < 3:
+			elif x >= 36 and x < 40 and y >= 2 and y < 6:
 				image.set_pixel(x, y, Color.BLACK)
 	
 	weapon_sprite = ImageTexture.create_from_image(image)
@@ -171,8 +171,9 @@ func get_weapon_world_position_lower(player_position: Vector2, aim_direction: Ve
 	return player_position + rotated_offset
 
 func get_muzzle_world_position_lower(player_position: Vector2, aim_direction: Vector2) -> Vector2:
-	"""Obtener la posición del cañón desde la posición más baja"""
-	var weapon_position = get_weapon_world_position_lower(player_position, aim_direction)
+	"""Obtener la posición del cañón desde la posición más alta"""
+	var higher_offset = Vector2(weapon_offset.x, weapon_offset.y - 15)  # MÁS ARRIBA
+	var weapon_position = player_position + higher_offset.rotated(aim_direction.angle())
 	var rotated_muzzle = muzzle_offset.rotated(aim_direction.angle())
 	return weapon_position + rotated_muzzle
 

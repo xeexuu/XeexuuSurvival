@@ -1,3 +1,4 @@
+# scenes/player/shooting_component.gd - CON SONIDOS
 extends Node
 class_name ShootingComponent
 
@@ -12,7 +13,7 @@ signal bullet_fired(bullet: Bullet, direction: Vector2)
 
 func _ready():
 	shoot_timer = Timer.new()
-	shoot_timer.wait_time = 0.33  # FIJO: 1/3 segundo = 3 balas por segundo
+	shoot_timer.wait_time = 0.33
 	shoot_timer.one_shot = true
 	shoot_timer.timeout.connect(_on_shoot_timer_timeout)
 	add_child(shoot_timer)
@@ -32,8 +33,7 @@ func update_stats_from_player():
 		if equipped_weapon.reload_timer and not equipped_weapon.reload_timer.get_parent():
 			add_child(equipped_weapon.reload_timer)
 		
-		# FORZAR CADENCIA A 3 BALAS POR SEGUNDO - NO USAR WEAPON STATS
-		shoot_timer.wait_time = 0.33  # SIEMPRE 3 balas por segundo
+		shoot_timer.wait_time = 0.33
 		
 		is_stats_configured = true
 		return true
@@ -66,6 +66,28 @@ func shoot(direction: Vector2, start_position: Vector2):
 	if not shoot_timer or not is_instance_valid(shoot_timer):
 		return
 	
+	# REPRODUCIR SONIDO DE DISPARO
+	if equipped_weapon and equipped_weapon.attack_sound:
+		var audio_player = AudioStreamPlayer2D.new()
+		audio_player.stream = equipped_weapon.attack_sound
+		audio_player.volume_db = -5.0
+		audio_player.pitch_scale = randf_range(0.9, 1.1)
+		get_tree().current_scene.add_child(audio_player)
+		audio_player.play()
+		
+		audio_player.finished.connect(func(): audio_player.queue_free())
+		
+		var cleanup_timer = Timer.new()
+		cleanup_timer.wait_time = 3.0
+		cleanup_timer.one_shot = true
+		cleanup_timer.timeout.connect(func(): 
+			if is_instance_valid(audio_player):
+				audio_player.queue_free()
+			cleanup_timer.queue_free()
+		)
+		get_tree().current_scene.add_child(cleanup_timer)
+		cleanup_timer.start()
+	
 	var bullets_to_create = 1
 	if equipped_weapon:
 		bullets_to_create = equipped_weapon.bullets_per_shot
@@ -78,7 +100,6 @@ func shoot(direction: Vector2, start_position: Vector2):
 	
 	can_shoot = false
 	
-	# SIEMPRE 0.33 SEGUNDOS
 	shoot_timer.wait_time = 0.33
 	if shoot_timer and is_instance_valid(shoot_timer) and shoot_timer.is_inside_tree():
 		shoot_timer.start()

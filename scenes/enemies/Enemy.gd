@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - COMPLETO CORREGIDO SIN PRINTS
+# scenes/enemies/Enemy.gd - COMPLETAMENTE CORREGIDO CON SALUD Y EFECTOS
 extends CharacterBody2D
 class_name Enemy
 
@@ -19,11 +19,19 @@ signal damaged(enemy: Enemy, damage: int)
 @onready var attack_timer = $AttackTimer
 @onready var health_bar = $HealthBar
 
+# Hitboxes específicas
+@onready var head_area: Area2D
+@onready var body_area: Area2D
+@onready var legs_area: Area2D
+
 var player: Player = null
 var is_dead: bool = false
 var last_attack_time: float = 0.0
 var current_move_speed: float = 150.0
 var enemy_sprite_frames: SpriteFrames
+
+# Variables de ataque visual
+var attack_effect_sprite: Sprite2D
 
 enum WaWState {
 	SPAWNING,
@@ -45,8 +53,38 @@ var anchor_position: Vector2
 func _ready():
 	add_to_group("enemies")
 	setup_enemy()
+	setup_attack_effect()
 	determine_waw_variant()
 	call_deferred("verify_sprite_after_ready")
+
+func setup_attack_effect():
+	"""Crear sprite para efectos de ataque"""
+	attack_effect_sprite = Sprite2D.new()
+	attack_effect_sprite.name = "AttackEffect"
+	attack_effect_sprite.visible = false
+	attack_effect_sprite.z_index = 20
+	
+	# Crear efecto de abanico rojo
+	var effect_image = Image.create(60, 40, false, Image.FORMAT_RGBA8)
+	effect_image.fill(Color.TRANSPARENT)
+	
+	# Crear forma de abanico/semicírculo
+	var center = Vector2(10, 20)
+	for x in range(60):
+		for y in range(40):
+			var dist = Vector2(x, y).distance_to(center)
+			var angle = Vector2(x - center.x, y - center.y).angle()
+			
+			# Solo pintar en el semicírculo frontal
+			if dist < 35 and angle > -PI/3 and angle < PI/3:
+				var alpha = 1.0 - (dist / 35.0)
+				if dist < 20:
+					effect_image.set_pixel(x, y, Color(1.0, 0.2, 0.2, alpha * 0.8))
+				else:
+					effect_image.set_pixel(x, y, Color(0.8, 0.0, 0.0, alpha * 0.6))
+	
+	attack_effect_sprite.texture = ImageTexture.create_from_image(effect_image)
+	add_child(attack_effect_sprite)
 
 func verify_sprite_after_ready():
 	"""Verificar sprite después de _ready"""
@@ -55,8 +93,8 @@ func verify_sprite_after_ready():
 		force_sprite_visibility()
 
 func setup_enemy():
-	"""Configurar enemigo base"""
-	current_health = max_health
+	"""Configurar enemigo con hitboxes específicas"""
+	# NO CAMBIAR SALUD AQUÍ - MANTENER VALORES INICIALES
 	is_dead = false
 	current_state = WaWState.SPAWNING
 	
@@ -67,56 +105,211 @@ func setup_enemy():
 	
 	load_enemy_sprite_waw_size()
 	setup_health_bar()
+	setup_hitboxes()
 	
 	if attack_timer:
 		attack_timer.wait_time = attack_cooldown
 		attack_timer.one_shot = true
 		attack_timer.timeout.connect(_on_attack_timer_timeout)
 
+func setup_hitboxes():
+	"""Configurar hitboxes para diferentes partes del cuerpo"""
+	# CABEZA (20% superior)
+	head_area = Area2D.new()
+	head_area.name = "HeadArea"
+	head_area.collision_layer = 2
+	head_area.collision_mask = 4
+	
+	var head_shape = CollisionShape2D.new()
+	var head_rect = RectangleShape2D.new()
+	head_rect.size = Vector2(48, 25)
+	head_shape.shape = head_rect
+	head_shape.position = Vector2(0, -38)
+	head_area.add_child(head_shape)
+	add_child(head_area)
+	
+	# CUERPO (60% medio)
+	body_area = Area2D.new()
+	body_area.name = "BodyArea"
+	body_area.collision_layer = 2
+	body_area.collision_mask = 4
+	
+	var body_shape = CollisionShape2D.new()
+	var body_rect = RectangleShape2D.new()
+	body_rect.size = Vector2(48, 77)
+	body_shape.shape = body_rect
+	body_shape.position = Vector2(0, 0)
+	body_area.add_child(body_shape)
+	add_child(body_area)
+	
+	# PIERNAS (20% inferior)
+	legs_area = Area2D.new()
+	legs_area.name = "LegsArea"
+	legs_area.collision_layer = 2
+	legs_area.collision_mask = 4
+	
+	var legs_shape = CollisionShape2D.new()
+	var legs_rect = RectangleShape2D.new()
+	legs_rect.size = Vector2(48, 25)
+	legs_shape.shape = legs_rect
+	legs_shape.position = Vector2(0, 38)
+	legs_area.add_child(legs_shape)
+	add_child(legs_area)
+
 func determine_waw_variant():
-	"""Variantes World at War"""
-	var rand_val = randf()
-	
-	if rand_val < 0.15:  # 15% RUNNERS
-		enemy_type = "zombie_runner"
-		charge_speed_multiplier = randf_range(1.8, 2.2)
-		max_health = int(float(max_health) * 0.6)
-		current_health = max_health
-		modulate = Color(1.4, 0.6, 0.6, 1.0)
-		detection_range = 1200.0
-		
-	elif rand_val < 0.25:  # 10% CHARGERS
-		enemy_type = "zombie_charger"  
-		charge_speed_multiplier = randf_range(1.4, 1.7)
-		max_health = int(float(max_health) * 0.8)
-		current_health = max_health
-		modulate = Color(1.2, 0.8, 0.6, 1.0)
-		attack_range = 70.0
-		
-	elif rand_val < 0.35:  # 10% CRAWLERS
-		enemy_type = "zombie_crawler"
-		charge_speed_multiplier = randf_range(0.7, 0.9)
-		max_health = int(float(max_health) * 1.3)
-		current_health = max_health
-		modulate = Color(0.8, 1.0, 0.8, 1.0)
-		
-	else:  # 65% BÁSICOS
-		charge_speed_multiplier = randf_range(0.9, 1.3)
-		max_health = int(float(max_health) * 1.0)
-		current_health = max_health
-		modulate = Color(1.0, 0.9, 0.8, 1.0)
-	
-	current_move_speed = base_move_speed * charge_speed_multiplier
+	"""Variantes COD con NUEVOS TIPOS"""
+	match enemy_type:
+		"zombie_dog":
+			setup_dog_variant()
+		"zombie_crawler":
+			setup_crawler_variant()
+		"zombie_runner":
+			setup_runner_variant()
+		"zombie_charger":
+			setup_charger_variant()
+		_:
+			setup_basic_variant()
+
+func setup_dog_variant():
+	"""Configurar variante perro zombie"""
+	base_move_speed = 180.0
+	current_move_speed = base_move_speed
+	charge_speed_multiplier = 2.0
+	# NO CAMBIAR max_health NI current_health AQUÍ
+	damage = 2
+	attack_range = 50.0
+	detection_range = 1500.0
+	modulate = Color(0.8, 0.3, 0.3, 1.0)
+
+func setup_crawler_variant():
+	"""Configurar variante crawler zombie"""
+	base_move_speed = 60.0
+	current_move_speed = base_move_speed
+	charge_speed_multiplier = 0.8
+	# NO CAMBIAR max_health NI current_health AQUÍ
+	damage = 1
+	attack_range = 40.0
+	detection_range = 800.0
+	modulate = Color(0.6, 0.8, 0.4, 1.0)
+
+func setup_runner_variant():
+	"""Configurar variante runner zombie"""
+	charge_speed_multiplier = randf_range(1.8, 2.2)
+	# NO CAMBIAR max_health NI current_health AQUÍ
+	modulate = Color(1.4, 0.6, 0.6, 1.0)
+	detection_range = 1200.0
+
+func setup_charger_variant():
+	"""Configurar variante charger zombie"""
+	charge_speed_multiplier = randf_range(1.4, 1.7)
+	# NO CAMBIAR max_health NI current_health AQUÍ
+	modulate = Color(1.2, 0.8, 0.6, 1.0)
+	attack_range = 70.0
+
+func setup_basic_variant():
+	"""Configurar variante básica zombie"""
+	charge_speed_multiplier = randf_range(0.9, 1.3)
+	# NO CAMBIAR max_health NI current_health AQUÍ
+	modulate = Color(1.0, 0.9, 0.8, 1.0)
 
 func load_enemy_sprite_waw_size():
-	"""Cargar sprite del enemigo"""
-	var atlas_path = "res://sprites/enemies/zombie/walk_Right_Down.png"
+	"""Cargar sprite del enemigo según tipo"""
+	var atlas_path = ""
+	
+	match enemy_type:
+		"zombie_dog":
+			atlas_path = "res://sprites/enemies/zombie_dog/walk_Right_Down.png"
+		"zombie_crawler":
+			atlas_path = "res://sprites/enemies/zombie_crawler/walk_Right_Down.png"
+		_:
+			atlas_path = "res://sprites/enemies/zombie/walk_Right_Down.png"
+	
 	var atlas_texture = try_load_texture_safe(atlas_path)
 	
 	if atlas_texture:
 		setup_animated_sprite_player_size(atlas_texture)
 	else:
-		create_default_enemy_sprite_player_size()
+		match enemy_type:
+			"zombie_dog":
+				create_dog_fallback_sprite()
+			"zombie_crawler":
+				create_crawler_fallback_sprite()
+			_:
+				create_default_enemy_sprite_player_size()
+
+func create_dog_fallback_sprite():
+	"""Crear sprite fallback de perro (cuadrado rojo)"""
+	var image = Image.create(64, 32, false, Image.FORMAT_RGBA8)
+	image.fill(Color.RED)
+	
+	for x in range(64):
+		for y in range(32):
+			if (x < 10 and y < 8) or (x > 54 and y < 8):
+				image.set_pixel(x, y, Color.DARK_RED)
+			elif x > 58 and y > 10 and y < 20:
+				image.set_pixel(x, y, Color.DARK_RED)
+	
+	add_dog_eyes(image)
+	
+	var default_texture = ImageTexture.create_from_image(image)
+	
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		add_child(sprite)
+	
+	if sprite is Sprite2D:
+		var normal_sprite = sprite as Sprite2D
+		normal_sprite.texture = default_texture
+		normal_sprite.scale = Vector2(2.0, 4.0)
+		normal_sprite.visible = true
+
+func create_crawler_fallback_sprite():
+	"""Crear sprite fallback de crawler (cuadrado verde)"""
+	var image = Image.create(96, 48, false, Image.FORMAT_RGBA8)
+	image.fill(Color.GREEN)
+	
+	for x in range(96):
+		for y in range(48):
+			if y > 30 and ((x < 20) or (x > 76)):
+				image.set_pixel(x, y, Color.DARK_GREEN)
+			elif y > 40:
+				image.set_pixel(x, y, Color.DARK_GREEN)
+	
+	add_crawler_eyes(image)
+	
+	var default_texture = ImageTexture.create_from_image(image)
+	
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		add_child(sprite)
+	
+	if sprite is Sprite2D:
+		var normal_sprite = sprite as Sprite2D
+		normal_sprite.texture = default_texture
+		normal_sprite.scale = Vector2(1.33, 2.67)
+		normal_sprite.visible = true
+
+func add_dog_eyes(image: Image):
+	"""Añadir ojos de perro"""
+	var eye_positions = [Vector2(15, 8), Vector2(49, 8)]
+	
+	for eye_pos in eye_positions:
+		for x in range(eye_pos.x - 2, eye_pos.x + 2):
+			for y in range(eye_pos.y - 2, eye_pos.y + 2):
+				if x >= 0 and x < 64 and y >= 0 and y < 32:
+					image.set_pixel(x, y, Color.YELLOW)
+
+func add_crawler_eyes(image: Image):
+	"""Añadir ojos de crawler"""
+	var eye_positions = [Vector2(20, 15), Vector2(76, 15)]
+	
+	for eye_pos in eye_positions:
+		for x in range(eye_pos.x - 3, eye_pos.x + 3):
+			for y in range(eye_pos.y - 2, eye_pos.y + 2):
+				if x >= 0 and x < 96 and y >= 0 and y < 48:
+					image.set_pixel(x, y, Color.RED)
 
 func setup_animated_sprite_player_size(atlas_texture: Texture2D):
 	"""Configurar sprite animado"""
@@ -130,7 +323,6 @@ func setup_animated_sprite_player_size(atlas_texture: Texture2D):
 	
 	enemy_sprite_frames = SpriteFrames.new()
 	
-	# Animación de movimiento
 	enemy_sprite_frames.add_animation("walk")
 	enemy_sprite_frames.set_animation_speed("walk", 12.0)
 	enemy_sprite_frames.set_animation_loop("walk", true)
@@ -139,7 +331,6 @@ func setup_animated_sprite_player_size(atlas_texture: Texture2D):
 		var frame = extract_frame_from_zombie_atlas(atlas_texture, i)
 		enemy_sprite_frames.add_frame("walk", frame)
 	
-	# Animación idle
 	enemy_sprite_frames.add_animation("idle")
 	enemy_sprite_frames.set_animation_speed("idle", 4.0)
 	enemy_sprite_frames.set_animation_loop("idle", true)
@@ -282,23 +473,14 @@ func force_sprite_visibility():
 				load_enemy_sprite_waw_size()
 
 func setup_for_spawn(target_player: Player, round_health: int = -1):
-	"""Configurar para spawn - SIN RESETEAR BARRA DE VIDA"""
+	"""CONFIGURAR PARA SPAWN - SALUD SIEMPRE AL MÁXIMO"""
 	player = target_player
 	
-	# Configurar salud si se proporciona
+	# SOLO CONFIGURAR SALUD SI ES DIFERENTE A LA ACTUAL
 	if round_health > 0:
 		max_health = round_health
+		current_health = round_health  # SIEMPRE AL MÁXIMO
 	
-	# Aplicar modificadores de variante
-	match enemy_type:
-		"zombie_runner":
-			max_health = int(float(max_health) * 0.6)
-		"zombie_charger":
-			max_health = int(float(max_health) * 0.8)
-		"zombie_crawler":
-			max_health = int(float(max_health) * 1.3)
-	
-	current_health = max_health
 	is_dead = false
 	current_state = WaWState.SPAWNING
 	is_anchored = false
@@ -476,7 +658,7 @@ func get_basic_separation() -> Vector2:
 	return separation.normalized() * min(separation.length(), 2.0)
 
 func start_waw_attack():
-	"""Ataque simple"""
+	"""Ataque con efecto visual"""
 	if not player or not can_attack():
 		return
 	
@@ -485,7 +667,26 @@ func start_waw_attack():
 		var prep_tween = create_tween()
 		prep_tween.tween_property(sprite, "scale", sprite.scale * 1.15, 0.1)
 	
+	# MOSTRAR EFECTO DE ATAQUE ROJO
+	show_attack_effect()
+	
 	execute_waw_attack()
+
+func show_attack_effect():
+	"""Mostrar efecto visual de ataque rojo"""
+	if not attack_effect_sprite or not player:
+		return
+	
+	# Posicionar efecto hacia el jugador
+	var direction_to_player = (player.global_position - global_position).normalized()
+	attack_effect_sprite.rotation = direction_to_player.angle()
+	attack_effect_sprite.global_position = global_position + direction_to_player * 20
+	attack_effect_sprite.visible = true
+	
+	# Animar el efecto
+	var effect_tween = create_tween()
+	effect_tween.tween_property(attack_effect_sprite, "modulate:a", 0.0, 0.8)
+	effect_tween.tween_callback(func(): attack_effect_sprite.visible = false)
 
 func execute_waw_attack():
 	"""Ejecutar ataque"""
@@ -523,6 +724,11 @@ func finish_attack():
 		sprite.modulate = Color.WHITE
 		var restore_tween = create_tween()
 		restore_tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.1)
+	
+	# Ocultar efecto de ataque
+	if attack_effect_sprite:
+		attack_effect_sprite.visible = false
+		attack_effect_sprite.modulate = Color(1, 1, 1, 1)  # Resetear alpha
 	
 	last_attack_time = Time.get_ticks_msec() / 1000.0
 
@@ -635,10 +841,9 @@ func die():
 	died.emit(self)
 
 func reset_for_pool():
-	"""Reset para pool SIN RESETEAR barra de vida"""
+	"""Reset para pool MANTENIENDO SALUD"""
 	is_dead = false
 	current_state = WaWState.SPAWNING
-	current_health = max_health
 	is_anchored = false
 	anchor_position = Vector2.ZERO
 	
@@ -648,6 +853,9 @@ func reset_for_pool():
 		sprite.visible = true
 		sprite.modulate = Color.WHITE
 		sprite.scale = Vector2(1.0, 1.0)
+	
+	if attack_effect_sprite:
+		attack_effect_sprite.visible = false
 	
 	set_physics_process(false)
 	set_process(false)
