@@ -1,4 +1,4 @@
-# scenes/player/player.gd - COMPLETAMENTE CORREGIDO
+# scenes/player/player.gd - CONTROLES CORREGIDOS
 extends CharacterBody2D
 class_name Player
 
@@ -168,6 +168,33 @@ func _physics_process(delta):
 	
 	move_and_slide()
 
+func _input(event):
+	"""MANEJAR INPUTS INCLUYENDO MELEE Y RELOAD"""
+	if not is_fully_initialized:
+		return
+	
+	# MELEE ATTACK - Espacio o X
+	if event.is_action_pressed("melee_attack"):
+		perform_melee_attack()
+		get_viewport().set_input_as_handled()
+	
+	# RELOAD - R
+	if event.is_action_pressed("reload"):
+		start_manual_reload()
+		get_viewport().set_input_as_handled()
+	
+	# Fullscreen toggle
+	if event.is_action_pressed("toggle_fullscreen"):
+		toggle_fullscreen()
+
+func toggle_fullscreen():
+	"""Alternar pantalla completa"""
+	var current_mode = DisplayServer.window_get_mode()
+	if current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
 func handle_movement(_delta):
 	"""Manejar movimiento"""
 	var input_direction = Vector2.ZERO
@@ -274,13 +301,26 @@ func update_melee_knife_position():
 			melee_knife_sprite.flip_v = false
 
 func perform_melee_attack():
-	"""Realizar ataque cuerpo a cuerpo"""
+	"""MELEE ATTACK CON ANIMACIÓN CORREGIDA"""
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if current_time - last_melee_time < melee_cooldown:
 		return
 	
+	if is_performing_melee:
+		return
+	
 	last_melee_time = current_time
 	is_performing_melee = true
+	
+	# ANIMACIÓN DEL PERSONAJE - PAUSA TEMPORALMENTE
+	if animation_controller and animated_sprite:
+		animated_sprite.pause()
+		# Cambiar a un frame de ataque si existe, sino usar frame actual
+		if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("attack"):
+			animated_sprite.play("attack")
+		else:
+			# Usar frame actual pero con efecto visual
+			animated_sprite.modulate = Color(1.2, 1.2, 0.8, 1.0)  # Tinte amarillento
 	
 	# Mostrar cuchillo y ocultar arma
 	if melee_knife_sprite:
@@ -315,12 +355,17 @@ func perform_melee_attack():
 	var melee_timer = Timer.new()
 	melee_timer.wait_time = 0.5
 	melee_timer.one_shot = true
-	melee_timer.timeout.connect(func():
-		finish_melee_attack()
-		melee_timer.queue_free()
-	)
+	melee_timer.timeout.connect(_finish_melee_attack)
 	add_child(melee_timer)
 	melee_timer.start()
+
+func _finish_melee_attack():
+	"""Función para finalizar ataque melee"""
+	finish_melee_attack()
+	# Limpiar timer
+	var melee_timer = get_node_or_null("Timer")
+	if melee_timer:
+		melee_timer.queue_free()
 
 func animate_melee_knife():
 	"""Animar el cuchillo durante el ataque"""
@@ -342,12 +387,19 @@ func finish_melee_attack():
 	"""Finalizar ataque de melee"""
 	is_performing_melee = false
 	
+	# Restaurar animación del personaje
+	if animated_sprite:
+		animated_sprite.modulate = Color.WHITE
+		if animation_controller:
+			# Reanudar animación normal
+			animation_controller.update_animation_for_movement(current_movement_direction, current_aim_direction)
+	
 	if melee_knife_sprite:
 		melee_knife_sprite.visible = false
 	if weapon_renderer:
 		weapon_renderer.show_weapon()
 
-func create_melee_effect(hit_pos: Vector2):  # CORREGIDO: no usar "position"
+func create_melee_effect(hit_pos: Vector2):
 	"""Crear efecto visual de melee"""
 	for i in range(6):
 		var particle = Sprite2D.new()
@@ -361,7 +413,12 @@ func create_melee_effect(hit_pos: Vector2):  # CORREGIDO: no usar "position"
 		tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
 		tween.parallel().tween_property(particle, "global_position", 
 			particle.global_position + Vector2(randf_range(-30, 30), randf_range(-30, 30)), 0.5)
-		tween.tween_callback(func(): particle.queue_free())
+		tween.tween_callback(_cleanup_melee_particle.bind(particle))
+
+func _cleanup_melee_particle(particle: Sprite2D):
+	"""Limpiar partícula de melee"""
+	if is_instance_valid(particle):
+		particle.queue_free()
 
 func on_enemy_killed():
 	"""Callback cuando mata enemigo CON FRASES"""
@@ -389,7 +446,12 @@ func show_kill_phrase(phrase: String):
 	tween.parallel().tween_property(phrase_label, "global_position", 
 		phrase_label.global_position + Vector2(0, -50), 2.0)
 	tween.parallel().tween_property(phrase_label, "modulate:a", 0.0, 1.5)
-	tween.tween_callback(func(): phrase_label.queue_free())
+	tween.tween_callback(_cleanup_phrase_label.bind(phrase_label))
+
+func _cleanup_phrase_label(label: Label):
+	"""Limpiar etiqueta de frase"""
+	if is_instance_valid(label):
+		label.queue_free()
 
 func take_damage(amount: int):
 	"""RECIBIR DAÑO - ACTUALIZA MINIHUD"""
@@ -399,7 +461,7 @@ func take_damage(amount: int):
 	if not is_fully_initialized:
 		return
 	
-	var old_health = current_health
+	var _old_health = current_health
 	current_health -= amount
 	current_health = max(current_health, 0)
 	
@@ -443,18 +505,19 @@ func start_invulnerability():
 	var invul_timer = Timer.new()
 	invul_timer.wait_time = invulnerability_duration
 	invul_timer.one_shot = true
-	invul_timer.timeout.connect(func(): 
-		end_invulnerability()
-		invul_timer.queue_free()
-	)
+	invul_timer.timeout.connect(_end_invulnerability)
 	add_child(invul_timer)
 	invul_timer.start()
 
-func end_invulnerability():
+func _end_invulnerability():
 	"""Terminar invulnerabilidad"""
 	is_invulnerable = false
 	if animated_sprite:
 		animated_sprite.modulate = Color.WHITE
+	# Limpiar timer
+	var invul_timer = get_node_or_null("Timer")
+	if invul_timer:
+		invul_timer.queue_free()
 
 func apply_screen_shake():
 	"""Efecto de screen shake"""
@@ -494,7 +557,7 @@ func die():
 
 func heal(amount: int):
 	"""Curar jugador y actualizar MiniHUD"""
-	var old_health = current_health
+	var _old_health = current_health
 	current_health = min(current_health + amount, max_health)
 	
 	if mini_hud:
@@ -521,9 +584,16 @@ func get_camera() -> Camera2D:
 	return camera
 
 func start_manual_reload():
-	"""Iniciar recarga manual"""
+	"""INICIAR RECARGA MANUAL CON FEEDBACK VISUAL"""
 	if shooting_component:
-		return shooting_component.start_manual_reload()
+		var reload_started = shooting_component.start_manual_reload()
+		if reload_started:
+			# Feedback visual de recarga
+			if animated_sprite:
+				var reload_tween = create_tween()
+				reload_tween.tween_property(animated_sprite, "modulate", Color(0.8, 0.8, 1.0, 1.0), 0.2)
+				reload_tween.tween_property(animated_sprite, "modulate", Color.WHITE, 0.3)
+		return reload_started
 	return false
 
 func get_ammo_info() -> Dictionary:
@@ -531,14 +601,6 @@ func get_ammo_info() -> Dictionary:
 	if shooting_component:
 		return shooting_component.get_ammo_info()
 	return {"current": 0, "max": 0, "reloading": false, "reload_progress": 0.0}
-
-func _input(event):
-	"""Manejar inputs adicionales"""
-	if event.is_action_pressed("ui_accept") and Input.is_key_pressed(KEY_R):
-		start_manual_reload()
-	
-	if event.is_action_pressed("ui_home"):
-		heal(1)
 
 func debug_animation_state():
 	"""Depurar estado de animaciones"""

@@ -1,4 +1,4 @@
-# scenes/ui/CharacterSelection.gd - LISTA HORIZONTAL COMPLETA
+# scenes/ui/CharacterSelection.gd - ANDROID COMPATIBLE
 extends Control
 class_name CharacterSelection
 
@@ -8,7 +8,7 @@ func _ready():
 	setup_selection_ui()
 
 func setup_selection_ui():
-	"""LISTA HORIZONTAL OCUPANDO TODA LA PANTALLA"""
+	"""LISTA HORIZONTAL CON SOPORTE COMPLETO PARA ANDROID"""
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
 	# Fondo oscuro
@@ -17,7 +17,7 @@ func setup_selection_ui():
 	bg.color = Color(0.02, 0.02, 0.1, 0.95)
 	add_child(bg)
 	
-	var is_mobile = OS.has_feature("mobile")
+	var is_mobile = OS.has_feature("mobile") or OS.get_name() == "Android"
 	var viewport_size = get_viewport().get_visible_rect().size
 	
 	# Scroll horizontal para múltiples personajes
@@ -38,22 +38,41 @@ func setup_selection_ui():
 	
 	# Crear tarjetas ocupando todo el alto
 	for character in characters:
-		var character_card = create_fullscreen_character_card(character, viewport_size, is_mobile)
+		var character_card = create_android_compatible_character_card(character, viewport_size, is_mobile)
 		hbox.add_child(character_card)
 
-func create_fullscreen_character_card(character: CharacterStats, viewport_size: Vector2, is_mobile: bool) -> Control:
-	"""Crear tarjeta ocupando todo el alto de pantalla"""
+func create_android_compatible_character_card(character: CharacterStats, viewport_size: Vector2, is_mobile: bool) -> Control:
+	"""Crear tarjeta TOTALMENTE COMPATIBLE con Android"""
 	var card_width = viewport_size.x / 3.0  # 3 personajes por pantalla
 	var card_height = viewport_size.y
 	
-	# Contenedor principal
+	# Contenedor principal - TOTALMENTE CLICKEABLE
 	var card_container = Control.new()
 	card_container.custom_minimum_size = Vector2(card_width, card_height)
+	card_container.mouse_filter = Control.MOUSE_FILTER_STOP
 	
-	# Panel clickeable
-	var main_panel = Panel.new()
-	main_panel.size = Vector2(card_width, card_height)
-	main_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# BOTÓN PRINCIPAL INVISIBLE QUE CUBRE TODA LA TARJETA
+	var main_button = Button.new()
+	main_button.size = Vector2(card_width, card_height)
+	main_button.position = Vector2.ZERO
+	main_button.text = ""  # Sin texto
+	main_button.flat = true  # Botón plano
+	main_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# Estilo completamente transparente
+	var transparent_style = StyleBoxFlat.new()
+	transparent_style.bg_color = Color.TRANSPARENT
+	main_button.add_theme_stylebox_override("normal", transparent_style)
+	main_button.add_theme_stylebox_override("hover", transparent_style)
+	main_button.add_theme_stylebox_override("pressed", transparent_style)
+	main_button.add_theme_stylebox_override("focus", transparent_style)
+	
+	card_container.add_child(main_button)
+	
+	# Panel visual (NO clickeable, solo decorativo)
+	var visual_panel = Panel.new()
+	visual_panel.size = Vector2(card_width, card_height)
+	visual_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE  # IGNORAR MOUSE
 	
 	var panel_style = StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.1, 0.1, 0.2, 0.9)
@@ -62,10 +81,10 @@ func create_fullscreen_character_card(character: CharacterStats, viewport_size: 
 	panel_style.border_width_right = 3
 	panel_style.border_width_top = 3
 	panel_style.border_width_bottom = 3
-	main_panel.add_theme_stylebox_override("panel", panel_style)
-	card_container.add_child(main_panel)
+	visual_panel.add_theme_stylebox_override("panel", panel_style)
+	card_container.add_child(visual_panel)
 	
-	# Layout vertical
+	# Layout vertical (NO clickeable)
 	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 20)
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -73,11 +92,13 @@ func create_fullscreen_character_card(character: CharacterStats, viewport_size: 
 	vbox.add_theme_constant_override("margin_right", 20)
 	vbox.add_theme_constant_override("margin_top", 30)
 	vbox.add_theme_constant_override("margin_bottom", 30)
-	main_panel.add_child(vbox)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE  # IGNORAR MOUSE
+	visual_panel.add_child(vbox)
 	
-	# SPRITE DEL PERSONAJE - GRANDE
+	# SPRITE DEL PERSONAJE - GRANDE (NO clickeable)
 	var sprite_container = Control.new()
 	sprite_container.custom_minimum_size = Vector2(0, card_height * 0.6)
+	sprite_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(sprite_container)
 	
 	var character_sprite = get_character_sprite_with_chica_fallback(character)
@@ -87,9 +108,10 @@ func create_fullscreen_character_card(character: CharacterStats, viewport_size: 
 		sprite_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 		sprite_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		sprite_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		sprite_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE  # IGNORAR MOUSE
 		sprite_container.add_child(sprite_rect)
 	
-	# NOMBRE DEL PERSONAJE
+	# NOMBRE DEL PERSONAJE (NO clickeable)
 	var name_label = Label.new()
 	name_label.text = character.character_name.to_upper()
 	name_label.add_theme_font_size_override("font_size", 32 if not is_mobile else 40)
@@ -98,11 +120,13 @@ func create_fullscreen_character_card(character: CharacterStats, viewport_size: 
 	name_label.add_theme_constant_override("shadow_offset_x", 3)
 	name_label.add_theme_constant_override("shadow_offset_y", 3)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(name_label)
 	
-	# ESTADÍSTICAS
+	# ESTADÍSTICAS (NO clickeable)
 	var stats_container = VBoxContainer.new()
 	stats_container.add_theme_constant_override("separation", 8)
+	stats_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(stats_container)
 	
 	# Vida
@@ -111,6 +135,7 @@ func create_fullscreen_character_card(character: CharacterStats, viewport_size: 
 	health_label.add_theme_font_size_override("font_size", 24)
 	health_label.add_theme_color_override("font_color", Color.LIGHT_GREEN)
 	health_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	health_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats_container.add_child(health_label)
 	
 	# Velocidad
@@ -119,6 +144,7 @@ func create_fullscreen_character_card(character: CharacterStats, viewport_size: 
 	speed_label.add_theme_font_size_override("font_size", 24)
 	speed_label.add_theme_color_override("font_color", Color.YELLOW)
 	speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	speed_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats_container.add_child(speed_label)
 	
 	# Suerte
@@ -127,28 +153,40 @@ func create_fullscreen_character_card(character: CharacterStats, viewport_size: 
 	luck_label.add_theme_font_size_override("font_size", 24)
 	luck_label.add_theme_color_override("font_color", Color.MAGENTA)
 	luck_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	luck_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats_container.add_child(luck_label)
 	
-	# ACCIÓN DE SELECCIÓN
-	main_panel.gui_input.connect(func(event: InputEvent):
-		if event is InputEventMouseButton:
-			var mouse_event = event as InputEventMouseButton
-			if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
-				character_selected.emit(character)
-				queue_free()
+	# CONEXIÓN DEL BOTÓN PRINCIPAL
+	main_button.pressed.connect(func():
+		print("🎮 Personaje seleccionado: ", character.character_name)
+		character_selected.emit(character)
+		queue_free()
 	)
 	
-	# SOPORTE TÁCTIL
+	# SOPORTE TÁCTIL ADICIONAL para Android
 	if is_mobile:
 		var touch_button = TouchScreenButton.new()
-		touch_button.texture = ImageTexture.new()
 		touch_button.shape = RectangleShape2D.new()
 		touch_button.shape.size = Vector2(card_width, card_height)
+		touch_button.position = Vector2.ZERO
+		touch_button.visibility_mode = TouchScreenButton.VISIBILITY_TOUCHSCREEN_ONLY
 		touch_button.pressed.connect(func():
+			print("🎮 TouchScreen - Personaje seleccionado: ", character.character_name)
 			character_selected.emit(character)
 			queue_free()
 		)
-		main_panel.add_child(touch_button)
+		card_container.add_child(touch_button)
+	
+	# EFECTO VISUAL AL PRESIONAR
+	main_button.button_down.connect(func():
+		var press_tween = create_tween()
+		press_tween.tween_property(visual_panel, "modulate", Color(1.2, 1.2, 0.8, 1.0), 0.1)
+	)
+	
+	main_button.button_up.connect(func():
+		var release_tween = create_tween()
+		release_tween.tween_property(visual_panel, "modulate", Color.WHITE, 0.1)
+	)
 	
 	return card_container
 

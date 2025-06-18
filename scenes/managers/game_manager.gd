@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - PARTE 1 CON BOTONES MÓVILES
+# scenes/managers/game_manager.gd - PARTE 1/3 CON TODAS LAS CORRECCIONES
 extends Node
 class_name GameManager
 
@@ -246,6 +246,10 @@ func setup_unified_cod_system_safe():
 	
 	player.set_score_system(score_system)
 	
+	# CONFIGURAR NOMBRE DEL PERSONAJE EN EL SISTEMA DE PUNTUACIÓN
+	if selected_character_stats:
+		score_system.set_character_name(selected_character_stats.character_name)
+	
 	rounds_manager.start_round(1)
 
 func _on_round_changed(new_round: int):
@@ -267,7 +271,97 @@ func start_enemy_spawning_safely():
 	
 	rounds_manager.manually_start_spawning()
 
-# ===== CONTROLES MÓVILES =====
+func toggle_fullscreen():
+	"""Alternar pantalla completa"""
+	var current_mode = DisplayServer.window_get_mode()
+	if current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+func toggle_pause_menu():
+	"""Alternar menú de pausa"""
+	if pause_menu.is_paused:
+		pause_menu.hide_menu()
+	else:
+		pause_menu.show_menu()
+
+func _on_mobile_menu_pressed():
+	"""Botón menú móvil"""
+	toggle_pause_menu()
+
+func _on_resume_game():
+	"""Reanudar juego"""
+	resume_enemy_spawning()
+
+func _on_restart_game():
+	"""Reiniciar juego"""
+	restart_entire_game()
+
+func _on_quit_game():
+	"""Salir del juego CORRECTAMENTE"""
+	cleanup_before_exit()
+	get_tree().quit()
+
+func setup_pause_menu():
+	"""Configurar menú de pausa"""
+	pause_menu = preload("res://scenes/ui/PauseMenu.tscn").instantiate()
+	pause_menu.resume_game.connect(_on_resume_game)
+	pause_menu.restart_game.connect(_on_restart_game)
+	pause_menu.quit_game.connect(_on_quit_game)
+	ui_manager.add_child(pause_menu)
+	
+	mobile_menu_button = MobileMenuButton.new()
+	mobile_menu_button.menu_pressed.connect(_on_mobile_menu_pressed)
+	mobile_menu_button.visible = true
+	ui_manager.add_child(mobile_menu_button)
+
+func setup_background():
+	"""Configurar fondo"""
+	background_sprite = Sprite2D.new()
+	background_sprite.name = "Background"
+	background_sprite.z_index = -100
+	
+	var jungle_texture = SpriteEffectsHandler.load_texture_safe("res://sprites/background/jungle.png")
+	if jungle_texture:
+		background_sprite.texture = jungle_texture
+		background_sprite.position = Vector2(0, 0)
+		
+		var texture_size = jungle_texture.get_size()
+		var scale_factor_x = 7680.0 / float(texture_size.x)
+		var scale_factor_y = 4320.0 / float(texture_size.y)
+		background_sprite.scale = Vector2(scale_factor_x, scale_factor_y)
+		
+		add_child(background_sprite)
+	else:
+		var temp_bg = ColorRect.new()
+		temp_bg.color = Color(0.2, 0.4, 0.2)
+		temp_bg.size = Vector2(1600, 1600)
+		temp_bg.position = Vector2(-800, -800)
+		temp_bg.z_index = -100
+		add_child(temp_bg)
+
+func setup_window():
+	"""Configurar ventana"""
+	if is_mobile:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		
+		if OS.get_name() == "Android":
+			DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+			
+		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+		
+		var window = get_window()
+		if window:
+			window.borderless = true
+			
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+		
+# ===== CONTROLES MÓVILES - PARTE 2/3 =====
 
 func handle_touch_event(event: InputEventScreenTouch):
 	"""Manejar toques"""
@@ -405,57 +499,112 @@ func setup_mobile_controls():
 		shooting_joystick_base.modulate = Color.WHITE
 
 func create_mobile_action_buttons():
-	"""Crear botones flotantes de melee y reload"""
+	"""Crear botones flotantes de melee y reload MEJORADOS"""
 	if not is_mobile or not mobile_controls:
 		return
 	
 	var viewport_size = get_viewport().get_visible_rect().size
 	
-	# Botón MELEE (arriba del joystick de disparo)
+	# Botón MELEE (arriba del joystick de disparo) - MÁS GRANDE
 	melee_button = Button.new()
-	melee_button.text = "🗡"
-	melee_button.size = Vector2(80, 80)
+	melee_button.text = "⚔"
+	melee_button.size = Vector2(100, 100)  # MÁS GRANDE
 	melee_button.position = Vector2(
-		viewport_size.x * 0.78 + 50,
-		viewport_size.y * 0.25
+		viewport_size.x * 0.78 + 30,
+		viewport_size.y * 0.20
 	)
-	melee_button.add_theme_font_size_override("font_size", 40)
+	melee_button.add_theme_font_size_override("font_size", 50)  # FUENTE MÁS GRANDE
 	
 	var melee_style = StyleBoxFlat.new()
-	melee_style.bg_color = Color(0.6, 0.1, 0.1, 0.9)
-	melee_style.corner_radius_top_left = 40
-	melee_style.corner_radius_top_right = 40
-	melee_style.corner_radius_bottom_left = 40
-	melee_style.corner_radius_bottom_right = 40
+	melee_style.bg_color = Color(0.8, 0.1, 0.1, 0.9)  # ROJO MÁS INTENSO
+	melee_style.corner_radius_top_left = 50
+	melee_style.corner_radius_top_right = 50
+	melee_style.corner_radius_bottom_left = 50
+	melee_style.corner_radius_bottom_right = 50
+	melee_style.border_color = Color.YELLOW
+	melee_style.border_width_left = 3
+	melee_style.border_width_right = 3
+	melee_style.border_width_top = 3
+	melee_style.border_width_bottom = 3
 	melee_button.add_theme_stylebox_override("normal", melee_style)
+	
+	# Estilo pressed para melee
+	var melee_pressed_style = StyleBoxFlat.new()
+	melee_pressed_style.bg_color = Color(1.0, 0.3, 0.3, 1.0)
+	melee_pressed_style.corner_radius_top_left = 50
+	melee_pressed_style.corner_radius_top_right = 50
+	melee_pressed_style.corner_radius_bottom_left = 50
+	melee_pressed_style.corner_radius_bottom_right = 50
+	melee_pressed_style.border_color = Color.WHITE
+	melee_pressed_style.border_width_left = 4
+	melee_pressed_style.border_width_right = 4
+	melee_pressed_style.border_width_top = 4
+	melee_pressed_style.border_width_bottom = 4
+	melee_button.add_theme_stylebox_override("pressed", melee_pressed_style)
 	
 	melee_button.pressed.connect(func():
 		if player and player.has_method("perform_melee_attack"):
 			player.perform_melee_attack()
+			# Feedback visual del botón
+			var feedback_tween = create_tween()
+			feedback_tween.tween_property(melee_button, "scale", Vector2(0.9, 0.9), 0.1)
+			feedback_tween.tween_property(melee_button, "scale", Vector2(1.0, 1.0), 0.1)
 	)
 	mobile_controls.add_child(melee_button)
 	
-	# Botón RELOAD (abajo del joystick de disparo)
+	# Botón RELOAD (abajo del joystick de disparo) - MÁS GRANDE
 	reload_button = Button.new()
 	reload_button.text = "🔄"
-	reload_button.size = Vector2(80, 80)
+	reload_button.size = Vector2(100, 100)  # MÁS GRANDE
 	reload_button.position = Vector2(
-		viewport_size.x * 0.78 + 50,
-		viewport_size.y * 0.65
+		viewport_size.x * 0.78 + 30,
+		viewport_size.y * 0.70
 	)
-	reload_button.add_theme_font_size_override("font_size", 40)
+	reload_button.add_theme_font_size_override("font_size", 50)  # FUENTE MÁS GRANDE
 	
 	var reload_style = StyleBoxFlat.new()
-	reload_style.bg_color = Color(0.1, 0.4, 0.6, 0.9)
-	reload_style.corner_radius_top_left = 40
-	reload_style.corner_radius_top_right = 40
-	reload_style.corner_radius_bottom_left = 40
-	reload_style.corner_radius_bottom_right = 40
+	reload_style.bg_color = Color(0.1, 0.4, 0.8, 0.9)  # AZUL MÁS INTENSO
+	reload_style.corner_radius_top_left = 50
+	reload_style.corner_radius_top_right = 50
+	reload_style.corner_radius_bottom_left = 50
+	reload_style.corner_radius_bottom_right = 50
+	reload_style.border_color = Color.CYAN
+	reload_style.border_width_left = 3
+	reload_style.border_width_right = 3
+	reload_style.border_width_top = 3
+	reload_style.border_width_bottom = 3
 	reload_button.add_theme_stylebox_override("normal", reload_style)
+	
+	# Estilo pressed para reload
+	var reload_pressed_style = StyleBoxFlat.new()
+	reload_pressed_style.bg_color = Color(0.3, 0.6, 1.0, 1.0)
+	reload_pressed_style.corner_radius_top_left = 50
+	reload_pressed_style.corner_radius_top_right = 50
+	reload_pressed_style.corner_radius_bottom_left = 50
+	reload_pressed_style.corner_radius_bottom_right = 50
+	reload_pressed_style.border_color = Color.WHITE
+	reload_pressed_style.border_width_left = 4
+	reload_pressed_style.border_width_right = 4
+	reload_pressed_style.border_width_top = 4
+	reload_pressed_style.border_width_bottom = 4
+	reload_button.add_theme_stylebox_override("pressed", reload_pressed_style)
 	
 	reload_button.pressed.connect(func():
 		if player and player.has_method("start_manual_reload"):
-			player.start_manual_reload()
+			var reload_started = player.start_manual_reload()
+			# Feedback visual del botón
+			var feedback_tween = create_tween()
+			if reload_started:
+				# Si la recarga empezó, animación exitosa
+				feedback_tween.tween_property(reload_button, "modulate", Color.GREEN, 0.2)
+				feedback_tween.tween_property(reload_button, "modulate", Color.WHITE, 0.3)
+			else:
+				# Si no se pudo recargar, animación de error
+				feedback_tween.tween_property(reload_button, "modulate", Color.RED, 0.1)
+				feedback_tween.tween_property(reload_button, "modulate", Color.WHITE, 0.2)
+			
+			feedback_tween.parallel().tween_property(reload_button, "scale", Vector2(0.9, 0.9), 0.1)
+			feedback_tween.parallel().tween_property(reload_button, "scale", Vector2(1.0, 1.0), 0.1)
 	)
 	mobile_controls.add_child(reload_button)
 
@@ -598,98 +747,8 @@ func create_shooting_joystick_large():
 	
 	shooting_joystick_base.add_child(shooting_joystick_knob)
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
-
-# ===== RESTO DE FUNCIONES =====
-
-func toggle_fullscreen():
-	"""Alternar pantalla completa"""
-	var current_mode = DisplayServer.window_get_mode()
-	if current_mode == DisplayServer.WINDOW_MODE_FULLSCREEN:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
-	else:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-
-func toggle_pause_menu():
-	"""Alternar menú de pausa"""
-	if pause_menu.is_paused:
-		pause_menu.hide_menu()
-	else:
-		pause_menu.show_menu()
-
-func _on_mobile_menu_pressed():
-	"""Botón menú móvil"""
-	toggle_pause_menu()
-
-func _on_resume_game():
-	"""Reanudar juego"""
-	resume_enemy_spawning()
-
-func _on_restart_game():
-	"""Reiniciar juego"""
-	restart_entire_game()
-
-func _on_quit_game():
-	"""Salir del juego CORRECTAMENTE"""
-	cleanup_before_exit()
-	get_tree().quit()
-
-func setup_pause_menu():
-	"""Configurar menú de pausa"""
-	pause_menu = preload("res://scenes/ui/PauseMenu.tscn").instantiate()
-	pause_menu.resume_game.connect(_on_resume_game)
-	pause_menu.restart_game.connect(_on_restart_game)
-	pause_menu.quit_game.connect(_on_quit_game)
-	ui_manager.add_child(pause_menu)
 	
-	mobile_menu_button = MobileMenuButton.new()
-	mobile_menu_button.menu_pressed.connect(_on_mobile_menu_pressed)
-	mobile_menu_button.visible = true
-	ui_manager.add_child(mobile_menu_button)
-
-func setup_background():
-	"""Configurar fondo"""
-	background_sprite = Sprite2D.new()
-	background_sprite.name = "Background"
-	background_sprite.z_index = -100
-	
-	var jungle_texture = SpriteEffectsHandler.load_texture_safe("res://sprites/background/jungle.png")
-	if jungle_texture:
-		background_sprite.texture = jungle_texture
-		background_sprite.position = Vector2(0, 0)
-		
-		var texture_size = jungle_texture.get_size()
-		var scale_factor_x = 1600.0 / float(texture_size.x)
-		var scale_factor_y = 1600.0 / float(texture_size.y)
-		background_sprite.scale = Vector2(scale_factor_x, scale_factor_y)
-		
-		add_child(background_sprite)
-	else:
-		var temp_bg = ColorRect.new()
-		temp_bg.color = Color(0.2, 0.4, 0.2)
-		temp_bg.size = Vector2(1600, 1600)
-		temp_bg.position = Vector2(-800, -800)
-		temp_bg.z_index = -100
-		add_child(temp_bg)
-
-func setup_window():
-	"""Configurar ventana"""
-	if is_mobile:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-		
-		if OS.get_name() == "Android":
-			DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
-			
-		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
-		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
-		
-		var window = get_window()
-		if window:
-			window.borderless = true
-			
-	else:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
-		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
-		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+# ===== GAME OVER Y FUNCIONES FINALES - PARTE 3/3 =====
 
 func _on_player_died():
 	"""Cuando muere el jugador"""

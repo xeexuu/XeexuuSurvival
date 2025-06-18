@@ -1,4 +1,4 @@
-# scenes/managers/ScoreSystem.gd - CON AUDIO ACELERADO PARA KILLS DE PELAO
+# scenes/managers/ScoreSystem.gd - AUDIO SOLO AL ELIMINAR
 extends Node
 class_name ScoreSystem
 
@@ -11,7 +11,7 @@ var headshot_kills: int = 0
 var current_kill_streak: int = 0
 var best_kill_streak: int = 0
 
-# SISTEMA DE AUDIO PARA KILLS
+# SISTEMA DE AUDIO PARA KILLS - SOLO AL ELIMINAR
 var audio_player: AudioStreamPlayer2D
 var is_audio_playing: bool = false
 var character_name: String = ""
@@ -37,7 +37,7 @@ func _ready():
 	setup_audio_system()
 
 func setup_audio_system():
-	"""Configurar sistema de audio para kills"""
+	"""Configurar sistema de audio para kills SOLO"""
 	audio_player = AudioStreamPlayer2D.new()
 	audio_player.name = "KillAudioPlayer"
 	audio_player.volume_db = 0.0  # Volumen normal
@@ -72,7 +72,8 @@ func load_character_kill_audio():
 		print("⚠️ Audio no encontrado para ", character_name, ": ", audio_path)
 
 func play_kill_audio():
-	"""Reproducir audio de kill SOLO SI NO SE ESTÁ REPRODUCIENDO"""
+	"""REPRODUCIR AUDIO SOLO AL ELIMINAR - NO SI YA SE ESTÁ REPRODUCIENDO"""
+	# VERIFICAR QUE NO SE ESTÉ REPRODUCIENDO NINGÚN AUDIO
 	if is_audio_playing or not audio_player or not audio_player.stream:
 		return
 	
@@ -94,7 +95,7 @@ func set_current_round(round_number: int):
 		current_round_multiplier = 1
 
 func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee: bool = false):
-	"""SISTEMA COD BO1: Puntos por kill con multiplicadores de ronda + AUDIO"""
+	"""SISTEMA COD BO1: Puntos por kill con multiplicadores de ronda + AUDIO SOLO AL ELIMINAR"""
 	var points = base_kill_points
 	var popup_type = "kill"
 	
@@ -119,7 +120,7 @@ func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee:
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
 	
-	# REPRODUCIR AUDIO DE KILL (SOLO PELAO)
+	# 🔊 REPRODUCIR AUDIO DE KILL SOLO AL ELIMINAR (NO AL DISPARAR)
 	play_kill_audio()
 	
 	show_score_popup(points, hit_position, popup_type)
@@ -127,7 +128,7 @@ func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee:
 	score_popup.emit(points, hit_position, popup_type)
 
 func add_damage_points(hit_position: Vector2, _damage_dealt: int, is_headshot: bool = false):
-	"""SISTEMA COD BO1: Puntos por daño sin kill (10 puntos por hit)"""
+	"""SISTEMA COD BO1: Puntos por daño sin kill (10 puntos por hit) - SIN AUDIO"""
 	var points = 10
 	var popup_type = "damage"
 	
@@ -140,12 +141,14 @@ func add_damage_points(hit_position: Vector2, _damage_dealt: int, is_headshot: b
 	
 	current_score += points
 	
+	# NO REPRODUCIR AUDIO AL HACER DAÑO SIN ELIMINAR
+	
 	show_score_popup(points, hit_position, popup_type)
 	score_changed.emit(current_score)
 	score_popup.emit(points, hit_position, popup_type)
 
 func add_insta_kill_points(hit_position: Vector2):
-	"""Puntos durante power-up insta-kill + AUDIO"""
+	"""Puntos durante power-up insta-kill + AUDIO AL ELIMINAR"""
 	var points = insta_kill_points * current_round_multiplier
 	
 	current_score += points
@@ -155,7 +158,7 @@ func add_insta_kill_points(hit_position: Vector2):
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
 	
-	# REPRODUCIR AUDIO DE KILL (SOLO PELAO)
+	# 🔊 REPRODUCIR AUDIO DE KILL (SOLO AL ELIMINAR)
 	play_kill_audio()
 	
 	show_score_popup(points, hit_position, "insta_kill")
@@ -163,7 +166,7 @@ func add_insta_kill_points(hit_position: Vector2):
 	score_popup.emit(points, hit_position, "insta_kill")
 
 func add_repair_points(repair_position: Vector2, repair_amount: int):
-	"""Añadir puntos por reparar ventanas/barricadas estilo Black Ops 1"""
+	"""Añadir puntos por reparar ventanas/barricadas estilo Black Ops 1 - SIN AUDIO"""
 	var points = min(repair_amount * 10, max_window_repair_points)
 	
 	current_score += points
@@ -171,7 +174,7 @@ func add_repair_points(repair_position: Vector2, repair_amount: int):
 	score_changed.emit(current_score)
 
 func add_power_up_points(power_up_type: String, position: Vector2):
-	"""Añadir puntos por power-ups"""
+	"""Añadir puntos por power-ups - SIN AUDIO"""
 	var points = 0
 	
 	match power_up_type:
@@ -192,7 +195,7 @@ func add_power_up_points(power_up_type: String, position: Vector2):
 		score_changed.emit(current_score)
 
 func add_bonus_points(amount: int, position: Vector2, reason: String = "bonus"):
-	"""Añadir puntos bonus por diversas razones"""
+	"""Añadir puntos bonus por diversas razones - SIN AUDIO"""
 	var final_amount = amount * current_round_multiplier
 	
 	current_score += final_amount
@@ -288,7 +291,12 @@ func animate_score_popup(popup: Control):
 	
 	tween.parallel().tween_property(popup, "modulate:a", 0.0, 1.5)
 	
-	tween.tween_callback(func(): popup.queue_free())
+	tween.tween_callback(_cleanup_popup.bind(popup))
+
+func _cleanup_popup(popup: Control):
+	"""Limpiar popup de puntuación"""
+	if is_instance_valid(popup):
+		popup.queue_free()
 
 func format_score(score: int) -> String:
 	"""Formatear puntuación con separadores de miles estilo Black Ops 1"""

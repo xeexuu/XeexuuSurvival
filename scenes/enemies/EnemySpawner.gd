@@ -1,4 +1,4 @@
-# scenes/enemies/EnemySpawner.gd - CON NUEVOS TIPOS Y SALUD CORREGIDA
+# scenes/enemies/EnemySpawner.gd - TIPOS DESDE RONDA 1
 extends Node2D
 class_name EnemySpawner
 
@@ -142,14 +142,14 @@ func spawn_enemy() -> bool:
 		return false
 	
 	# DETERMINAR TIPO ANTES DE CONFIGURAR
-	var enemy_type = determine_enemy_type_by_round(current_round_number)
+	var enemy_type = determine_enemy_type_by_round_with_variety(current_round_number, enemies_spawned_this_round)
 	enemy.enemy_type = enemy_type
 	
 	# CONFIGURAR ESTADÍSTICAS ESPECÍFICAS POR TIPO
 	var round_health = rounds_manager.get_enemy_health_for_current_round() if rounds_manager else 150
 	configure_enemy_stats_by_type(enemy, enemy_type, round_health)
 	
-	# CONFIGURAR PARA SPAWN SIN RESETEAR SALUD
+	# CONFIGURAR PARA SPAWN
 	enemy.setup_for_spawn(player, round_health)
 	
 	# POSICIONAR Y ACTIVAR
@@ -200,27 +200,66 @@ func configure_enemy_stats_by_type(enemy: Enemy, enemy_type: String, round_healt
 	
 	enemy.current_health = enemy.max_health
 
-func determine_enemy_type_by_round(round_num: int) -> String:
-	"""Determinar tipo de enemigo según la ronda con NUEVOS TIPOS"""
-	var rand_val = randf()
+func determine_enemy_type_by_round_with_variety(round_num: int, spawn_index: int) -> String:
+	"""NUEVO: Determinar tipo de enemigo con VARIEDAD desde ronda 1 + GARANTIZAR PERRO Y CRAWLER"""
 	
-	# Rondas 1-3: Solo zombies básicos
-	if round_num <= 3:
-		return "zombie_basic"
+	# RONDA 1: Garantizar MÍNIMO 1 perro y 1 crawler ADICIONALES
+	if round_num == 1:
+		match spawn_index:
+			0:
+				return "zombie_basic"   # Primer enemigo: básico (enemigo principal)
+			1:
+				return "zombie_dog"     # Segundo enemigo: PERRO GARANTIZADO
+			2:
+				return "zombie_crawler" # Tercer enemigo: CRAWLER GARANTIZADO
+			3:
+				return "zombie_basic"   # Cuarto enemigo: básico
+			_:
+				# Resto aleatorio entre todos los tipos disponibles
+				var types = ["zombie_basic", "zombie_dog", "zombie_crawler"]
+				return types[randi() % types.size()]
 	
-	# Rondas 4-7: Añadir crawlers
-	elif round_num <= 7:
-		if rand_val < 0.15:
+	# RONDA 2-3: Más variedad con garantías
+	elif round_num <= 3:
+		# Garantizar diversidad en las primeras spawns
+		if spawn_index == 0:
+			return "zombie_basic"
+		elif spawn_index == 1:
+			return "zombie_dog"
+		elif spawn_index == 2:
 			return "zombie_crawler"
 		else:
-			return "zombie_basic"
+			var rand_val = randf()
+			if rand_val < 0.15:
+				return "zombie_dog"
+			elif rand_val < 0.3:
+				return "zombie_crawler"
+			else:
+				return "zombie_basic"
 	
-	# Rondas 8+: Todos los tipos incluyendo perros
-	else:
-		if rand_val < 0.10:
+	# RONDA 4-7: Añadir runners
+	elif round_num <= 7:
+		var rand_val = randf()
+		if rand_val < 0.1:
 			return "zombie_dog"
 		elif rand_val < 0.25:
 			return "zombie_crawler"
+		elif rand_val < 0.35:
+			return "zombie_runner"
+		else:
+			return "zombie_basic"
+	
+	# RONDA 8+: Todos los tipos incluyendo chargers
+	else:
+		var rand_val = randf()
+		if rand_val < 0.08:
+			return "zombie_dog"
+		elif rand_val < 0.18:
+			return "zombie_crawler"
+		elif rand_val < 0.28:
+			return "zombie_runner"
+		elif rand_val < 0.35:
+			return "zombie_charger"
 		else:
 			return "zombie_basic"
 

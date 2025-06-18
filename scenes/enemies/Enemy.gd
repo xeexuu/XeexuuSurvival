@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - COMPLETAMENTE CORREGIDO CON SALUD Y EFECTOS
+# scenes/enemies/Enemy.gd - CORREGIDO: lambdas y vida fija
 extends CharacterBody2D
 class_name Enemy
 
@@ -94,7 +94,6 @@ func verify_sprite_after_ready():
 
 func setup_enemy():
 	"""Configurar enemigo con hitboxes específicas"""
-	# NO CAMBIAR SALUD AQUÍ - MANTENER VALORES INICIALES
 	is_dead = false
 	current_state = WaWState.SPAWNING
 	
@@ -175,7 +174,6 @@ func setup_dog_variant():
 	base_move_speed = 180.0
 	current_move_speed = base_move_speed
 	charge_speed_multiplier = 2.0
-	# NO CAMBIAR max_health NI current_health AQUÍ
 	damage = 2
 	attack_range = 50.0
 	detection_range = 1500.0
@@ -186,7 +184,6 @@ func setup_crawler_variant():
 	base_move_speed = 60.0
 	current_move_speed = base_move_speed
 	charge_speed_multiplier = 0.8
-	# NO CAMBIAR max_health NI current_health AQUÍ
 	damage = 1
 	attack_range = 40.0
 	detection_range = 800.0
@@ -195,21 +192,18 @@ func setup_crawler_variant():
 func setup_runner_variant():
 	"""Configurar variante runner zombie"""
 	charge_speed_multiplier = randf_range(1.8, 2.2)
-	# NO CAMBIAR max_health NI current_health AQUÍ
 	modulate = Color(1.4, 0.6, 0.6, 1.0)
 	detection_range = 1200.0
 
 func setup_charger_variant():
 	"""Configurar variante charger zombie"""
 	charge_speed_multiplier = randf_range(1.4, 1.7)
-	# NO CAMBIAR max_health NI current_health AQUÍ
 	modulate = Color(1.2, 0.8, 0.6, 1.0)
 	attack_range = 70.0
 
 func setup_basic_variant():
 	"""Configurar variante básica zombie"""
 	charge_speed_multiplier = randf_range(0.9, 1.3)
-	# NO CAMBIAR max_health NI current_health AQUÍ
 	modulate = Color(1.0, 0.9, 0.8, 1.0)
 
 func load_enemy_sprite_waw_size():
@@ -473,13 +467,26 @@ func force_sprite_visibility():
 				load_enemy_sprite_waw_size()
 
 func setup_for_spawn(target_player: Player, round_health: int = -1):
-	"""CONFIGURAR PARA SPAWN - SALUD SIEMPRE AL MÁXIMO"""
+	"""CONFIGURAR PARA SPAWN - VIDA MÁXIMA AJUSTADA SEGÚN TIPO"""
 	player = target_player
 	
-	# SOLO CONFIGURAR SALUD SI ES DIFERENTE A LA ACTUAL
+	# CONFIGURAR SALUD MÁXIMA SEGÚN TIPO Y RONDA
 	if round_health > 0:
-		max_health = round_health
-		current_health = round_health  # SIEMPRE AL MÁXIMO
+		# Ajustar salud máxima según tipo de enemigo
+		match enemy_type:
+			"zombie_dog":
+				max_health = int(float(round_health) * 0.4)  # 40% de vida
+			"zombie_crawler":
+				max_health = int(float(round_health) * 1.5)  # 150% de vida
+			"zombie_runner":
+				max_health = int(float(round_health) * 0.6)  # 60% de vida
+			"zombie_charger":
+				max_health = int(float(round_health) * 0.8)  # 80% de vida
+			_:  # zombie_basic
+				max_health = round_health
+		
+		# ESTABLECER VIDA ACTUAL IGUAL A LA MÁXIMA
+		current_health = max_health
 	
 	is_dead = false
 	current_state = WaWState.SPAWNING
@@ -501,13 +508,19 @@ func start_spawn_animation():
 	var spawn_timer = Timer.new()
 	spawn_timer.wait_time = 0.1
 	spawn_timer.one_shot = true
-	spawn_timer.timeout.connect(func():
-		current_state = WaWState.HUNTING
-		state_timer = 0.0
-		spawn_timer.queue_free()
-	)
+	# CORREGIDO: función nombrada en lugar de lambda
+	spawn_timer.timeout.connect(_on_spawn_finished)
 	add_child(spawn_timer)
 	spawn_timer.start()
+
+func _on_spawn_finished():
+	"""Función para manejar finalización del spawn"""
+	current_state = WaWState.HUNTING
+	state_timer = 0.0
+	# Remover el timer después de usarlo
+	var spawn_timer = get_node_or_null("SpawnTimer")
+	if spawn_timer:
+		spawn_timer.queue_free()
 
 func update_health_bar():
 	"""Actualizar barra de vida Y texto"""
@@ -667,9 +680,7 @@ func start_waw_attack():
 		var prep_tween = create_tween()
 		prep_tween.tween_property(sprite, "scale", sprite.scale * 1.15, 0.1)
 	
-	# MOSTRAR EFECTO DE ATAQUE ROJO
 	show_attack_effect()
-	
 	execute_waw_attack()
 
 func show_attack_effect():
@@ -677,16 +688,20 @@ func show_attack_effect():
 	if not attack_effect_sprite or not player:
 		return
 	
-	# Posicionar efecto hacia el jugador
 	var direction_to_player = (player.global_position - global_position).normalized()
 	attack_effect_sprite.rotation = direction_to_player.angle()
 	attack_effect_sprite.global_position = global_position + direction_to_player * 20
 	attack_effect_sprite.visible = true
 	
-	# Animar el efecto
 	var effect_tween = create_tween()
 	effect_tween.tween_property(attack_effect_sprite, "modulate:a", 0.0, 0.8)
-	effect_tween.tween_callback(func(): attack_effect_sprite.visible = false)
+	# CORREGIDO: función nombrada en lugar de lambda
+	effect_tween.tween_callback(_hide_attack_effect)
+
+func _hide_attack_effect():
+	"""Función para ocultar efecto de ataque"""
+	if attack_effect_sprite:
+		attack_effect_sprite.visible = false
 
 func execute_waw_attack():
 	"""Ejecutar ataque"""
@@ -717,7 +732,13 @@ func create_attack_effect():
 		effect_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
 		effect_tween.parallel().tween_property(particle, "global_position", 
 			particle.global_position + Vector2(randf_range(-25, 25), randf_range(-25, 25)), 0.5)
-		effect_tween.tween_callback(func(): particle.queue_free())
+		# CORREGIDO: función nombrada en lugar de lambda
+		effect_tween.tween_callback(_cleanup_particle.bind(particle))
+
+func _cleanup_particle(particle: Sprite2D):
+	"""Función para limpiar partícula"""
+	if is_instance_valid(particle):
+		particle.queue_free()
 
 func finish_attack():
 	if sprite:
@@ -810,7 +831,13 @@ func show_damage_number(damage_amount: int, is_headshot: bool = false):
 	var tween = create_tween()
 	tween.parallel().tween_property(damage_label, "position", damage_label.position + Vector2(0, -50), 1.0)
 	tween.parallel().tween_property(damage_label, "modulate:a", 0.0, 1.0)
-	tween.tween_callback(func(): damage_label.queue_free())
+	# CORREGIDO: función nombrada en lugar de lambda
+	tween.tween_callback(_cleanup_damage_label.bind(damage_label))
+
+func _cleanup_damage_label(label: Label):
+	"""Función para limpiar etiqueta de daño"""
+	if is_instance_valid(label):
+		label.queue_free()
 
 func die():
 	"""Muerte con texto"""

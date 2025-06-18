@@ -1,4 +1,4 @@
-# scenes/player/shooting_component.gd - CON SONIDOS
+# scenes/player/shooting_component.gd - SIN AUDIO AL DISPARAR
 extends Node
 class_name ShootingComponent
 
@@ -66,27 +66,8 @@ func shoot(direction: Vector2, start_position: Vector2):
 	if not shoot_timer or not is_instance_valid(shoot_timer):
 		return
 	
-	# REPRODUCIR SONIDO DE DISPARO
-	if equipped_weapon and equipped_weapon.attack_sound:
-		var audio_player = AudioStreamPlayer2D.new()
-		audio_player.stream = equipped_weapon.attack_sound
-		audio_player.volume_db = -5.0
-		audio_player.pitch_scale = randf_range(0.9, 1.1)
-		get_tree().current_scene.add_child(audio_player)
-		audio_player.play()
-		
-		audio_player.finished.connect(func(): audio_player.queue_free())
-		
-		var cleanup_timer = Timer.new()
-		cleanup_timer.wait_time = 3.0
-		cleanup_timer.one_shot = true
-		cleanup_timer.timeout.connect(func(): 
-			if is_instance_valid(audio_player):
-				audio_player.queue_free()
-			cleanup_timer.queue_free()
-		)
-		get_tree().current_scene.add_child(cleanup_timer)
-		cleanup_timer.start()
+	# ❌ QUITADO: Sistema de audio al disparar
+	# El audio ahora solo se reproduce al eliminar enemigos en ScoreSystem
 	
 	var bullets_to_create = 1
 	if equipped_weapon:
