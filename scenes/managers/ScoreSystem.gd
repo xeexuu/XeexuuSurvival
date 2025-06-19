@@ -1,4 +1,4 @@
-# scenes/managers/ScoreSystem.gd - AUDIO SOLO AL ELIMINAR
+# scenes/managers/ScoreSystem.gd - AUDIO SOLO AL ELIMINAR (NO EN MELEE)
 extends Node
 class_name ScoreSystem
 
@@ -11,7 +11,7 @@ var headshot_kills: int = 0
 var current_kill_streak: int = 0
 var best_kill_streak: int = 0
 
-# SISTEMA DE AUDIO PARA KILLS - SOLO AL ELIMINAR
+# SISTEMA DE AUDIO PARA KILLS - SOLO AL ELIMINAR CON ARMAS
 var audio_player: AudioStreamPlayer2D
 var is_audio_playing: bool = false
 var character_name: String = ""
@@ -37,7 +37,7 @@ func _ready():
 	setup_audio_system()
 
 func setup_audio_system():
-	"""Configurar sistema de audio para kills SOLO"""
+	"""Configurar sistema de audio para kills CON ARMAS SOLAMENTE"""
 	audio_player = AudioStreamPlayer2D.new()
 	audio_player.name = "KillAudioPlayer"
 	audio_player.volume_db = 0.0  # Volumen normal
@@ -71,8 +71,8 @@ func load_character_kill_audio():
 	else:
 		print("⚠️ Audio no encontrado para ", character_name, ": ", audio_path)
 
-func play_kill_audio():
-	"""REPRODUCIR AUDIO SOLO AL ELIMINAR - NO SI YA SE ESTÁ REPRODUCIENDO"""
+func play_kill_audio_weapon_only():
+	"""REPRODUCIR AUDIO SOLO AL ELIMINAR CON ARMAS - NO CON MELEE"""
 	# VERIFICAR QUE NO SE ESTÉ REPRODUCIENDO NINGÚN AUDIO
 	if is_audio_playing or not audio_player or not audio_player.stream:
 		return
@@ -83,7 +83,7 @@ func play_kill_audio():
 	
 	is_audio_playing = true
 	audio_player.play()
-	print("🔊 Reproduciendo audio de kill para pelao (velocidad 1.5x)")
+	print("🔊 Reproduciendo audio de kill con ARMA para pelao (velocidad 1.5x)")
 
 func set_current_round(round_number: int):
 	"""Establecer la ronda actual para ajustar multiplicadores"""
@@ -95,7 +95,7 @@ func set_current_round(round_number: int):
 		current_round_multiplier = 1
 
 func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee: bool = false):
-	"""SISTEMA COD BO1: Puntos por kill con multiplicadores de ronda + AUDIO SOLO AL ELIMINAR"""
+	"""SISTEMA COD BO1: Puntos por kill con multiplicadores de ronda + AUDIO SOLO PARA ARMAS"""
 	var points = base_kill_points
 	var popup_type = "kill"
 	
@@ -120,8 +120,10 @@ func add_kill_points(hit_position: Vector2, is_headshot: bool = false, is_melee:
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
 	
-	# 🔊 REPRODUCIR AUDIO DE KILL SOLO AL ELIMINAR (NO AL DISPARAR)
-	play_kill_audio()
+	# 🔊 REPRODUCIR AUDIO SOLO PARA KILLS CON ARMAS (NO MELEE)
+	if not is_melee:
+		play_kill_audio_weapon_only()
+	# ❌ NO REPRODUCIR AUDIO PARA MELEE
 	
 	show_score_popup(points, hit_position, popup_type)
 	score_changed.emit(current_score)
@@ -148,7 +150,7 @@ func add_damage_points(hit_position: Vector2, _damage_dealt: int, is_headshot: b
 	score_popup.emit(points, hit_position, popup_type)
 
 func add_insta_kill_points(hit_position: Vector2):
-	"""Puntos durante power-up insta-kill + AUDIO AL ELIMINAR"""
+	"""Puntos durante power-up insta-kill + AUDIO AL ELIMINAR CON ARMAS"""
 	var points = insta_kill_points * current_round_multiplier
 	
 	current_score += points
@@ -158,8 +160,8 @@ func add_insta_kill_points(hit_position: Vector2):
 	if current_kill_streak > best_kill_streak:
 		best_kill_streak = current_kill_streak
 	
-	# 🔊 REPRODUCIR AUDIO DE KILL (SOLO AL ELIMINAR)
-	play_kill_audio()
+	# 🔊 REPRODUCIR AUDIO DE KILL SOLO PARA ARMAS (insta-kill es con armas)
+	play_kill_audio_weapon_only()
 	
 	show_score_popup(points, hit_position, "insta_kill")
 	score_changed.emit(current_score)

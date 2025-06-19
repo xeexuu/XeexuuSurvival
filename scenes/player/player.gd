@@ -1,4 +1,4 @@
-# scenes/player/player.gd - CUCHILLO Y BALAS ARREGLADOS
+# scenes/player/player.gd - SIN AUDIO EN MELEE ATTACK
 extends CharacterBody2D
 class_name Player
 
@@ -25,7 +25,7 @@ var mobile_is_shooting: bool = false
 var current_movement_direction: Vector2 = Vector2.ZERO
 var current_aim_direction: Vector2 = Vector2.RIGHT
 
-# Melee attack CORREGIDO
+# Melee attack CORREGIDO - SIN AUDIO
 var melee_cooldown: float = 1.5
 var last_melee_time: float = 0.0
 var is_performing_melee: bool = false
@@ -42,8 +42,8 @@ var is_fully_initialized: bool = false
 var is_invulnerable: bool = false
 var invulnerability_duration: float = 2.0
 
-# Límites del mapa
-var map_bounds: Rect2 = Rect2(-800, -800, 1600, 1600)
+# Límites del mapa - MÁS GRANDES PARA LAS HABITACIONES
+var map_bounds: Rect2 = Rect2(-1200, -1000, 2400, 2000)
 
 func _ready():
 	is_mobile = OS.has_feature("mobile")
@@ -58,7 +58,7 @@ func setup_camera():
 	"""Configurar cámara"""
 	if camera:
 		camera.enabled = true
-		camera.zoom = Vector2(1.5, 1.5)
+		camera.zoom = Vector2(1.2, 1.2)  # ZOOM MENOR PARA VER MÁS MAPA
 		camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		camera.position_smoothing_enabled = true
 		camera.position_smoothing_speed = 8.0
@@ -231,7 +231,7 @@ func update_movement_animations():
 		)
 
 func apply_map_bounds():
-	"""Aplicar límites del mapa"""
+	"""Aplicar límites del mapa EXPANDIDOS"""
 	var next_pos = global_position + velocity * get_physics_process_delta_time()
 	
 	if next_pos.x < map_bounds.position.x:
@@ -350,7 +350,7 @@ func update_melee_knife_position_improved():
 			melee_knife_sprite.flip_v = false
 
 func perform_melee_attack():
-	"""MELEE ATTACK CON DIRECCIÓN MEJORADA"""
+	"""MELEE ATTACK SIN AUDIO - SOLO EFECTOS VISUALES"""
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if current_time - last_melee_time < melee_cooldown:
 		return
@@ -397,10 +397,10 @@ func perform_melee_attack():
 			if distance_to_enemy <= melee_range:
 				# VERIFICAR SI EL ENEMIGO ESTÁ EN LA DIRECCIÓN DE ATAQUE
 				var direction_to_enemy = (enemy.global_position - global_position).normalized()
-				var angle_difference = attack_direction.angle_to(direction_to_enemy)
+				var angle_diff = attack_direction.angle_to(direction_to_enemy)
 				
 				# PERMITIR ÁNGULO DE 90 GRADOS (PI/2) HACIA CADA LADO
-				if abs(angle_difference) <= PI/2:
+				if abs(angle_diff) <= PI/2:
 					enemies_hit.append(enemy)
 	
 	if not enemies_hit.is_empty():
@@ -409,7 +409,7 @@ func perform_melee_attack():
 			if enemy.has_method("take_damage"):
 				enemy.take_damage(50, false)
 				
-				# Puntuación de melee
+				# Puntuación de melee - AQUÍ EL SCORE SYSTEM NO REPRODUCIRÁ AUDIO
 				if score_system:
 					score_system.add_kill_points(enemy.global_position, false, true)
 				

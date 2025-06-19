@@ -1,4 +1,4 @@
-# scenes/enemies/EnemySpawner.gd - SPAWN FUERA DE PAREDES + GARANTÍAS ABSOLUTAS
+# scenes/enemies/EnemySpawner.gd - SPAWN FUERA DE PAREDES + GARANTÍAS ABSOLUTAS + ROOMS
 extends Node2D
 class_name EnemySpawner
 
@@ -6,10 +6,10 @@ signal enemy_spawned(enemy: Enemy)
 signal enemy_killed(enemy: Enemy)
 signal round_complete()
 
-@export var spawn_radius_min: float = 500.0  
-@export var spawn_radius_max: float = 800.0
-@export var despawn_distance: float = 1200.0
-@export var min_spawn_distance: float = 400.0  
+@export var spawn_radius_min: float = 600.0  
+@export var spawn_radius_max: float = 1000.0
+@export var despawn_distance: float = 1500.0
+@export var min_spawn_distance: float = 500.0  
 
 var player: Player
 var active_enemies: Array[Enemy] = []
@@ -18,7 +18,7 @@ var wall_system: WallSystem
 
 # Pool simplificado
 var enemy_pool: Array[Enemy] = []
-var max_pool_size: int = 25
+var max_pool_size: int = 30
 
 # Variables de spawn
 var enemies_to_spawn: int = 0
@@ -34,10 +34,32 @@ var current_round_number: int = 1
 var guaranteed_spawns_queue: Array[String] = []
 var guaranteed_spawns_completed: Dictionary = {}
 
+# ÁREAS DE SPAWN FUERA DE HABITACIONES
+var spawn_areas: Array[Rect2] = []
+
 func _ready():
 	setup_spawn_timer()
 	initialize_enemy_pool()
 	get_wall_system_reference()
+	setup_spawn_areas()
+
+func setup_spawn_areas():
+	"""Configurar áreas de spawn fuera de las habitaciones"""
+	spawn_areas = [
+		# Área norte (fuera de habitación norte)
+		Rect2(-400, -800, 800, 200),
+		# Área sur (fuera de habitación sur)
+		Rect2(-400, 600, 800, 200),
+		# Área este (fuera de habitación este)
+		Rect2(700, -400, 200, 800),
+		# Área oeste (fuera de habitación oeste)
+		Rect2(-900, -400, 200, 800),
+		# Esquinas lejanas
+		Rect2(-900, -800, 200, 200),  # Noroeste
+		Rect2(700, -800, 200, 200),   # Noreste
+		Rect2(-900, 600, 200, 200),   # Suroeste
+		Rect2(700, 600, 200, 200)     # Sureste
+	]
 
 func get_wall_system_reference():
 	"""Obtener referencia al sistema de paredes"""
@@ -117,7 +139,7 @@ func start_round(enemies_count: int, _enemy_health: int):
 	enemies_spawned_this_round = 0
 	can_spawn = true
 	
-	# SISTEMA DE GARANTÍAS ABSOLUTO CON COLA
+	# SISTEMA DE GARANTÍAS ABSOLUTO - 1 DE CADA TIPO DISPONIBLE
 	setup_absolute_guaranteed_spawns()
 	
 	spawn_delay = max(0.5, 2.5 - (current_round_number * 0.1))
@@ -130,20 +152,39 @@ func setup_absolute_guaranteed_spawns():
 	guaranteed_spawns_completed.clear()
 	
 	# TODOS LOS TIPOS DISPONIBLES SEGÚN LA RONDA
-	match current_round_number:
-		1:
-			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler"]
-		2, 3:
-			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler"]
-		4, 5, 6, 7:
-			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler", "zombie_runner"]
-		_:  # 8+
-			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler", "zombie_runner", "zombie_charger"]
+	var available_types = get_available_enemy_types_for_round(current_round_number)
+	
+	# GARANTIZAR 1 DE CADA TIPO DISPONIBLE
+	for enemy_type in available_types:
+		guaranteed_spawns_queue.append(enemy_type)
 	
 	# MEZCLAR PARA ORDEN ALEATORIO
 	guaranteed_spawns_queue.shuffle()
 	
 	print("🎯 Garantías para ronda ", current_round_number, ": ", guaranteed_spawns_queue)
+
+func get_available_enemy_types_for_round(round_num: int) -> Array[String]:
+	"""Obtener tipos de enemigos disponibles para la ronda"""
+	var types: Array[String] = []
+	
+	# BÁSICO SIEMPRE DISPONIBLE
+	types.append("zombie_basic")
+	
+	# PERRO DESDE RONDA 1
+	types.append("zombie_dog")
+	
+	# CRAWLER DESDE RONDA 1
+	types.append("zombie_crawler")
+	
+	# RUNNER DESDE RONDA 4
+	if round_num >= 4:
+		types.append("zombie_runner")
+	
+	# CHARGER DESDE RONDA 8
+	if round_num >= 8:
+		types.append("zombie_charger")
+	
+	return types
 
 func _try_spawn_enemy():
 	"""Intentar spawnear enemigo"""
@@ -172,7 +213,7 @@ func spawn_enemy() -> bool:
 	if not player:
 		return false
 	
-	var spawn_position = get_safe_spawn_position_avoiding_walls()
+	var spawn_position = get_safe_spawn_position_in_areas()
 	if spawn_position == Vector2.ZERO:
 		return false
 	
@@ -229,54 +270,61 @@ func determine_enemy_type_absolute_guarantees() -> String:
 
 func determine_enemy_type_random_after_guarantees() -> String:
 	"""Determinar tipo aleatorio después de garantías"""
+	var available_types = get_available_enemy_types_for_round(current_round_number)
+	
+	# PROBABILIDADES BALANCEADAS
+	var rand_val = randf()
+	
 	match current_round_number:
 		1, 2, 3:
-			var types = ["zombie_basic", "zombie_dog", "zombie_crawler"]
-			return types[randi() % types.size()]
+			if rand_val < 0.6:
+				return "zombie_basic"
+			elif rand_val < 0.8:
+				return "zombie_dog"
+			else:
+				return "zombie_crawler"
 		4, 5, 6, 7:
-			var rand_val = randf()
-			if rand_val < 0.1:
-				return "zombie_dog"
-			elif rand_val < 0.25:
-				return "zombie_crawler"
-			elif rand_val < 0.35:
-				return "zombie_runner"
-			else:
+			if rand_val < 0.5:
 				return "zombie_basic"
+			elif rand_val < 0.65:
+				return "zombie_dog"
+			elif rand_val < 0.8:
+				return "zombie_crawler"
+			else:
+				return "zombie_runner"
 		_:  # 8+
-			var rand_val = randf()
-			if rand_val < 0.08:
-				return "zombie_dog"
-			elif rand_val < 0.18:
-				return "zombie_crawler"
-			elif rand_val < 0.28:
-				return "zombie_runner"
-			elif rand_val < 0.35:
-				return "zombie_charger"
-			else:
+			if rand_val < 0.4:
 				return "zombie_basic"
+			elif rand_val < 0.55:
+				return "zombie_dog"
+			elif rand_val < 0.7:
+				return "zombie_crawler"
+			elif rand_val < 0.85:
+				return "zombie_runner"
+			else:
+				return "zombie_charger"
 
-func get_safe_spawn_position_avoiding_walls() -> Vector2:
-	"""Obtener posición SEGURA evitando paredes"""
+func get_safe_spawn_position_in_areas() -> Vector2:
+	"""Obtener posición SEGURA en áreas de spawn predefinidas"""
 	if not player:
 		return Vector2.ZERO
 	
 	var player_pos = player.global_position
-	var attempts = 100  # Más intentos para encontrar posición válida
+	var attempts = 150  # Más intentos
 	
 	for attempt in range(attempts):
-		var angle = randf() * TAU
-		var distance = randf_range(spawn_radius_min, spawn_radius_max)
-		var spawn_pos = player_pos + Vector2.from_angle(angle) * distance
+		# SELECCIONAR ÁREA DE SPAWN ALEATORIA
+		var spawn_area = spawn_areas[randi() % spawn_areas.size()]
+		
+		# POSICIÓN ALEATORIA DENTRO DEL ÁREA
+		var spawn_pos = Vector2(
+			randf_range(spawn_area.position.x, spawn_area.position.x + spawn_area.size.x),
+			randf_range(spawn_area.position.y, spawn_area.position.y + spawn_area.size.y)
+		)
 		
 		# VERIFICAR DISTANCIA AL JUGADOR
 		var distance_to_player = spawn_pos.distance_to(player_pos)
 		if distance_to_player < min_spawn_distance:
-			continue
-		
-		# VERIFICAR LÍMITES DEL MAPA
-		var map_bounds = Rect2(-1000, -1000, 2000, 2000)  # Límites más amplios
-		if not map_bounds.has_point(spawn_pos):
 			continue
 		
 		# VERIFICAR QUE NO ESTÉ EN PAREDES
@@ -286,7 +334,7 @@ func get_safe_spawn_position_avoiding_walls() -> Vector2:
 		# VERIFICAR DISTANCIA A OTROS ENEMIGOS
 		var too_close_to_enemy = false
 		for enemy in active_enemies:
-			if is_instance_valid(enemy) and enemy.global_position.distance_to(spawn_pos) < 80.0:
+			if is_instance_valid(enemy) and enemy.global_position.distance_to(spawn_pos) < 100.0:
 				too_close_to_enemy = true
 				break
 		
@@ -295,10 +343,12 @@ func get_safe_spawn_position_avoiding_walls() -> Vector2:
 		
 		return spawn_pos
 	
-	# POSICIÓN DE EMERGENCIA LEJOS DE LAS PAREDES
-	var emergency_angle = randf() * TAU
-	var emergency_distance = max(min_spawn_distance + 100, spawn_radius_max)
-	return player_pos + Vector2.from_angle(emergency_angle) * emergency_distance
+	# POSICIÓN DE EMERGENCIA EN LA PRIMERA ÁREA DISPONIBLE
+	var emergency_area = spawn_areas[0]
+	return Vector2(
+		emergency_area.position.x + emergency_area.size.x * 0.5,
+		emergency_area.position.y + emergency_area.size.y * 0.5
+	)
 
 func is_position_in_walls(position: Vector2) -> bool:
 	"""Verificar si una posición está dentro de paredes"""
@@ -360,7 +410,7 @@ func get_barricade_rect(barricade: Node2D) -> Rect2:
 
 func get_door_rect(door: Node2D) -> Rect2:
 	"""Obtener rectángulo de colisión de una puerta"""
-	var size = door.get_meta("size", Vector2(80, 50))
+	var size = door.get_meta("size", Vector2(120, 80))
 	var position = door.global_position - size / 2
 	return Rect2(position, size)
 

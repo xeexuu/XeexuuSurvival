@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - IA ESTILO COD ZOMBIES CON BARRICADAS
+# scenes/enemies/Enemy.gd - IA COMPLETA ESTILO COD ZOMBIES CON BARRICADAS
 extends CharacterBody2D
 class_name Enemy
 
@@ -33,7 +33,7 @@ var enemy_sprite_frames: SpriteFrames
 # Variables de ataque visual
 var attack_effect_sprite: Sprite2D
 
-# SISTEMA DE IA COD ZOMBIES
+# SISTEMA DE IA COD ZOMBIES COMPLETO
 enum ZombieState {
 	SPAWNING,
 	HUNTING_PLAYER,
@@ -41,7 +41,8 @@ enum ZombieState {
 	ATTACKING_BARRICADE,
 	BREAKING_THROUGH,
 	ATTACKING_PLAYER,
-	STUNNED
+	STUNNED,
+	SEARCHING_ENTRY_POINT
 }
 
 var current_state: ZombieState = ZombieState.SPAWNING
@@ -57,12 +58,21 @@ var barricade_attack_timer: float = 0.0
 var barricade_attack_delay: float = 1.5
 var wall_check_timer: float = 0.0
 var wall_check_delay: float = 0.5
+var player_lost_timer: float = 0.0
+var max_player_lost_time: float = 3.0
+
+# Variables de pathfinding COD
+var current_target_position: Vector2
+var stuck_timer: float = 0.0
+var stuck_threshold: float = 2.0
+var last_position: Vector2
+var path_recalculation_timer: float = 0.0
 
 func _ready():
 	add_to_group("enemies")
 	setup_enemy()
 	setup_attack_effect()
-	determine_waw_variant()
+	determine_zombie_variant()
 	call_deferred("verify_sprite_after_ready")
 
 func set_wall_system(wall_sys: WallSystem):
@@ -110,6 +120,8 @@ func setup_enemy():
 	collision_mask = 1 | 3
 	
 	last_known_player_position = global_position
+	current_target_position = global_position
+	last_position = global_position
 	
 	load_enemy_sprite_waw_size()
 	setup_health_bar()
@@ -145,7 +157,7 @@ func setup_hitboxes():
 	var body_shape = CollisionShape2D.new()
 	var body_rect = RectangleShape2D.new()
 	body_rect.size = Vector2(48, 77)
-	body_shape.shape = head_rect
+	body_shape.shape = body_rect
 	body_shape.position = Vector2(0, 0)
 	body_area.add_child(body_shape)
 	add_child(body_area)
@@ -164,8 +176,8 @@ func setup_hitboxes():
 	legs_area.add_child(legs_shape)
 	add_child(legs_area)
 
-func determine_waw_variant():
-	"""Variantes COD con NUEVOS TIPOS MEJORADOS"""
+func determine_zombie_variant():
+	"""Variantes COD con TIPOS MEJORADOS"""
 	match enemy_type:
 		"zombie_dog":
 			setup_dog_variant()
@@ -495,6 +507,18 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	target_penetrable_wall = null
 	path_blocked = false
 	
+	# Reset de timers
+	state_timer = 0.0
+	stuck_timer = 0.0
+	player_lost_timer = 0.0
+	barricade_attack_timer = 0.0
+	wall_check_timer = 0.0
+	path_recalculation_timer = 0.0
+	
+	last_known_player_position = target_player.global_position
+	current_target_position = global_position
+	last_position = global_position
+	
 	modulate = Color(1, 1, 1, 1)
 	scale = Vector2(1.0, 1.0)
 	force_sprite_visibility()
@@ -543,61 +567,109 @@ func _physics_process(delta):
 	update_cod_zombie_ai_state_machine(delta)
 	handle_cod_zombie_movement(delta)
 	update_movement_animation()
+	check_if_stuck(delta)
 	
 	move_and_slide()
 
 func update_cod_zombie_ai_state_machine(delta):
-	"""SISTEMA DE IA ESTILO COD ZOMBIES"""
+	"""SISTEMA DE IA ESTILO COD ZOMBIES COMPLETO"""
 	state_timer += delta
 	wall_check_timer += delta
 	barricade_attack_timer += delta
+	path_recalculation_timer += delta
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
+	var can_see_player = has_clear_path_to_player()
+	
+	# Actualizar última posición conocida del jugador si lo vemos
+	if can_see_player and distance_to_player <= detection_range:
+		last_known_player_position = player.global_position
+		player_lost_timer = 0.0
+	else:
+		player_lost_timer += delta
 	
 	match current_state:
 		ZombieState.SPAWNING:
 			pass
 		
 		ZombieState.HUNTING_PLAYER:
-			last_known_player_position = player.global_position
-			
-			# VERIFICAR SI HAY LÍNEA DIRECTA AL JUGADOR
-			if has_clear_path_to_player():
-				# CAMINO LIBRE - IR DIRECTO
-				if distance_to_player <= attack_range:
-					current_state = ZombieState.ATTACKING_PLAYER
-					state_timer = 0.0
-			else:
-				# CAMINO BLOQUEADO - BUSCAR BARRICADA O PARED PENETRABLE
-				find_path_to_player()
+			handle_hunting_state(distance_to_player, can_see_player)
+		
+		ZombieState.SEARCHING_ENTRY_POINT:
+			handle_searching_entry_point()
 		
 		ZombieState.MOVING_TO_BARRICADE:
-			if target_barricade and is_instance_valid(target_barricade):
-				var distance_to_barricade = global_position.distance_to(target_barricade.global_position)
-				if distance_to_barricade <= 80.0:
-					current_state = ZombieState.ATTACKING_BARRICADE
-					state_timer = 0.0
-			else:
-				# BARRICADA PERDIDA - VOLVER A BUSCAR CAMINO
-				current_state = ZombieState.HUNTING_PLAYER
+			handle_moving_to_barricade()
 		
 		ZombieState.ATTACKING_BARRICADE:
-			if target_barricade and is_instance_valid(target_barricade):
-				attack_barricade()
-			else:
-				current_state = ZombieState.HUNTING_PLAYER
+			handle_attacking_barricade()
 		
 		ZombieState.ATTACKING_PLAYER:
-			if distance_to_player <= attack_range and can_attack():
-				execute_player_attack()
-			elif distance_to_player > attack_range * 1.5:
-				current_state = ZombieState.HUNTING_PLAYER
-				state_timer = 0.0
+			handle_attacking_player(distance_to_player)
 		
 		ZombieState.STUNNED:
-			if state_timer > 0.2:
-				current_state = ZombieState.HUNTING_PLAYER
-				state_timer = 0.0
+			handle_stunned_state()
+
+func handle_hunting_state(distance_to_player: float, can_see_player: bool):
+	"""Manejar estado de caza del jugador"""
+	if can_see_player and distance_to_player <= detection_range:
+		# LÍNEA DIRECTA AL JUGADOR
+		if distance_to_player <= attack_range:
+			current_state = ZombieState.ATTACKING_PLAYER
+			state_timer = 0.0
+		else:
+			current_target_position = player.global_position
+	else:
+		# NO PUEDE VER AL JUGADOR - BUSCAR PUNTO DE ENTRADA
+		if player_lost_timer > max_player_lost_time or path_recalculation_timer > 2.0:
+			current_state = ZombieState.SEARCHING_ENTRY_POINT
+			state_timer = 0.0
+			path_recalculation_timer = 0.0
+
+func handle_searching_entry_point():
+	"""Buscar punto de entrada cuando no puede ver al jugador"""
+	if state_timer > 0.5:  # Recalcular cada 0.5 segundos
+		find_path_to_player()
+		state_timer = 0.0
+
+func handle_moving_to_barricade():
+	"""Manejar movimiento hacia barricada"""
+	if target_barricade and is_instance_valid(target_barricade):
+		var distance_to_barricade = global_position.distance_to(target_barricade.global_position)
+		if distance_to_barricade <= 80.0:
+			current_state = ZombieState.ATTACKING_BARRICADE
+			state_timer = 0.0
+		else:
+			current_target_position = target_barricade.global_position
+	else:
+		# BARRICADA PERDIDA - VOLVER A BUSCAR
+		current_state = ZombieState.SEARCHING_ENTRY_POINT
+
+func handle_attacking_barricade():
+	"""Manejar ataque a barricada"""
+	if target_barricade and is_instance_valid(target_barricade):
+		attack_barricade()
+		# Verificar si barricada destruida
+		var current_planks = target_barricade.get_meta("current_planks", 0)
+		if current_planks <= 0:
+			target_barricade = null
+			current_state = ZombieState.HUNTING_PLAYER
+	else:
+		current_state = ZombieState.HUNTING_PLAYER
+
+func handle_attacking_player(distance_to_player: float):
+	"""Manejar ataque al jugador"""
+	if distance_to_player <= attack_range and can_attack():
+		execute_player_attack()
+	elif distance_to_player > attack_range * 1.5:
+		current_state = ZombieState.HUNTING_PLAYER
+		state_timer = 0.0
+
+func handle_stunned_state():
+	"""Manejar estado aturdido"""
+	if state_timer > 0.3:
+		current_state = ZombieState.HUNTING_PLAYER
+		state_timer = 0.0
 
 func has_clear_path_to_player() -> bool:
 	"""Verificar si hay camino directo al jugador"""
@@ -626,6 +698,7 @@ func find_path_to_player():
 	if nearest_barricade:
 		target_barricade = nearest_barricade
 		current_state = ZombieState.MOVING_TO_BARRICADE
+		current_target_position = target_barricade.global_position
 		return
 	
 	# PRIORIDAD 2: BUSCAR PAREDES PENETRABLES
@@ -633,9 +706,11 @@ func find_path_to_player():
 	if nearest_penetrable:
 		target_penetrable_wall = nearest_penetrable
 		current_state = ZombieState.MOVING_TO_BARRICADE  # Usar mismo estado
+		current_target_position = target_penetrable_wall.global_position
 		return
 	
-	# PRIORIDAD 3: IR DIRECTO AUNQUE HAYA OBSTÁCULOS
+	# PRIORIDAD 3: IR A ÚLTIMA POSICIÓN CONOCIDA DEL JUGADOR
+	current_target_position = last_known_player_position
 	current_state = ZombieState.HUNTING_PLAYER
 
 func find_nearest_attackable_barricade() -> Node2D:
@@ -646,16 +721,28 @@ func find_nearest_attackable_barricade() -> Node2D:
 	var nearest_barricade: Node2D = null
 	var nearest_distance: float = INF
 	
+	# Buscar barricadas en un radio mayor
+	var search_radius = 800.0
+	
 	for barricade in wall_system.get_all_barricades():
 		if not is_instance_valid(barricade):
+			continue
+		
+		var distance = global_position.distance_to(barricade.global_position)
+		if distance > search_radius:
 			continue
 		
 		var current_planks = barricade.get_meta("current_planks", 0)
 		if current_planks <= 0:
 			continue  # No tiene tablones
 		
-		var distance = global_position.distance_to(barricade.global_position)
-		if distance < nearest_distance:
+		# Verificar si esta barricada está entre el enemigo y el jugador
+		var direction_to_player = (last_known_player_position - global_position).normalized()
+		var direction_to_barricade = (barricade.global_position - global_position).normalized()
+		var angle_diff = direction_to_player.angle_to(direction_to_barricade)
+		
+		# Solo considerar barricadas que estén en la dirección general del jugador
+		if abs(angle_diff) < PI/2 and distance < nearest_distance:
 			nearest_distance = distance
 			nearest_barricade = barricade
 	
@@ -696,12 +783,6 @@ func attack_barricade():
 	
 	# EFECTO VISUAL DE ATAQUE A BARRICADA
 	create_barricade_attack_effect()
-	
-	# VERIFICAR SI BARRICADA DESTRUIDA
-	var current_planks = target_barricade.get_meta("current_planks", 0)
-	if current_planks <= 0:
-		target_barricade = null
-		current_state = ZombieState.HUNTING_PLAYER
 
 func create_barricade_attack_effect():
 	"""Crear efecto de ataque a barricada"""
@@ -722,8 +803,8 @@ func create_barricade_attack_effect():
 			particle.global_position + Vector2(randf_range(-15, 15), randf_range(-15, 15)), 0.8)
 		tween.tween_callback(func(): particle.queue_free())
 
-func handle_cod_zombie_movement(_delta):
-	"""Movimiento estilo COD Zombies"""
+func handle_cod_zombie_movement(delta):
+	"""Movimiento estilo COD Zombies CON NAVEGACIÓN MEJORADA"""
 	var movement_direction = Vector2.ZERO
 	
 	match current_state:
@@ -732,15 +813,13 @@ func handle_cod_zombie_movement(_delta):
 		
 		ZombieState.HUNTING_PLAYER:
 			if player:
-				movement_direction = (player.global_position - global_position).normalized()
+				movement_direction = (current_target_position - global_position).normalized()
+		
+		ZombieState.SEARCHING_ENTRY_POINT:
+			movement_direction = (current_target_position - global_position).normalized()
 		
 		ZombieState.MOVING_TO_BARRICADE:
-			if target_barricade and is_instance_valid(target_barricade):
-				movement_direction = (target_barricade.global_position - global_position).normalized()
-			elif target_penetrable_wall and is_instance_valid(target_penetrable_wall):
-				movement_direction = (target_penetrable_wall.global_position - global_position).normalized()
-			else:
-				movement_direction = (player.global_position - global_position).normalized()
+			movement_direction = (current_target_position - global_position).normalized()
 		
 		ZombieState.ATTACKING_BARRICADE:
 			movement_direction = Vector2.ZERO
@@ -752,15 +831,22 @@ func handle_cod_zombie_movement(_delta):
 			movement_direction = velocity * 0.1
 	
 	# SEPARACIÓN DE OTROS ENEMIGOS
-	movement_direction += get_basic_separation() * 0.3
+	movement_direction += get_improved_separation() * 0.4
+	
+	# EVITAR PAREDES
+	movement_direction += get_wall_avoidance() * 0.6
 	
 	if movement_direction != Vector2.ZERO:
 		velocity = movement_direction.normalized() * current_move_speed
+	
+	# Actualizar posición para detección de atasco
+	last_position = global_position
 
-func get_basic_separation() -> Vector2:
-	"""Separación básica de otros enemigos"""
+func get_improved_separation() -> Vector2:
+	"""Separación mejorada de otros enemigos"""
 	var separation = Vector2.ZERO
-	var separation_radius = 60.0
+	var separation_radius = 80.0
+	var separation_strength = 2.0
 	
 	for other_zombie in get_tree().get_nodes_in_group("enemies"):
 		if other_zombie == self or not is_instance_valid(other_zombie):
@@ -770,9 +856,48 @@ func get_basic_separation() -> Vector2:
 		if distance < separation_radius and distance > 0:
 			var separation_dir = (global_position - other_zombie.global_position).normalized()
 			var strength = 1.0 - (distance / separation_radius)
-			separation += separation_dir * strength * 1.0
+			separation += separation_dir * strength * separation_strength
 	
-	return separation.normalized() * min(separation.length(), 2.0)
+	return separation.normalized() * min(separation.length(), 3.0)
+
+func get_wall_avoidance() -> Vector2:
+	"""Evitar colisiones con paredes"""
+	var avoidance = Vector2.ZERO
+	var look_ahead_distance = 100.0
+	
+	var space_state = get_world_2d().direct_space_state
+	
+	# Raycast hacia adelante
+	var forward_direction = velocity.normalized() if velocity.length() > 0 else Vector2.RIGHT
+	var query = PhysicsRayQueryParameters2D.create(
+		global_position,
+		global_position + forward_direction * look_ahead_distance
+	)
+	query.collision_mask = 3  # Paredes
+	query.exclude = [self]
+	
+	var result = space_state.intersect_ray(query)
+	if not result.is_empty():
+		var hit_normal = result.get("normal", Vector2.ZERO)
+		avoidance = hit_normal * 2.0
+	
+	return avoidance
+
+func check_if_stuck(delta):
+	"""Verificar si el enemigo está atascado"""
+	var movement_threshold = 10.0
+	
+	if global_position.distance_to(last_position) < movement_threshold:
+		stuck_timer += delta
+	else:
+		stuck_timer = 0.0
+	
+	# Si está atascado, recalcular camino
+	if stuck_timer > stuck_threshold:
+		stuck_timer = 0.0
+		if current_state == ZombieState.HUNTING_PLAYER or current_state == ZombieState.MOVING_TO_BARRICADE:
+			current_state = ZombieState.SEARCHING_ENTRY_POINT
+			state_timer = 0.0
 
 func execute_player_attack():
 	"""Ejecutar ataque al jugador"""
@@ -913,6 +1038,14 @@ func reset_for_pool():
 	target_barricade = null
 	target_penetrable_wall = null
 	path_blocked = false
+	
+	# Reset de timers
+	state_timer = 0.0
+	stuck_timer = 0.0
+	player_lost_timer = 0.0
+	barricade_attack_timer = 0.0
+	wall_check_timer = 0.0
+	path_recalculation_timer = 0.0
 	
 	call_deferred("_deactivate_collision")
 	
