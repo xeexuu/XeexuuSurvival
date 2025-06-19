@@ -1,4 +1,4 @@
-# AnimationController.gd - CON SOPORTE PARA MELEE
+# AnimationController.gd - SISTEMA DE ANIMACIÓN POR DIRECCIÓN DE DISPARO
 extends Node
 class_name AnimationController
 
@@ -76,18 +76,6 @@ func create_simple_animations():
 			var frame = sprite_frames.get_frame_texture("walk_down", i)
 			sprite_frames.add_frame("walk_up", frame)
 	
-	# NUEVA: Crear animación de ataque melee
-	sprite_frames.add_animation("melee_attack")
-	sprite_frames.set_animation_speed("melee_attack", 15.0)
-	sprite_frames.set_animation_loop("melee_attack", false)
-	
-	# Para melee, usar frames intermedios del walk para simular movimiento de ataque
-	if walk_right_down_atlas:
-		# Usar frames 2, 3, 4 para simular ataque
-		for i in range(2, 5):
-			var frame = extract_frame(walk_right_down_atlas, i)
-			sprite_frames.add_frame("melee_attack", frame)
-	
 	# Asignar y configurar
 	animated_sprite.sprite_frames = sprite_frames
 	animated_sprite.play("idle")
@@ -104,14 +92,10 @@ func extract_frame(atlas: Texture2D, frame_index: int) -> Texture2D:
 	
 	return atlas_frame
 
-# FUNCIÓN PRINCIPAL MEJORADA CON MELEE
-func update_animation_simple(movement: Vector2, shooting: Vector2, is_melee: bool = false):
+# FUNCIÓN PRINCIPAL: ANIMACIÓN POR DIRECCIÓN DE DISPARO (EN LUGAR DE MOVIMIENTO)
+func update_animation_by_shooting_direction(movement: Vector2, shooting: Vector2):
+	"""Actualizar animación basándose en la DIRECCIÓN DE DISPARO en lugar del movimiento"""
 	if not is_system_ready:
-		return
-	
-	# PRIORIDAD: MELEE > MOVIMIENTO > DISPARO > IDLE
-	if is_melee and not is_melee_attacking:
-		start_melee_animation()
 		return
 	
 	# Si está en melee, no cambiar animación hasta que termine
@@ -121,22 +105,22 @@ func update_animation_simple(movement: Vector2, shooting: Vector2, is_melee: boo
 	var is_moving = movement.length() > 0.1
 	var is_shooting = shooting.length() > 0.1
 	
-	# Determinar dirección
+	# PRIORIDAD: DIRECCIÓN DE DISPARO > DIRECCIÓN DE MOVIMIENTO > IDLE
 	var direction = Vector2.ZERO
-	if is_moving:
-		direction = movement   # PRIORIDAD AL MOVIMIENTO
-	elif is_shooting:
-		direction = shooting   # SI NO SE MUEVE, DISPARO
+	if is_shooting:
+		direction = shooting   # PRIORIDAD A LA DIRECCIÓN DE DISPARO
+	elif is_moving:
+		direction = movement   # SI NO DISPARA, USAR MOVIMIENTO
 	
-	# Aplicar animación
+	# Aplicar animación basándose en la dirección principal
 	if direction.length() > 0.1:
-		# Determinar si es hacia arriba o abajo
+		# Determinar si es hacia arriba o abajo basándose en la dirección de disparo
 		if direction.y < 0:
 			play_animation("walk_up")
 		else:
 			play_animation("walk_down")
 		
-		# Determinar flip
+		# Determinar flip basándose en la dirección de disparo
 		if direction.x < 0:
 			animated_sprite.flip_h = true
 		else:
@@ -147,19 +131,16 @@ func update_animation_simple(movement: Vector2, shooting: Vector2, is_melee: boo
 		animated_sprite.pause()
 
 func start_melee_animation():
-	"""Iniciar animación de melee"""
+	"""Iniciar animación de melee (sin cambios)"""
 	if not is_system_ready or is_melee_attacking:
 		return
 	
 	is_melee_attacking = true
 	current_animation = "melee_attack"
 	
-	if animated_sprite.animation != "melee_attack":
-		animated_sprite.play("melee_attack")
-	
 	# Timer para finalizar animación de melee
 	var melee_timer = Timer.new()
-	melee_timer.wait_time = 0.5  # Duración del melee
+	melee_timer.wait_time = 0.5
 	melee_timer.one_shot = true
 	melee_timer.timeout.connect(_finish_melee_animation)
 	add_child(melee_timer)
@@ -212,7 +193,7 @@ func get_character_folder_name() -> String:
 	var char_name_lower = character_name.to_lower()
 	match char_name_lower:
 		"pelao": return "pelao"
-		"juancar": return "juancar"
+		"juancar": return "juancar" 
 		"chica": return "chica"
 		_: return "chica"
 
@@ -224,10 +205,14 @@ func get_current_animation() -> String:
 	"""Obtener animación actual"""
 	return current_animation
 
-# Alias para compatibilidad con el código existente
+# Alias para compatibilidad (ACTUALIZADO PARA USAR DIRECCIÓN DE DISPARO)
 func update_animation_for_movement(movement_direction: Vector2, aim_direction: Vector2):
-	update_animation_simple(movement_direction, aim_direction, false)
+	update_animation_by_shooting_direction(movement_direction, aim_direction)
 
-# Nueva función para incluir melee
+# Nueva función que incluye melee pero usa dirección de disparo
 func update_animation_for_movement_with_melee(movement_direction: Vector2, aim_direction: Vector2, is_melee: bool):
-	update_animation_simple(movement_direction, aim_direction, is_melee)
+	if is_melee and not is_melee_attacking:
+		start_melee_animation()
+		return
+	
+	update_animation_by_shooting_direction(movement_direction, aim_direction)

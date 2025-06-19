@@ -1,4 +1,4 @@
-# scenes/weapons/WeaponStats.gd - VELOCIDAD DE DISPARO CORREGIDA
+# scenes/weapons/WeaponStats.gd - SPRITE DEL ARMA DOBLE DE GRANDE
 extends Resource
 class_name WeaponStats
 
@@ -70,48 +70,51 @@ func load_pistol_sprite():
 		create_default_weapon_sprite()
 
 func create_default_weapon_sprite():
-	var image = Image.create(48, 16, false, Image.FORMAT_RGBA8)  # DOBLE DE TAMAÑO
+	"""Crear sprite por defecto DOBLE DE GRANDE"""
+	var image = Image.create(96, 32, false, Image.FORMAT_RGBA8)  # DOBLE DE TAMAÑO (antes 48x16)
 	image.fill(Color.TRANSPARENT)
 	
 	# Crear sprite básico de pistola horizontal MÁS GRANDE
-	for x in range(48):
-		for y in range(16):
-			# Cañón
-			if x >= 24 and x < 44 and y >= 6 and y < 10:
+	for x in range(96):
+		for y in range(32):
+			# Cañón - DOBLE DE GRANDE
+			if x >= 48 and x < 88 and y >= 12 and y < 20:
 				image.set_pixel(x, y, Color.DARK_GRAY)
-			# Cuerpo del arma
-			elif x >= 4 and x < 24 and y >= 4 and y < 12:
+			# Cuerpo del arma - DOBLE DE GRANDE
+			elif x >= 8 and x < 48 and y >= 8 and y < 24:
 				image.set_pixel(x, y, Color.GRAY)
-			# Empuñadura
-			elif x >= 0 and x < 8 and y >= 8 and y < 16:
+			# Empuñadura - DOBLE DE GRANDE
+			elif x >= 0 and x < 16 and y >= 16 and y < 32:
 				image.set_pixel(x, y, Color.DIM_GRAY)
-			# Mira
-			elif x >= 36 and x < 40 and y >= 2 and y < 6:
+			# Mira - DOBLE DE GRANDE
+			elif x >= 72 and x < 80 and y >= 4 and y < 12:
 				image.set_pixel(x, y, Color.BLACK)
 	
 	weapon_sprite = ImageTexture.create_from_image(image)
+	print("✅ Sprite de arma por defecto creado DOBLE DE GRANDE (96x32)")
 
 func create_muzzle_flash_sprite():
-	"""Crear sprite de flash del cañón si no existe"""
+	"""Crear sprite de flash del cañón si no existe - TAMBIÉN MÁS GRANDE"""
 	if muzzle_flash_sprite:
 		return
 	
-	var image = Image.create(12, 12, false, Image.FORMAT_RGBA8)
+	var image = Image.create(24, 24, false, Image.FORMAT_RGBA8)  # DOBLE DE TAMAÑO (antes 12x12)
 	image.fill(Color.TRANSPARENT)
 	
-	# Crear flash circular
-	var center = Vector2(6, 6)
-	for x in range(12):
-		for y in range(12):
+	# Crear flash circular MÁS GRANDE
+	var center = Vector2(12, 12)  # DOBLE DE TAMAÑO
+	for x in range(24):
+		for y in range(24):
 			var dist = Vector2(x, y).distance_to(center)
-			if dist < 3:
+			if dist < 6:  # DOBLE DE TAMAÑO
 				image.set_pixel(x, y, Color.YELLOW)
-			elif dist < 4:
+			elif dist < 8:  # DOBLE DE TAMAÑO
 				image.set_pixel(x, y, Color.ORANGE)
-			elif dist < 5:
+			elif dist < 10:  # DOBLE DE TAMAÑO
 				image.set_pixel(x, y, Color(1.0, 0.5, 0.0, 0.7))
 	
 	muzzle_flash_sprite = ImageTexture.create_from_image(image)
+	print("✅ Muzzle flash creado DOBLE DE GRANDE (24x24)")
 
 func can_shoot() -> bool:
 	"""Verificar si el arma puede disparar"""
@@ -177,7 +180,6 @@ func get_muzzle_world_position_lower(player_position: Vector2, aim_direction: Ve
 	var rotated_muzzle = muzzle_offset.rotated(aim_direction.angle())
 	return weapon_position + rotated_muzzle
 
-
 func get_muzzle_world_position(player_position: Vector2, aim_direction: Vector2) -> Vector2:
 	"""Obtener la posición del cañón (de donde salen las balas)"""
 	var weapon_position = get_weapon_world_position(player_position, aim_direction)
@@ -214,7 +216,7 @@ static func create_pelao_pistol() -> WeaponStats:
 	weapon.accuracy = 0.95
 	weapon.headshot_multiplier = 1.4
 	weapon.weapon_offset = Vector2(32, 0)  # Centro derecha
-	weapon.muzzle_offset = Vector2(20, 0)
+	weapon.muzzle_offset = Vector2(40, 0)  # DOBLE DE DISTANCIA para el muzzle
 	weapon.shooting_animation_duration = 0.2
 	weapon.recoil_distance = 3.0
 	
@@ -232,7 +234,7 @@ static func create_juancar_rifle() -> WeaponStats:
 	weapon.accuracy = 0.98
 	weapon.headshot_multiplier = 1.6
 	weapon.weapon_offset = Vector2(35, 0)  # Centro derecha
-	weapon.muzzle_offset = Vector2(24, 0)
+	weapon.muzzle_offset = Vector2(48, 0)  # DOBLE DE DISTANCIA para el muzzle
 	weapon.shooting_animation_duration = 0.15
 	weapon.recoil_distance = 4.0
 	
@@ -250,7 +252,7 @@ static func create_basic_pistol() -> WeaponStats:
 	weapon.accuracy = 0.90
 	weapon.headshot_multiplier = 1.3
 	weapon.weapon_offset = Vector2(32, 0)  # Centro derecha
-	weapon.muzzle_offset = Vector2(18, 0)
+	weapon.muzzle_offset = Vector2(36, 0)  # DOBLE DE DISTANCIA para el muzzle
 	weapon.shooting_animation_duration = 0.2
 	weapon.recoil_distance = 2.5
 	
