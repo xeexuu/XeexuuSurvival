@@ -1,4 +1,4 @@
-# scenes/projectiles/bullet.gd - CON DETECCIÓN DE HITBOXES ESPECÍFICAS
+# scenes/projectiles/bullet.gd - LAS BALAS NO ATRAVIESAN PAREDES SÓLIDAS
 extends Area2D
 class_name Bullet
 
@@ -27,8 +27,8 @@ var score_system: ScoreSystem
 @onready var collision = $CollisionShape2D
 
 func _ready():
-	collision_layer = 4
-	collision_mask = 2
+	collision_layer = 4  # Capa 4 para balas
+	collision_mask = 2 | 3  # Detecta enemigos (2) Y paredes sólidas (3)
 	
 	add_to_group("bullets")
 	
@@ -159,13 +159,23 @@ func _on_area_entered(area: Area2D):
 	handle_piercing_logic(enemy_parent)
 
 func _on_body_entered(body: Node2D):
-	"""DETECTAR CUERPO DE ENEMIGO"""
+	"""DETECTAR CUERPO - INCLUYENDO PAREDES SÓLIDAS"""
 	if is_being_destroyed:
 		return
 	
 	if body is Player:
 		return
-		
+	
+	# VERIFICAR SI ES UNA PARED SÓLIDA
+	if body is StaticBody2D:
+		# Verificar si es una pared sólida (no una barricada destruida)
+		if body.collision_layer & 3:  # Capa 3 = paredes sólidas
+			print("💥 Bala impactó pared sólida")
+			create_wall_impact_effect(global_position)
+			destroy_bullet("wall_impact")
+			return
+	
+	# VERIFICAR SI ES UN ENEMIGO
 	if body is Enemy:
 		handle_hit(body)
 
@@ -227,6 +237,25 @@ func create_hit_effect(hit_position: Vector2, is_headshot: bool):
 		tween.parallel().tween_property(particle, "global_position", particle.global_position + Vector2(randf_range(-20, 20), randf_range(-20, 20)), 0.5)
 		tween.tween_callback(func(): particle.queue_free())
 
+func create_wall_impact_effect(hit_position: Vector2):
+	"""Crear efecto visual de impacto en pared"""
+	var effect_scene = get_tree().current_scene
+	if not effect_scene:
+		return
+	
+	for i in range(4):
+		var particle = Sprite2D.new()
+		var particle_image = Image.create(3, 3, false, Image.FORMAT_RGBA8)
+		particle_image.fill(Color.GRAY)
+		particle.texture = ImageTexture.create_from_image(particle_image)
+		particle.global_position = hit_position + Vector2(randf_range(-8, 8), randf_range(-8, 8))
+		effect_scene.add_child(particle)
+		
+		var tween = effect_scene.create_tween()
+		tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.3)
+		tween.parallel().tween_property(particle, "global_position", particle.global_position + Vector2(randf_range(-15, 15), randf_range(-15, 15)), 0.3)
+		tween.tween_callback(func(): particle.queue_free())
+
 func apply_damage_to_target(target: Node2D, damage_amount: int, is_headshot: bool = false):
 	"""Aplicar daño al objetivo"""
 	if not target or not target.has_method("take_damage"):
@@ -244,7 +273,7 @@ func apply_knockback_to_target(target: Node2D):
 			var knockback_direction = direction.normalized()
 			target.apply_knockback(knockback_direction, knockback_force)
 
-func destroy_bullet(_reason: String):
+func destroy_bullet(reason: String):
 	"""Destruir bala de forma segura"""
 	if is_being_destroyed:
 		return

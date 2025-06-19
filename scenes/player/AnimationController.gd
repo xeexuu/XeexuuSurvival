@@ -1,4 +1,4 @@
-# AnimationController.gd - SISTEMA DE ANIMACIÓN POR DIRECCIÓN DE DISPARO
+# AnimationController.gd - SISTEMA DE ANIMACIÓN CON ATLAS COMPLETOS Y FLIP
 extends Node
 class_name AnimationController
 
@@ -7,7 +7,7 @@ var sprite_frames: SpriteFrames
 var character_name: String
 var is_system_ready: bool = false
 
-# Atlas
+# Atlas completos
 var walk_right_down_atlas: Texture2D
 var walk_right_up_atlas: Texture2D
 
@@ -20,9 +20,10 @@ func setup(sprite: AnimatedSprite2D, char_name: String):
 	character_name = char_name
 	
 	load_atlases()
-	create_simple_animations()
+	create_directional_animations()
 
 func load_atlases():
+	"""Cargar los dos atlas principales"""
 	var folder = get_character_folder_name()
 	
 	walk_right_down_atlas = load_texture_safe("res://sprites/player/" + folder + "/walk_Right_Down.png")
@@ -39,13 +40,14 @@ func load_texture_safe(path: String) -> Texture2D:
 		return load(path) as Texture2D
 	return null
 
-func create_simple_animations():
+func create_directional_animations():
+	"""Crear animaciones direccionales completas"""
 	if not animated_sprite:
 		return
 	
 	sprite_frames = SpriteFrames.new()
 	
-	# Crear idle (primer frame estático)
+	# IDLE (primer frame de walk_right_down)
 	sprite_frames.add_animation("idle")
 	sprite_frames.set_animation_speed("idle", 1.0)
 	sprite_frames.set_animation_loop("idle", false)
@@ -53,34 +55,36 @@ func create_simple_animations():
 		var first_frame = extract_frame(walk_right_down_atlas, 0)
 		sprite_frames.add_frame("idle", first_frame)
 	
-	# Crear walk_down
-	sprite_frames.add_animation("walk_down")
-	sprite_frames.set_animation_speed("walk_down", 12.0)
-	sprite_frames.set_animation_loop("walk_down", true)
+	# WALK_RIGHT_DOWN (hacia abajo a la derecha)
+	sprite_frames.add_animation("walk_right_down")
+	sprite_frames.set_animation_speed("walk_right_down", 12.0)
+	sprite_frames.set_animation_loop("walk_right_down", true)
 	if walk_right_down_atlas:
 		for i in range(8):
 			var frame = extract_frame(walk_right_down_atlas, i)
-			sprite_frames.add_frame("walk_down", frame)
+			sprite_frames.add_frame("walk_right_down", frame)
 	
-	# Crear walk_up
-	sprite_frames.add_animation("walk_up")
-	sprite_frames.set_animation_speed("walk_up", 12.0)
-	sprite_frames.set_animation_loop("walk_up", true)
+	# WALK_RIGHT_UP (hacia arriba a la derecha)
+	sprite_frames.add_animation("walk_right_up")
+	sprite_frames.set_animation_speed("walk_right_up", 12.0)
+	sprite_frames.set_animation_loop("walk_right_up", true)
 	if walk_right_up_atlas:
 		for i in range(8):
 			var frame = extract_frame(walk_right_up_atlas, i)
-			sprite_frames.add_frame("walk_up", frame)
+			sprite_frames.add_frame("walk_right_up", frame)
 	else:
 		# Si no hay up, copiar down
-		for i in range(sprite_frames.get_frame_count("walk_down")):
-			var frame = sprite_frames.get_frame_texture("walk_down", i)
-			sprite_frames.add_frame("walk_up", frame)
+		for i in range(sprite_frames.get_frame_count("walk_right_down")):
+			var frame = sprite_frames.get_frame_texture("walk_right_down", i)
+			sprite_frames.add_frame("walk_right_up", frame)
 	
 	# Asignar y configurar
 	animated_sprite.sprite_frames = sprite_frames
 	animated_sprite.play("idle")
 	animated_sprite.pause()
 	is_system_ready = true
+	
+	print("✅ Sistema de animación direccional listo para: ", character_name)
 
 func extract_frame(atlas: Texture2D, frame_index: int) -> Texture2D:
 	var frame_width = 128.0
@@ -92,9 +96,9 @@ func extract_frame(atlas: Texture2D, frame_index: int) -> Texture2D:
 	
 	return atlas_frame
 
-# FUNCIÓN PRINCIPAL: ANIMACIÓN POR DIRECCIÓN DE DISPARO (EN LUGAR DE MOVIMIENTO)
+# FUNCIÓN PRINCIPAL: ANIMACIÓN POR DIRECCIÓN DE DISPARO
 func update_animation_by_shooting_direction(movement: Vector2, shooting: Vector2):
-	"""Actualizar animación basándose en la DIRECCIÓN DE DISPARO en lugar del movimiento"""
+	"""SISTEMA COMPLETO: walk_Right_Down + walk_Right_Up + flip según dirección"""
 	if not is_system_ready:
 		return
 	
@@ -114,19 +118,30 @@ func update_animation_by_shooting_direction(movement: Vector2, shooting: Vector2
 	
 	# Aplicar animación basándose en la dirección principal
 	if direction.length() > 0.1:
-		# Determinar si es hacia arriba o abajo basándose en la dirección de disparo
-		if direction.y < 0:
-			play_animation("walk_up")
-		else:
-			play_animation("walk_down")
+		# DETERMINAR ANIMACIÓN Y FLIP
+		var animation_name = "walk_right_down"  # Por defecto
+		var should_flip = false
 		
-		# Determinar flip basándose en la dirección de disparo
-		if direction.x < 0:
-			animated_sprite.flip_h = true
-		else:
-			animated_sprite.flip_h = false
+		# LÓGICA DE ANIMACIÓN BASADA EN DIRECCIÓN:
+		if direction.y < 0:  # DISPARANDO/MOVIENDO HACIA ARRIBA
+			animation_name = "walk_right_up"
+		else:  # DISPARANDO/MOVIENDO HACIA ABAJO
+			animation_name = "walk_right_down"
+		
+		# LÓGICA DE FLIP HORIZONTAL:
+		if direction.x < 0:  # DISPARANDO/MOVIENDO HACIA LA IZQUIERDA
+			should_flip = true
+		else:  # DISPARANDO/MOVIENDO HACIA LA DERECHA
+			should_flip = false
+		
+		# APLICAR ANIMACIÓN Y FLIP
+		play_animation(animation_name)
+		animated_sprite.flip_h = should_flip
+		
+		print("🎯 Dirección: ", direction, " -> Anim: ", animation_name, " Flip: ", should_flip)
+		
 	else:
-		# Idle
+		# IDLE
 		play_animation("idle")
 		animated_sprite.pause()
 
@@ -188,6 +203,7 @@ func reset_animation_state():
 	if is_system_ready:
 		animated_sprite.play("idle")
 		animated_sprite.pause()
+		animated_sprite.flip_h = false  # RESETEAR FLIP
 
 func get_character_folder_name() -> String:
 	var char_name_lower = character_name.to_lower()

@@ -1,4 +1,4 @@
-# scenes/world/WallSystem.gd - UNA HABITACIÓN GRANDE ESTILO COD ZOMBIES
+# scenes/world/WallSystem.gd - CORREGIDO: ventanas sin colisión + bocadillos funcionando
 extends Node2D
 class_name WallSystem
 
@@ -20,7 +20,7 @@ var door_texture: Texture2D
 func _ready():
 	create_wall_textures()
 	create_simple_large_room()
-	get_player_reference()
+	call_deferred("get_player_reference")
 
 func get_player_reference():
 	"""Obtener referencia al jugador"""
@@ -28,6 +28,7 @@ func get_player_reference():
 	var game_manager = get_tree().get_first_node_in_group("game_manager")
 	if game_manager and game_manager.player:
 		player_ref = game_manager.player
+		print("✅ Player reference obtenida en WallSystem")
 
 func create_wall_textures():
 	"""Crear texturas de paredes con sprites distintivos"""
@@ -136,7 +137,7 @@ func create_simple_large_room():
 	create_expensive_door(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y), Vector2(80, 100))
 
 func create_multiple_window_barricades(room_center: Vector2, room_size: Vector2, wall_thickness: float):
-	"""Crear múltiples ventanas con barricadas en las paredes"""
+	"""Crear múltiples ventanas con barricadas en las paredes - SIN COLISIÓN SÓLIDA"""
 	
 	# VENTANAS EN PARED NORTE (3 ventanas)
 	create_barricade(Vector2(room_center.x - 200, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(120, wall_thickness), 6)
@@ -156,15 +157,15 @@ func create_multiple_window_barricades(room_center: Vector2, room_size: Vector2,
 	create_barricade(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y - 250), Vector2(wall_thickness, 100), 6)
 	create_barricade(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y + 250), Vector2(wall_thickness, 100), 6)
 
-func create_expensive_door(door_position: Vector2, door_size: Vector2):
+func create_expensive_door(door_pos: Vector2, door_size: Vector2):
 	"""Crear puerta cara de 3000 puntos"""
-	create_purchasable_door(door_position, door_size, 3000, "área_exterior")
+	create_purchasable_door(door_pos, door_size, 3000, "área_exterior")
 
-func create_solid_wall(wall_position: Vector2, wall_size: Vector2) -> StaticBody2D:
+func create_solid_wall(wall_pos: Vector2, wall_size: Vector2) -> StaticBody2D:
 	"""Crear pared sólida con sprite de ladrillo - LAS BALAS NO PUEDEN ATRAVESAR"""
 	var wall = StaticBody2D.new()
 	wall.name = "SolidWall_" + str(solid_walls.size())
-	wall.position = wall_position
+	wall.position = wall_pos
 	
 	# CONFIGURACIÓN DE COLISIÓN PARA BLOQUEAR BALAS Y ENTIDADES
 	wall.collision_layer = 3  # Capa 3 para paredes sólidas
@@ -187,11 +188,11 @@ func create_solid_wall(wall_position: Vector2, wall_size: Vector2) -> StaticBody
 	
 	return wall
 
-func create_barricade(barricade_position: Vector2, barricade_size: Vector2, max_planks: int) -> Node2D:
-	"""Crear barricada estilo COD Zombies - LOS ATAQUES PUEDEN ATRAVESAR LOS TABLONES"""
+func create_barricade(barricade_pos: Vector2, barricade_size: Vector2, max_planks: int) -> Node2D:
+	"""Crear barricada estilo COD Zombies - SIN COLISIÓN CUANDO TIENE TABLONES"""
 	var barricade = Node2D.new()
 	barricade.name = "Barricade_" + str(barricades.size())
-	barricade.position = barricade_position
+	barricade.position = barricade_pos
 	
 	# Propiedades de la barricada
 	barricade.set_meta("max_planks", max_planks)
@@ -199,7 +200,7 @@ func create_barricade(barricade_position: Vector2, barricade_size: Vector2, max_
 	barricade.set_meta("size", barricade_size)
 	barricade.set_meta("repair_cost", 10)  # Puntos por reparar
 	
-	# COLISIÓN PARA ZOMBIES Y JUGADOR - PERO NO PARA BALAS NI ATAQUES MELEE
+	# COLISIÓN SÓLIDA SOLO CUANDO NO HAY TABLONES - EMPIEZA DESHABILITADA
 	var static_body = StaticBody2D.new()
 	static_body.name = "BarricadeBody"
 	static_body.collision_layer = 3  # Misma capa que paredes sólidas
@@ -210,25 +211,9 @@ func create_barricade(barricade_position: Vector2, barricade_size: Vector2, max_
 	var rect_shape = RectangleShape2D.new()
 	rect_shape.size = barricade_size
 	collision_shape.shape = rect_shape
+	collision_shape.disabled = true  # DESHABILITADA INICIALMENTE (tiene tablones)
 	static_body.add_child(collision_shape)
 	barricade.add_child(static_body)
-	
-	# ÁREA ESPECIAL PARA DETECCIÓN DE ATAQUES A TRAVÉS DE TABLONES
-	var attack_area = Area2D.new()
-	attack_area.name = "AttackThroughArea"
-	attack_area.collision_layer = 32  # Nueva capa para ataques a través de tablones
-	attack_area.collision_mask = 4 | 1  # Detecta balas (capa 4) y jugador (capa 1)
-	
-	var attack_shape = CollisionShape2D.new()
-	var attack_rect = RectangleShape2D.new()
-	attack_rect.size = barricade_size * 1.2  # Ligeramente más grande
-	attack_shape.shape = attack_rect
-	attack_area.add_child(attack_shape)
-	barricade.add_child(attack_area)
-	
-	# Conectar señales para ataques a través de tablones
-	attack_area.area_entered.connect(_on_barricade_bullet_entered.bind(barricade))
-	attack_area.body_entered.connect(_on_barricade_body_entered.bind(barricade))
 	
 	# Crear tablones visuales
 	for i in range(max_planks):
@@ -247,7 +232,7 @@ func create_barricade(barricade_position: Vector2, barricade_size: Vector2, max_
 	interaction_area.add_child(interaction_shape)
 	barricade.add_child(interaction_area)
 	
-	# Conectar señales
+	# Conectar señales CORREGIDAS
 	interaction_area.body_entered.connect(_on_barricade_interaction_entered.bind(barricade))
 	interaction_area.body_exited.connect(_on_barricade_interaction_exited.bind(barricade))
 	
@@ -255,17 +240,6 @@ func create_barricade(barricade_position: Vector2, barricade_size: Vector2, max_
 	barricades.append(barricade)
 	
 	return barricade
-
-func _on_barricade_bullet_entered(barricade: Node2D, area: Area2D):
-	"""Cuando una bala entra en el área de la barricada - PUEDE ATRAVESAR Y DAÑAR ENEMIGOS"""
-	# Las balas pueden atravesar los tablones y dañar a los enemigos del otro lado
-	pass
-
-func _on_barricade_body_entered(barricade: Node2D, body: Node2D):
-	"""Cuando el jugador se acerca mucho a la barricada - PUEDE ATACAR A TRAVÉS"""
-	if body.name == "Player":
-		# El jugador puede atacar melee a través de los tablones
-		pass
 
 func create_plank_sprite(barricade: Node2D, plank_index: int, barricade_size: Vector2, total_planks: int):
 	"""Crear sprite de tablón individual"""
@@ -304,11 +278,11 @@ func create_plank_sprite(barricade: Node2D, plank_index: int, barricade_size: Ve
 	
 	barricade.add_child(plank)
 
-func create_purchasable_door(door_position: Vector2, door_size: Vector2, cost: int, target_room: String) -> Node2D:
+func create_purchasable_door(door_pos: Vector2, door_size: Vector2, cost: int, target_room: String) -> Node2D:
 	"""Crear puerta que se puede comprar para abrir"""
 	var door = Node2D.new()
 	door.name = "Door_" + target_room
-	door.position = door_position
+	door.position = door_pos
 	
 	# Propiedades de la puerta
 	door.set_meta("cost", cost)
@@ -350,7 +324,7 @@ func create_purchasable_door(door_position: Vector2, door_size: Vector2, cost: i
 	interaction_area.add_child(interaction_shape)
 	door.add_child(interaction_area)
 	
-	# Conectar señales
+	# Conectar señales CORREGIDAS
 	interaction_area.body_entered.connect(_on_door_interaction_entered.bind(door))
 	interaction_area.body_exited.connect(_on_door_interaction_exited.bind(door))
 	
@@ -361,7 +335,7 @@ func create_purchasable_door(door_position: Vector2, door_size: Vector2, cost: i
 
 func _on_barricade_interaction_entered(barricade: Node2D, body: Node2D):
 	"""Jugador cerca de barricada - mostrar opción de reparar"""
-	if body.name == "Player":
+	if body.name == "Player" or body is Player:
 		var current_planks = barricade.get_meta("current_planks", 0)
 		var max_planks = barricade.get_meta("max_planks", 6)
 		
@@ -370,24 +344,25 @@ func _on_barricade_interaction_entered(barricade: Node2D, body: Node2D):
 
 func _on_barricade_interaction_exited(barricade: Node2D, body: Node2D):
 	"""Jugador se aleja de barricada"""
-	if body.name == "Player":
+	if body.name == "Player" or body is Player:
 		hide_interaction_prompt()
 
 func _on_door_interaction_entered(door: Node2D, body: Node2D):
 	"""Jugador cerca de puerta - MOSTRAR BOCADILLO"""
-	if body.name == "Player":
+	if body.name == "Player" or body is Player:
 		var is_open = door.get_meta("is_open", false)
 		if not is_open:
 			show_door_speech_bubble(door)
 
 func _on_door_interaction_exited(door: Node2D, body: Node2D):
 	"""Jugador se aleja de puerta - OCULTAR BOCADILLO"""
-	if body.name == "Player":
+	if body.name == "Player" or body is Player:
 		hide_door_speech_bubble()
 
 func show_door_speech_bubble(door: Node2D):
 	"""Mostrar bocadillo de diálogo sobre el jugador"""
 	if not player_ref:
+		print("❌ No hay player_ref para mostrar bocadillo")
 		return
 	
 	hide_door_speech_bubble()  # Ocultar cualquier bocadillo previo
@@ -454,6 +429,8 @@ func show_door_speech_bubble(door: Node2D):
 	current_door_prompt.modulate = Color.TRANSPARENT
 	var tween = create_tween()
 	tween.tween_property(current_door_prompt, "modulate", Color.WHITE, 0.3)
+	
+	print("✅ Bocadillo de puerta mostrado")
 
 func hide_door_speech_bubble():
 	"""Ocultar bocadillo de diálogo"""
@@ -563,11 +540,10 @@ func repair_barricade(barricade: Node2D) -> bool:
 	if plank:
 		plank.visible = true
 	
-	# Actualizar colisión si está completamente reparada
-	if current_planks >= max_planks:
-		var collision = barricade.get_node_or_null("BarricadeBody/BarricadeCollision")
-		if collision:
-			collision.disabled = false
+	# DESHABILITAR COLISIÓN SI TIENE TABLONES (LAS BALAS PUEDEN PASAR)
+	var collision = barricade.get_node_or_null("BarricadeBody/BarricadeCollision")
+	if collision:
+		collision.disabled = true  # CON TABLONES = SIN COLISIÓN SÓLIDA
 	
 	return true
 
@@ -591,22 +567,21 @@ func damage_barricade(barricade: Node2D, damage_amount: int = 1):
 			# Efecto de tablón roto
 			create_plank_break_effect(barricade.global_position)
 	
-	# Deshabilitar colisión si está destruida
+	# HABILITAR COLISIÓN SI NO HAY TABLONES (BLOQUEA BALAS)
 	if current_planks <= 0:
 		var collision = barricade.get_node_or_null("BarricadeBody/BarricadeCollision")
 		if collision:
-			collision.disabled = true
-		
+			collision.disabled = false  # SIN TABLONES = COLISIÓN SÓLIDA
 		print("💥 Barricada destruida!")
 
-func create_plank_break_effect(effect_position: Vector2):
+func create_plank_break_effect(effect_pos: Vector2):
 	"""Crear efecto visual de tablón roto"""
 	for i in range(4):
 		var particle = Sprite2D.new()
 		var particle_image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
 		particle_image.fill(Color.BROWN)
 		particle.texture = ImageTexture.create_from_image(particle_image)
-		particle.global_position = effect_position + Vector2(randf_range(-20, 20), randf_range(-20, 20))
+		particle.global_position = effect_pos + Vector2(randf_range(-20, 20), randf_range(-20, 20))
 		get_tree().current_scene.add_child(particle)
 		
 		var tween = create_tween()
@@ -645,13 +620,13 @@ func purchase_door(door: Node2D) -> bool:
 	
 	return true
 
-func get_barricades_in_range(position: Vector2, range_distance: float) -> Array[Node2D]:
+func get_barricades_in_range(pos: Vector2, range_distance: float) -> Array[Node2D]:
 	"""Obtener barricadas en rango para que enemigos las ataquen"""
 	var nearby_barricades: Array[Node2D] = []
 	
 	for barricade in barricades:
 		if is_instance_valid(barricade):
-			var distance = position.distance_to(barricade.global_position)
+			var distance = pos.distance_to(barricade.global_position)
 			if distance <= range_distance:
 				var current_planks = barricade.get_meta("current_planks", 0)
 				if current_planks > 0:  # Solo barricadas con tablones
