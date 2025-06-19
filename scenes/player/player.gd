@@ -1,4 +1,4 @@
-# scenes/player/player.gd - CONTROLES CORREGIDOS
+# scenes/player/player.gd - CUCHILLO Y BALAS ARREGLADOS
 extends CharacterBody2D
 class_name Player
 
@@ -25,7 +25,7 @@ var mobile_is_shooting: bool = false
 var current_movement_direction: Vector2 = Vector2.ZERO
 var current_aim_direction: Vector2 = Vector2.RIGHT
 
-# Melee attack
+# Melee attack CORREGIDO
 var melee_cooldown: float = 1.5
 var last_melee_time: float = 0.0
 var is_performing_melee: bool = false
@@ -71,34 +71,40 @@ func setup_weapon_renderer():
 	add_child(weapon_renderer)
 
 func setup_melee_knife():
-	"""Crear sprite del cuchillo para melee"""
+	"""Crear sprite del cuchillo para melee MEJORADO"""
 	melee_knife_sprite = Sprite2D.new()
 	melee_knife_sprite.name = "MeleeKnife"
 	melee_knife_sprite.visible = false
 	melee_knife_sprite.z_index = 15
 	
-	# Crear sprite simple de cuchillo
-	var knife_image = Image.create(30, 8, false, Image.FORMAT_RGBA8)
+	# Crear sprite de cuchillo MÁS GRANDE Y DETALLADO
+	var knife_image = Image.create(48, 12, false, Image.FORMAT_RGBA8)
 	knife_image.fill(Color.TRANSPARENT)
 	
-	# Hoja del cuchillo (plateada)
-	for x in range(18, 30):
-		for y in range(2, 6):
+	# HOJA DEL CUCHILLO (plateada) - MÁS GRANDE
+	for x in range(28, 48):
+		for y in range(3, 9):
 			knife_image.set_pixel(x, y, Color.LIGHT_GRAY)
 	
-	# Mango del cuchillo (marrón)
-	for x in range(0, 18):
-		for y in range(1, 7):
+	# MANGO DEL CUCHILLO (marrón) - MÁS GRANDE
+	for x in range(0, 28):
+		for y in range(2, 10):
 			knife_image.set_pixel(x, y, Color(0.6, 0.4, 0.2))
 	
-	# Filo del cuchillo (blanco brillante)
-	for x in range(18, 30):
-		knife_image.set_pixel(x, 1, Color.WHITE)
-		knife_image.set_pixel(x, 6, Color.WHITE)
+	# FILO DEL CUCHILLO (blanco brillante)
+	for x in range(28, 48):
+		knife_image.set_pixel(x, 2, Color.WHITE)
+		knife_image.set_pixel(x, 9, Color.WHITE)
 	
-	# Punta del cuchillo
-	knife_image.set_pixel(29, 3, Color.WHITE)
-	knife_image.set_pixel(29, 4, Color.WHITE)
+	# PUNTA DEL CUCHILLO
+	for y in range(4, 8):
+		knife_image.set_pixel(47, y, Color.WHITE)
+	
+	# DETALLES DEL MANGO
+	for x in range(5, 25):
+		if x % 4 == 0:
+			for y in range(3, 9):
+				knife_image.set_pixel(x, y, Color(0.4, 0.2, 0.1))
 	
 	melee_knife_sprite.texture = ImageTexture.create_from_image(knife_image)
 	add_child(melee_knife_sprite)
@@ -164,7 +170,7 @@ func _physics_process(delta):
 	handle_movement(delta)
 	handle_shooting()
 	update_weapon_position()
-	update_melee_knife_position()
+	update_melee_knife_position_improved()
 	
 	move_and_slide()
 
@@ -218,7 +224,11 @@ func handle_movement(_delta):
 func update_movement_animations():
 	"""Actualizar animaciones"""
 	if animation_controller:
-		animation_controller.update_animation_for_movement(current_movement_direction, current_aim_direction)
+		animation_controller.update_animation_for_movement_with_melee(
+			current_movement_direction, 
+			current_aim_direction, 
+			is_performing_melee
+		)
 
 func apply_map_bounds():
 	"""Aplicar límites del mapa"""
@@ -257,21 +267,47 @@ func handle_shooting():
 		perform_shoot(current_aim_direction)
 
 func perform_shoot(direction: Vector2):
-	"""Realizar disparo"""
+	"""Realizar disparo CON ALTURA CORREGIDA"""
 	if not shooting_component:
 		return
 	
 	current_aim_direction = direction
 	
-	# BALAS DESDE MÁS ARRIBA
-	var shoot_pos = global_position + Vector2(0, -20)  # 20 píxeles más arriba
-	if weapon_renderer:
-		shoot_pos = weapon_renderer.get_muzzle_world_position()
+	# POSICIÓN DE DISPARO AJUSTADA SEGÚN DIRECCIÓN
+	var shoot_pos = get_corrected_bullet_spawn_position(direction)
 	
 	var shot_fired = shooting_component.try_shoot(direction, shoot_pos)
 	
 	if shot_fired and weapon_renderer:
 		weapon_renderer.start_shooting_animation()
+
+func get_corrected_bullet_spawn_position(direction: Vector2) -> Vector2:
+	"""Obtener posición corregida para spawn de balas según dirección"""
+	var base_offset = Vector2(0, -15)  # Offset base desde el centro del jugador
+	
+	# AJUSTAR OFFSET SEGÚN DIRECCIÓN DE DISPARO
+	var angle = direction.angle()
+	
+	# Rotar el offset base según la dirección
+	var rotated_offset = base_offset.rotated(angle)
+	
+	# AJUSTES ESPECÍFICOS POR DIRECCIÓN PARA MEJOR ALINEACIÓN
+	if abs(angle) < PI/4:  # Disparando a la derecha
+		rotated_offset += Vector2(25, 0)
+	elif abs(angle) > 3*PI/4:  # Disparando a la izquierda
+		rotated_offset += Vector2(-25, 0)
+	elif angle > PI/4 and angle < 3*PI/4:  # Disparando hacia abajo
+		rotated_offset += Vector2(0, 15)
+	elif angle < -PI/4 and angle > -3*PI/4:  # Disparando hacia arriba
+		rotated_offset += Vector2(0, -25)
+	
+	# Si tenemos weapon_renderer, usar su posición
+	if weapon_renderer:
+		var muzzle_pos = weapon_renderer.get_muzzle_world_position()
+		if muzzle_pos != global_position:  # Si el weapon_renderer tiene una posición válida
+			return muzzle_pos
+	
+	return global_position + rotated_offset
 
 func update_weapon_position():
 	"""Actualizar posición del arma usando AIM DIRECTION"""
@@ -284,24 +320,37 @@ func update_weapon_position():
 	
 	weapon_renderer.update_weapon_position_and_rotation(aim_direction)
 
-func update_melee_knife_position():
-	"""Actualizar posición del cuchillo de melee"""
+func update_melee_knife_position_improved():
+	"""Actualizar posición del cuchillo MEJORADA según dirección de movimiento/aim"""
 	if not melee_knife_sprite:
 		return
 	
 	if is_performing_melee:
-		var knife_offset = Vector2(40, -10)
-		var rotated_offset = knife_offset.rotated(current_aim_direction.angle())
-		melee_knife_sprite.global_position = global_position + rotated_offset
-		melee_knife_sprite.rotation = current_aim_direction.angle()
+		# USAR DIRECCIÓN DE MOVIMIENTO O AIM PARA POSICIONAR EL CUCHILLO
+		var knife_direction = Vector2.ZERO
 		
-		if current_aim_direction.x < 0:
-			melee_knife_sprite.flip_v = true
+		# PRIORIDAD: Dirección de movimiento si se está moviendo
+		if current_movement_direction.length() > 0.1:
+			knife_direction = current_movement_direction.normalized()
 		else:
+			# Si no se mueve, usar dirección de aim
+			knife_direction = current_aim_direction.normalized()
+		
+		# POSICIONAR CUCHILLO SEGÚN LA DIRECCIÓN
+		var knife_distance = 50.0
+		var knife_offset = knife_direction * knife_distance
+		
+		melee_knife_sprite.global_position = global_position + knife_offset
+		melee_knife_sprite.rotation = knife_direction.angle()
+		
+		# AJUSTE VISUAL SEGÚN DIRECCIÓN
+		if knife_direction.x < 0:  # Izquierda
+			melee_knife_sprite.flip_v = true
+		else:  # Derecha
 			melee_knife_sprite.flip_v = false
 
 func perform_melee_attack():
-	"""MELEE ATTACK CON ANIMACIÓN CORREGIDA"""
+	"""MELEE ATTACK CON DIRECCIÓN MEJORADA"""
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if current_time - last_melee_time < melee_cooldown:
 		return
@@ -312,15 +361,25 @@ func perform_melee_attack():
 	last_melee_time = current_time
 	is_performing_melee = true
 	
-	# ANIMACIÓN DEL PERSONAJE - PAUSA TEMPORALMENTE
+	# DETERMINAR DIRECCIÓN DE ATAQUE
+	var attack_direction = Vector2.ZERO
+	
+	# PRIORIDAD 1: Dirección de movimiento si se está moviendo
+	if current_movement_direction.length() > 0.1:
+		attack_direction = current_movement_direction.normalized()
+	# PRIORIDAD 2: Dirección de aim
+	elif current_aim_direction.length() > 0.1:
+		attack_direction = current_aim_direction.normalized()
+	# PRIORIDAD 3: Dirección hacia la derecha por defecto
+	else:
+		attack_direction = Vector2.RIGHT
+	
+	# ACTUALIZAR CURRENT_AIM_DIRECTION PARA ANIMACIONES
+	current_aim_direction = attack_direction
+	
+	# ANIMACIÓN DEL PERSONAJE
 	if animation_controller and animated_sprite:
-		animated_sprite.pause()
-		# Cambiar a un frame de ataque si existe, sino usar frame actual
-		if animated_sprite.sprite_frames and animated_sprite.sprite_frames.has_animation("attack"):
-			animated_sprite.play("attack")
-		else:
-			# Usar frame actual pero con efecto visual
-			animated_sprite.modulate = Color(1.2, 1.2, 0.8, 1.0)  # Tinte amarillento
+		animation_controller.start_melee_animation()
 	
 	# Mostrar cuchillo y ocultar arma
 	if melee_knife_sprite:
@@ -328,16 +387,24 @@ func perform_melee_attack():
 	if weapon_renderer:
 		weapon_renderer.hide_weapon()
 	
-	# Buscar enemigos cercanos
-	var melee_range = 80.0
+	# BUSCAR ENEMIGOS EN DIRECCIÓN DE ATAQUE
+	var melee_range = 90.0
 	var enemies_hit = []
 	
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy and is_instance_valid(enemy) and enemy.global_position.distance_to(global_position) <= melee_range:
-			enemies_hit.append(enemy)
+		if enemy and is_instance_valid(enemy):
+			var distance_to_enemy = enemy.global_position.distance_to(global_position)
+			if distance_to_enemy <= melee_range:
+				# VERIFICAR SI EL ENEMIGO ESTÁ EN LA DIRECCIÓN DE ATAQUE
+				var direction_to_enemy = (enemy.global_position - global_position).normalized()
+				var angle_difference = attack_direction.angle_to(direction_to_enemy)
+				
+				# PERMITIR ÁNGULO DE 90 GRADOS (PI/2) HACIA CADA LADO
+				if abs(angle_difference) <= PI/2:
+					enemies_hit.append(enemy)
 	
 	if not enemies_hit.is_empty():
-		# Atacar enemigos cercanos
+		# Atacar enemigos en dirección
 		for enemy in enemies_hit:
 			if enemy.has_method("take_damage"):
 				enemy.take_damage(50, false)
@@ -348,8 +415,8 @@ func perform_melee_attack():
 				
 				create_melee_effect(enemy.global_position)
 	
-	# Animación del cuchillo
-	animate_melee_knife()
+	# Animación del cuchillo según dirección
+	animate_melee_knife_directional(attack_direction)
 	
 	# Finalizar melee después de la animación
 	var melee_timer = Timer.new()
@@ -359,6 +426,33 @@ func perform_melee_attack():
 	add_child(melee_timer)
 	melee_timer.start()
 
+func animate_melee_knife_directional(attack_direction: Vector2):
+	"""Animar el cuchillo según la dirección de ataque"""
+	if not melee_knife_sprite:
+		return
+	
+	# POSICIONES INICIAL Y FINAL SEGÚN DIRECCIÓN
+	var start_distance = 30.0
+	var end_distance = 60.0
+	
+	var start_pos = global_position + (attack_direction * start_distance)
+	var end_pos = global_position + (attack_direction * end_distance)
+	
+	# POSICIONAR Y ROTAR CUCHILLO
+	melee_knife_sprite.global_position = start_pos
+	melee_knife_sprite.rotation = attack_direction.angle()
+	
+	# FLIP SI ES NECESARIO
+	if attack_direction.x < 0:
+		melee_knife_sprite.flip_v = true
+	else:
+		melee_knife_sprite.flip_v = false
+	
+	# ANIMAR MOVIMIENTO DE SLASH
+	var tween = create_tween()
+	tween.tween_property(melee_knife_sprite, "global_position", end_pos, 0.2)
+	tween.tween_property(melee_knife_sprite, "global_position", start_pos, 0.2)
+
 func _finish_melee_attack():
 	"""Función para finalizar ataque melee"""
 	finish_melee_attack()
@@ -366,22 +460,6 @@ func _finish_melee_attack():
 	var melee_timer = get_node_or_null("Timer")
 	if melee_timer:
 		melee_timer.queue_free()
-
-func animate_melee_knife():
-	"""Animar el cuchillo durante el ataque"""
-	if not melee_knife_sprite:
-		return
-	
-	var tween = create_tween()
-	# Movimiento de slash
-	var start_offset = Vector2(30, -20)
-	var end_offset = Vector2(50, 10)
-	
-	var start_pos = global_position + start_offset.rotated(current_aim_direction.angle())
-	var end_pos = global_position + end_offset.rotated(current_aim_direction.angle())
-	
-	melee_knife_sprite.global_position = start_pos
-	tween.tween_property(melee_knife_sprite, "global_position", end_pos, 0.3)
 
 func finish_melee_attack():
 	"""Finalizar ataque de melee"""
@@ -392,7 +470,11 @@ func finish_melee_attack():
 		animated_sprite.modulate = Color.WHITE
 		if animation_controller:
 			# Reanudar animación normal
-			animation_controller.update_animation_for_movement(current_movement_direction, current_aim_direction)
+			animation_controller.update_animation_for_movement_with_melee(
+				current_movement_direction, 
+				current_aim_direction, 
+				false
+			)
 	
 	if melee_knife_sprite:
 		melee_knife_sprite.visible = false

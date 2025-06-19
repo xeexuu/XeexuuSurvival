@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - CORREGIDO: lambdas y vida fija
+# scenes/enemies/Enemy.gd - IA ESTILO COD ZOMBIES CON BARRICADAS
 extends CharacterBody2D
 class_name Enemy
 
@@ -33,22 +33,30 @@ var enemy_sprite_frames: SpriteFrames
 # Variables de ataque visual
 var attack_effect_sprite: Sprite2D
 
-enum WaWState {
+# SISTEMA DE IA COD ZOMBIES
+enum ZombieState {
 	SPAWNING,
-	HUNTING,
-	CHARGING,
-	ATTACKING,
+	HUNTING_PLAYER,
+	MOVING_TO_BARRICADE,
+	ATTACKING_BARRICADE,
+	BREAKING_THROUGH,
+	ATTACKING_PLAYER,
 	STUNNED
 }
 
-var current_state: WaWState = WaWState.SPAWNING
+var current_state: ZombieState = ZombieState.SPAWNING
 var state_timer: float = 0.0
+var target_barricade: Node2D = null
+var target_penetrable_wall: Area2D = null
+var wall_system: WallSystem = null
+var path_blocked: bool = false
+
+# Variables de navegación COD
 var last_known_player_position: Vector2
-var charge_speed_multiplier: float = 1.5
-var min_separation_distance: float = 35.0
-var max_separation_distance: float = 50.0
-var is_anchored: bool = false
-var anchor_position: Vector2
+var barricade_attack_timer: float = 0.0
+var barricade_attack_delay: float = 1.5
+var wall_check_timer: float = 0.0
+var wall_check_delay: float = 0.5
 
 func _ready():
 	add_to_group("enemies")
@@ -57,6 +65,10 @@ func _ready():
 	determine_waw_variant()
 	call_deferred("verify_sprite_after_ready")
 
+func set_wall_system(wall_sys: WallSystem):
+	"""Establecer referencia al sistema de paredes"""
+	wall_system = wall_sys
+
 func setup_attack_effect():
 	"""Crear sprite para efectos de ataque"""
 	attack_effect_sprite = Sprite2D.new()
@@ -64,18 +76,15 @@ func setup_attack_effect():
 	attack_effect_sprite.visible = false
 	attack_effect_sprite.z_index = 20
 	
-	# Crear efecto de abanico rojo
 	var effect_image = Image.create(60, 40, false, Image.FORMAT_RGBA8)
 	effect_image.fill(Color.TRANSPARENT)
 	
-	# Crear forma de abanico/semicírculo
 	var center = Vector2(10, 20)
 	for x in range(60):
 		for y in range(40):
 			var dist = Vector2(x, y).distance_to(center)
 			var angle = Vector2(x - center.x, y - center.y).angle()
 			
-			# Solo pintar en el semicírculo frontal
 			if dist < 35 and angle > -PI/3 and angle < PI/3:
 				var alpha = 1.0 - (dist / 35.0)
 				if dist < 20:
@@ -95,7 +104,7 @@ func verify_sprite_after_ready():
 func setup_enemy():
 	"""Configurar enemigo con hitboxes específicas"""
 	is_dead = false
-	current_state = WaWState.SPAWNING
+	current_state = ZombieState.SPAWNING
 	
 	collision_layer = 2
 	collision_mask = 1 | 3
@@ -136,7 +145,7 @@ func setup_hitboxes():
 	var body_shape = CollisionShape2D.new()
 	var body_rect = RectangleShape2D.new()
 	body_rect.size = Vector2(48, 77)
-	body_shape.shape = body_rect
+	body_shape.shape = head_rect
 	body_shape.position = Vector2(0, 0)
 	body_area.add_child(body_shape)
 	add_child(body_area)
@@ -156,7 +165,7 @@ func setup_hitboxes():
 	add_child(legs_area)
 
 func determine_waw_variant():
-	"""Variantes COD con NUEVOS TIPOS"""
+	"""Variantes COD con NUEVOS TIPOS MEJORADOS"""
 	match enemy_type:
 		"zombie_dog":
 			setup_dog_variant()
@@ -173,7 +182,6 @@ func setup_dog_variant():
 	"""Configurar variante perro zombie"""
 	base_move_speed = 180.0
 	current_move_speed = base_move_speed
-	charge_speed_multiplier = 2.0
 	damage = 2
 	attack_range = 50.0
 	detection_range = 1500.0
@@ -183,7 +191,6 @@ func setup_crawler_variant():
 	"""Configurar variante crawler zombie"""
 	base_move_speed = 60.0
 	current_move_speed = base_move_speed
-	charge_speed_multiplier = 0.8
 	damage = 1
 	attack_range = 40.0
 	detection_range = 800.0
@@ -191,19 +198,20 @@ func setup_crawler_variant():
 
 func setup_runner_variant():
 	"""Configurar variante runner zombie"""
-	charge_speed_multiplier = randf_range(1.8, 2.2)
+	base_move_speed = 150.0
+	current_move_speed = base_move_speed
 	modulate = Color(1.4, 0.6, 0.6, 1.0)
 	detection_range = 1200.0
 
 func setup_charger_variant():
 	"""Configurar variante charger zombie"""
-	charge_speed_multiplier = randf_range(1.4, 1.7)
+	base_move_speed = 120.0
+	current_move_speed = base_move_speed
 	modulate = Color(1.2, 0.8, 0.6, 1.0)
 	attack_range = 70.0
 
 func setup_basic_variant():
 	"""Configurar variante básica zombie"""
-	charge_speed_multiplier = randf_range(0.9, 1.3)
 	modulate = Color(1.0, 0.9, 0.8, 1.0)
 
 func load_enemy_sprite_waw_size():
@@ -225,25 +233,87 @@ func load_enemy_sprite_waw_size():
 	else:
 		match enemy_type:
 			"zombie_dog":
-				create_dog_fallback_sprite()
+				create_improved_dog_sprite()
 			"zombie_crawler":
-				create_crawler_fallback_sprite()
+				create_improved_crawler_sprite()
+			"zombie_runner":
+				create_improved_runner_sprite()
+			"zombie_charger":
+				create_improved_charger_sprite()
 			_:
 				create_default_enemy_sprite_player_size()
 
-func create_dog_fallback_sprite():
-	"""Crear sprite fallback de perro (cuadrado rojo)"""
-	var image = Image.create(64, 32, false, Image.FORMAT_RGBA8)
-	image.fill(Color.RED)
+func create_improved_dog_sprite():
+	"""SPRITE MEJORADO DE PERRO - RECTÁNGULO ROJO CON FORMA"""
+	var image = Image.create(80, 40, false, Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
 	
+	# CUERPO PRINCIPAL ROJO
+	for x in range(80):
+		for y in range(40):
+			# Cuerpo alargado
+			if x >= 10 and x < 70 and y >= 12 and y < 28:
+				image.set_pixel(x, y, Color.RED)
+			# Cabeza (más pequeña)
+			elif x >= 65 and x < 80 and y >= 8 and y < 32:
+				image.set_pixel(x, y, Color.DARK_RED)
+			# Patas
+			elif ((x >= 15 and x < 20) or (x >= 30 and x < 35) or (x >= 45 and x < 50) or (x >= 60 and x < 65)) and y >= 25 and y < 40:
+				image.set_pixel(x, y, Color.DARK_RED)
+	
+	# OJOS BRILLANTES
+	for x in range(70, 75):
+		for y in range(14, 18):
+			image.set_pixel(x, y, Color.YELLOW)
+	
+	for x in range(70, 75):
+		for y in range(22, 26):
+			image.set_pixel(x, y, Color.YELLOW)
+	
+	# COLA
+	for x in range(5, 12):
+		for y in range(16, 24):
+			image.set_pixel(x, y, Color.RED)
+	
+	var default_texture = ImageTexture.create_from_image(image)
+	
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		add_child(sprite)
+	
+	if sprite is Sprite2D:
+		var normal_sprite = sprite as Sprite2D
+		normal_sprite.texture = default_texture
+		normal_sprite.scale = Vector2(1.6, 3.2)
+		normal_sprite.visible = true
+
+func create_improved_crawler_sprite():
+	"""SPRITE MEJORADO DE CRAWLER - CUADRADO VERDE CON FORMA"""
+	var image = Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
+	
+	# CUERPO PRINCIPAL VERDE MÁS ANCHO
 	for x in range(64):
-		for y in range(32):
-			if (x < 10 and y < 8) or (x > 54 and y < 8):
-				image.set_pixel(x, y, Color.DARK_RED)
-			elif x > 58 and y > 10 and y < 20:
-				image.set_pixel(x, y, Color.DARK_RED)
+		for y in range(64):
+			# Cuerpo más bajo y ancho
+			if x >= 8 and x < 56 and y >= 25 and y < 45:
+				image.set_pixel(x, y, Color.GREEN)
+			# Cabeza más pequeña
+			elif x >= 48 and x < 64 and y >= 15 and y < 35:
+				image.set_pixel(x, y, Color.DARK_GREEN)
+			# Brazos extendidos
+			elif ((x >= 0 and x < 15) or (x >= 49 and x < 64)) and y >= 30 and y < 40:
+				image.set_pixel(x, y, Color.DARK_GREEN)
 	
-	add_dog_eyes(image)
+	# OJOS ROJOS BRILLANTES
+	for x in range(52, 58):
+		for y in range(20, 24):
+			image.set_pixel(x, y, Color.RED)
+	
+	for x in range(52, 58):
+		for y in range(26, 30):
+			image.set_pixel(x, y, Color.RED)
 	
 	var default_texture = ImageTexture.create_from_image(image)
 	
@@ -255,22 +325,23 @@ func create_dog_fallback_sprite():
 	if sprite is Sprite2D:
 		var normal_sprite = sprite as Sprite2D
 		normal_sprite.texture = default_texture
-		normal_sprite.scale = Vector2(2.0, 4.0)
+		normal_sprite.scale = Vector2(2.0, 2.0)
 		normal_sprite.visible = true
 
-func create_crawler_fallback_sprite():
-	"""Crear sprite fallback de crawler (cuadrado verde)"""
-	var image = Image.create(96, 48, false, Image.FORMAT_RGBA8)
-	image.fill(Color.GREEN)
+func create_improved_runner_sprite():
+	"""SPRITE MEJORADO DE RUNNER"""
+	var image = Image.create(96, 128, false, Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
 	
+	# CUERPO DELGADO Y ALTO (RUNNER)
 	for x in range(96):
-		for y in range(48):
-			if y > 30 and ((x < 20) or (x > 76)):
-				image.set_pixel(x, y, Color.DARK_GREEN)
-			elif y > 40:
-				image.set_pixel(x, y, Color.DARK_GREEN)
-	
-	add_crawler_eyes(image)
+		for y in range(128):
+			# Torso delgado
+			if x >= 35 and x < 61 and y >= 40 and y < 85:
+				image.set_pixel(x, y, Color.ORANGE)
+			# Cabeza
+			elif x >= 40 and x < 56 and y >= 20 and y < 45:
+				image.set_pixel(x, y, Color.ORANGE_RED)
 	
 	var default_texture = ImageTexture.create_from_image(image)
 	
@@ -282,28 +353,51 @@ func create_crawler_fallback_sprite():
 	if sprite is Sprite2D:
 		var normal_sprite = sprite as Sprite2D
 		normal_sprite.texture = default_texture
-		normal_sprite.scale = Vector2(1.33, 2.67)
+		normal_sprite.scale = Vector2(1.33, 1.0)
 		normal_sprite.visible = true
 
-func add_dog_eyes(image: Image):
-	"""Añadir ojos de perro"""
-	var eye_positions = [Vector2(15, 8), Vector2(49, 8)]
+func create_improved_charger_sprite():
+	"""SPRITE MEJORADO DE CHARGER"""
+	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
 	
-	for eye_pos in eye_positions:
-		for x in range(eye_pos.x - 2, eye_pos.x + 2):
-			for y in range(eye_pos.y - 2, eye_pos.y + 2):
-				if x >= 0 and x < 64 and y >= 0 and y < 32:
-					image.set_pixel(x, y, Color.YELLOW)
+	# CUERPO ROBUSTO (CHARGER)
+	for x in range(128):
+		for y in range(128):
+			# Torso ancho
+			if x >= 25 and x < 103 and y >= 35 and y < 90:
+				image.set_pixel(x, y, Color.PURPLE)
+	
+	var default_texture = ImageTexture.create_from_image(image)
+	
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		add_child(sprite)
+	
+	if sprite is Sprite2D:
+		var normal_sprite = sprite as Sprite2D
+		normal_sprite.texture = default_texture
+		normal_sprite.scale = Vector2(1.0, 1.0)
+		normal_sprite.visible = true
 
-func add_crawler_eyes(image: Image):
-	"""Añadir ojos de crawler"""
-	var eye_positions = [Vector2(20, 15), Vector2(76, 15)]
+func create_default_enemy_sprite_player_size():
+	"""Sprite por defecto básico"""
+	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
+	image.fill(Color.DARK_RED)
 	
-	for eye_pos in eye_positions:
-		for x in range(eye_pos.x - 3, eye_pos.x + 3):
-			for y in range(eye_pos.y - 2, eye_pos.y + 2):
-				if x >= 0 and x < 96 and y >= 0 and y < 48:
-					image.set_pixel(x, y, Color.RED)
+	var default_texture = ImageTexture.create_from_image(image)
+	
+	if not sprite:
+		sprite = Sprite2D.new()
+		sprite.name = "Sprite2D"
+		add_child(sprite)
+	
+	if sprite is Sprite2D:
+		var normal_sprite = sprite as Sprite2D
+		normal_sprite.texture = default_texture
+		normal_sprite.scale = Vector2(1.0, 1.0)
+		normal_sprite.visible = true
 
 func setup_animated_sprite_player_size(atlas_texture: Texture2D):
 	"""Configurar sprite animado"""
@@ -347,51 +441,6 @@ func extract_frame_from_zombie_atlas(atlas_texture: Texture2D, frame_index: int)
 	
 	return atlas_frame
 
-func create_default_enemy_sprite_player_size():
-	"""Sprite por defecto"""
-	var image = Image.create(128, 128, false, Image.FORMAT_RGBA8)
-	
-	var base_color = Color.DARK_RED
-	match enemy_type:
-		"zombie_runner":
-			base_color = Color(0.9, 0.2, 0.2, 1.0)
-		"zombie_charger":
-			base_color = Color(0.8, 0.4, 0.2, 1.0)
-	
-	image.fill(base_color)
-	
-	for x in range(128):
-		for y in range(128):
-			var dist = Vector2(x - 64, y - 64).length()
-			if dist < 20:
-				image.set_pixel(x, y, Color.BLACK)
-			elif dist < 35:
-				image.set_pixel(x, y, base_color.darkened(0.3))
-	
-	add_glowing_eyes(image)
-	
-	var default_texture = ImageTexture.create_from_image(image)
-	
-	if not sprite:
-		sprite = Sprite2D.new()
-		sprite.name = "Sprite2D"
-		add_child(sprite)
-	
-	if sprite is Sprite2D:
-		var normal_sprite = sprite as Sprite2D
-		normal_sprite.texture = default_texture
-		normal_sprite.scale = Vector2(1.0, 1.0)
-		normal_sprite.visible = true
-
-func add_glowing_eyes(image: Image):
-	var eye_positions = [Vector2(45, 45), Vector2(83, 45)]
-	
-	for eye_pos in eye_positions:
-		for x in range(eye_pos.x - 4, eye_pos.x + 4):
-			for y in range(eye_pos.y - 3, eye_pos.y + 3):
-				if x >= 0 and x < 128 and y >= 0 and y < 128:
-					image.set_pixel(x, y, Color.RED)
-
 func try_load_texture_safe(path: String) -> Texture2D:
 	if not ResourceLoader.exists(path):
 		return null
@@ -402,7 +451,7 @@ func try_load_texture_safe(path: String) -> Texture2D:
 	return null
 
 func setup_health_bar():
-	"""Configurar barra de vida CON NÚMEROS VISIBLES"""
+	"""Configurar barra de vida"""
 	if not health_bar:
 		health_bar = ProgressBar.new()
 		health_bar.size = Vector2(100, 16)
@@ -413,43 +462,6 @@ func setup_health_bar():
 	health_bar.value = current_health
 	health_bar.show_percentage = false
 	health_bar.visible = true
-	
-	var style_bg = StyleBoxFlat.new()
-	style_bg.bg_color = Color.BLACK
-	style_bg.border_color = Color.WHITE
-	style_bg.border_width_left = 1
-	style_bg.border_width_right = 1
-	style_bg.border_width_top = 1
-	style_bg.border_width_bottom = 1
-	health_bar.add_theme_stylebox_override("background", style_bg)
-	
-	var style_fill = StyleBoxFlat.new()
-	style_fill.bg_color = Color.RED
-	health_bar.add_theme_stylebox_override("fill", style_fill)
-	
-	setup_health_text()
-
-func setup_health_text():
-	"""Configurar texto de vida encima de la barra"""
-	var health_text = get_node_or_null("HealthText")
-	if health_text:
-		health_text.queue_free()
-	
-	health_text = Label.new()
-	health_text.name = "HealthText"
-	health_text.text = str(current_health) + "/" + str(max_health)
-	health_text.add_theme_font_size_override("font_size", 14)
-	health_text.add_theme_color_override("font_color", Color.WHITE)
-	health_text.add_theme_color_override("font_shadow_color", Color.BLACK)
-	health_text.add_theme_constant_override("shadow_offset_x", 1)
-	health_text.add_theme_constant_override("shadow_offset_y", 1)
-	health_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	health_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	
-	health_text.position = Vector2(-25, -90)
-	health_text.size = Vector2(50, 16)
-	
-	add_child(health_text)
 
 func force_sprite_visibility():
 	"""Forzar que el sprite sea visible"""
@@ -457,41 +469,31 @@ func force_sprite_visibility():
 		sprite.visible = true
 		sprite.modulate = Color.WHITE
 		sprite.scale = Vector2(1.0, 1.0)
-		
-		if sprite is AnimatedSprite2D:
-			var animated_sprite = sprite as AnimatedSprite2D
-			if animated_sprite.sprite_frames:
-				if not animated_sprite.is_playing():
-					animated_sprite.play("idle")
-			else:
-				load_enemy_sprite_waw_size()
 
 func setup_for_spawn(target_player: Player, round_health: int = -1):
-	"""CONFIGURAR PARA SPAWN - VIDA MÁXIMA AJUSTADA SEGÚN TIPO"""
+	"""CONFIGURAR PARA SPAWN"""
 	player = target_player
 	
-	# CONFIGURAR SALUD MÁXIMA SEGÚN TIPO Y RONDA
 	if round_health > 0:
-		# Ajustar salud máxima según tipo de enemigo
 		match enemy_type:
 			"zombie_dog":
-				max_health = int(float(round_health) * 0.4)  # 40% de vida
+				max_health = int(float(round_health) * 0.4)
 			"zombie_crawler":
-				max_health = int(float(round_health) * 1.5)  # 150% de vida
+				max_health = int(float(round_health) * 1.5)
 			"zombie_runner":
-				max_health = int(float(round_health) * 0.6)  # 60% de vida
+				max_health = int(float(round_health) * 0.6)
 			"zombie_charger":
-				max_health = int(float(round_health) * 0.8)  # 80% de vida
-			_:  # zombie_basic
+				max_health = int(float(round_health) * 0.8)
+			_:
 				max_health = round_health
 		
-		# ESTABLECER VIDA ACTUAL IGUAL A LA MÁXIMA
 		current_health = max_health
 	
 	is_dead = false
-	current_state = WaWState.SPAWNING
-	is_anchored = false
-	anchor_position = Vector2.ZERO
+	current_state = ZombieState.SPAWNING
+	target_barricade = null
+	target_penetrable_wall = null
+	path_blocked = false
 	
 	modulate = Color(1, 1, 1, 1)
 	scale = Vector2(1.0, 1.0)
@@ -503,27 +505,25 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 
 func start_spawn_animation():
 	"""Spawn sin ocultar sprite"""
-	current_state = WaWState.SPAWNING
+	current_state = ZombieState.SPAWNING
 	
 	var spawn_timer = Timer.new()
 	spawn_timer.wait_time = 0.1
 	spawn_timer.one_shot = true
-	# CORREGIDO: función nombrada en lugar de lambda
 	spawn_timer.timeout.connect(_on_spawn_finished)
 	add_child(spawn_timer)
 	spawn_timer.start()
 
 func _on_spawn_finished():
 	"""Función para manejar finalización del spawn"""
-	current_state = WaWState.HUNTING
+	current_state = ZombieState.HUNTING_PLAYER
 	state_timer = 0.0
-	# Remover el timer después de usarlo
-	var spawn_timer = get_node_or_null("SpawnTimer")
+	var spawn_timer = get_node_or_null("Timer")
 	if spawn_timer:
 		spawn_timer.queue_free()
 
 func update_health_bar():
-	"""Actualizar barra de vida Y texto"""
+	"""Actualizar barra de vida"""
 	if not health_bar:
 		setup_health_bar()
 		return
@@ -531,22 +531,6 @@ func update_health_bar():
 	health_bar.value = current_health
 	health_bar.max_value = max_health
 	health_bar.visible = true
-	
-	var health_text = get_node_or_null("HealthText")
-	if not health_text:
-		setup_health_text()
-		health_text = get_node_or_null("HealthText")
-	
-	if health_text:
-		health_text.text = str(current_health) + "/" + str(max_health)
-		
-		var health_percentage = float(current_health) / float(max_health)
-		if health_percentage > 0.7:
-			health_text.add_theme_color_override("font_color", Color.WHITE)
-		elif health_percentage > 0.3:
-			health_text.add_theme_color_override("font_color", Color.YELLOW)
-		else:
-			health_text.add_theme_color_override("font_color", Color.RED)
 
 func _reactivate_collision():
 	if collision_shape and is_instance_valid(collision_shape):
@@ -556,102 +540,222 @@ func _physics_process(delta):
 	if is_dead or not player or not is_instance_valid(player):
 		return
 	
-	update_waw_ai_state_machine(delta)
-	handle_waw_movement(delta)
+	update_cod_zombie_ai_state_machine(delta)
+	handle_cod_zombie_movement(delta)
 	update_movement_animation()
 	
 	move_and_slide()
 
-func update_waw_ai_state_machine(delta):
-	"""IA con anclaje en ataque"""
+func update_cod_zombie_ai_state_machine(delta):
+	"""SISTEMA DE IA ESTILO COD ZOMBIES"""
 	state_timer += delta
+	wall_check_timer += delta
+	barricade_attack_timer += delta
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
 	match current_state:
-		WaWState.SPAWNING:
+		ZombieState.SPAWNING:
 			pass
 		
-		WaWState.HUNTING:
-			if distance_to_player <= detection_range:
-				current_state = WaWState.CHARGING
-				last_known_player_position = player.global_position
-				state_timer = 0.0
-		
-		WaWState.CHARGING:
+		ZombieState.HUNTING_PLAYER:
 			last_known_player_position = player.global_position
 			
-			if distance_to_player <= attack_range:
-				current_state = WaWState.ATTACKING
-				state_timer = 0.0
-				anchor_at_current_position()
-				start_waw_attack()
+			# VERIFICAR SI HAY LÍNEA DIRECTA AL JUGADOR
+			if has_clear_path_to_player():
+				# CAMINO LIBRE - IR DIRECTO
+				if distance_to_player <= attack_range:
+					current_state = ZombieState.ATTACKING_PLAYER
+					state_timer = 0.0
+			else:
+				# CAMINO BLOQUEADO - BUSCAR BARRICADA O PARED PENETRABLE
+				find_path_to_player()
 		
-		WaWState.ATTACKING:
+		ZombieState.MOVING_TO_BARRICADE:
+			if target_barricade and is_instance_valid(target_barricade):
+				var distance_to_barricade = global_position.distance_to(target_barricade.global_position)
+				if distance_to_barricade <= 80.0:
+					current_state = ZombieState.ATTACKING_BARRICADE
+					state_timer = 0.0
+			else:
+				# BARRICADA PERDIDA - VOLVER A BUSCAR CAMINO
+				current_state = ZombieState.HUNTING_PLAYER
+		
+		ZombieState.ATTACKING_BARRICADE:
+			if target_barricade and is_instance_valid(target_barricade):
+				attack_barricade()
+			else:
+				current_state = ZombieState.HUNTING_PLAYER
+		
+		ZombieState.ATTACKING_PLAYER:
 			if distance_to_player <= attack_range and can_attack():
-				execute_waw_attack()
+				execute_player_attack()
 			elif distance_to_player > attack_range * 1.5:
-				unanchor()
-				current_state = WaWState.CHARGING
+				current_state = ZombieState.HUNTING_PLAYER
 				state_timer = 0.0
 		
-		WaWState.STUNNED:
-			if state_timer > 0.1:
-				unanchor()
-				current_state = WaWState.CHARGING
+		ZombieState.STUNNED:
+			if state_timer > 0.2:
+				current_state = ZombieState.HUNTING_PLAYER
 				state_timer = 0.0
 
-func anchor_at_current_position():
-	"""Anclar posición durante ataque"""
-	is_anchored = true
-	anchor_position = global_position
-
-func unanchor():
-	"""Desanclar - permitir movimiento normal"""
-	is_anchored = false
-	anchor_position = Vector2.ZERO
-
-func handle_waw_movement(_delta):
-	"""Movimiento con anclaje"""
-	var movement_direction = Vector2.ZERO
+func has_clear_path_to_player() -> bool:
+	"""Verificar si hay camino directo al jugador"""
+	if not player or not wall_system:
+		return true
 	
-	if is_anchored:
-		velocity = Vector2.ZERO
-		global_position = anchor_position
+	var space_state = get_world_2d().direct_space_state
+	var query = PhysicsRayQueryParameters2D.create(
+		global_position,
+		player.global_position
+	)
+	query.collision_mask = 3  # Solo paredes sólidas
+	query.exclude = [self]
+	
+	var result = space_state.intersect_ray(query)
+	return result.is_empty()
+
+func find_path_to_player():
+	"""Encontrar camino al jugador a través de barricadas o paredes penetrables"""
+	if not wall_system:
+		current_state = ZombieState.HUNTING_PLAYER
 		return
 	
+	# PRIORIDAD 1: BUSCAR BARRICADAS CON TABLONES
+	var nearest_barricade = find_nearest_attackable_barricade()
+	if nearest_barricade:
+		target_barricade = nearest_barricade
+		current_state = ZombieState.MOVING_TO_BARRICADE
+		return
+	
+	# PRIORIDAD 2: BUSCAR PAREDES PENETRABLES
+	var nearest_penetrable = find_nearest_penetrable_wall()
+	if nearest_penetrable:
+		target_penetrable_wall = nearest_penetrable
+		current_state = ZombieState.MOVING_TO_BARRICADE  # Usar mismo estado
+		return
+	
+	# PRIORIDAD 3: IR DIRECTO AUNQUE HAYA OBSTÁCULOS
+	current_state = ZombieState.HUNTING_PLAYER
+
+func find_nearest_attackable_barricade() -> Node2D:
+	"""Encontrar barricada más cercana que se pueda atacar"""
+	if not wall_system:
+		return null
+	
+	var nearest_barricade: Node2D = null
+	var nearest_distance: float = INF
+	
+	for barricade in wall_system.get_all_barricades():
+		if not is_instance_valid(barricade):
+			continue
+		
+		var current_planks = barricade.get_meta("current_planks", 0)
+		if current_planks <= 0:
+			continue  # No tiene tablones
+		
+		var distance = global_position.distance_to(barricade.global_position)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_barricade = barricade
+	
+	return nearest_barricade
+
+func find_nearest_penetrable_wall() -> Area2D:
+	"""Encontrar pared penetrable más cercana"""
+	if not wall_system:
+		return null
+	
+	var nearest_wall: Area2D = null
+	var nearest_distance: float = INF
+	
+	for wall in wall_system.get_all_penetrable_walls():
+		if not is_instance_valid(wall):
+			continue
+		
+		var distance = global_position.distance_to(wall.global_position)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_wall = wall
+	
+	return nearest_wall
+
+func attack_barricade():
+	"""Atacar barricada COD style"""
+	if not target_barricade or not is_instance_valid(target_barricade):
+		return
+	
+	if barricade_attack_timer < barricade_attack_delay:
+		return
+	
+	barricade_attack_timer = 0.0
+	
+	# DAÑAR BARRICADA
+	if wall_system:
+		wall_system.damage_barricade(target_barricade, 1)
+	
+	# EFECTO VISUAL DE ATAQUE A BARRICADA
+	create_barricade_attack_effect()
+	
+	# VERIFICAR SI BARRICADA DESTRUIDA
+	var current_planks = target_barricade.get_meta("current_planks", 0)
+	if current_planks <= 0:
+		target_barricade = null
+		current_state = ZombieState.HUNTING_PLAYER
+
+func create_barricade_attack_effect():
+	"""Crear efecto de ataque a barricada"""
+	if not target_barricade:
+		return
+	
+	for i in range(3):
+		var particle = Sprite2D.new()
+		var particle_image = Image.create(6, 6, false, Image.FORMAT_RGBA8)
+		particle_image.fill(Color.BROWN)
+		particle.texture = ImageTexture.create_from_image(particle_image)
+		particle.global_position = target_barricade.global_position + Vector2(randf_range(-20, 20), randf_range(-20, 20))
+		get_tree().current_scene.add_child(particle)
+		
+		var tween = create_tween()
+		tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.8)
+		tween.parallel().tween_property(particle, "global_position", 
+			particle.global_position + Vector2(randf_range(-15, 15), randf_range(-15, 15)), 0.8)
+		tween.tween_callback(func(): particle.queue_free())
+
+func handle_cod_zombie_movement(_delta):
+	"""Movimiento estilo COD Zombies"""
+	var movement_direction = Vector2.ZERO
+	
 	match current_state:
-		WaWState.SPAWNING:
+		ZombieState.SPAWNING:
 			movement_direction = Vector2.ZERO
 		
-		WaWState.HUNTING:
+		ZombieState.HUNTING_PLAYER:
 			if player:
 				movement_direction = (player.global_position - global_position).normalized()
 		
-		WaWState.CHARGING:
-			movement_direction = get_waw_charge_movement()
+		ZombieState.MOVING_TO_BARRICADE:
+			if target_barricade and is_instance_valid(target_barricade):
+				movement_direction = (target_barricade.global_position - global_position).normalized()
+			elif target_penetrable_wall and is_instance_valid(target_penetrable_wall):
+				movement_direction = (target_penetrable_wall.global_position - global_position).normalized()
+			else:
+				movement_direction = (player.global_position - global_position).normalized()
 		
-		WaWState.ATTACKING:
+		ZombieState.ATTACKING_BARRICADE:
 			movement_direction = Vector2.ZERO
 		
-		WaWState.STUNNED:
+		ZombieState.ATTACKING_PLAYER:
+			movement_direction = Vector2.ZERO
+		
+		ZombieState.STUNNED:
 			movement_direction = velocity * 0.1
 	
+	# SEPARACIÓN DE OTROS ENEMIGOS
 	movement_direction += get_basic_separation() * 0.3
 	
 	if movement_direction != Vector2.ZERO:
 		velocity = movement_direction.normalized() * current_move_speed
-
-func get_waw_charge_movement() -> Vector2:
-	"""Carga directa simple"""
-	var direction_to_player = (player.global_position - global_position).normalized()
-	var distance_to_player = global_position.distance_to(player.global_position)
-	
-	if distance_to_player < min_separation_distance:
-		var repulsion_dir = (global_position - player.global_position).normalized()
-		return repulsion_dir * 1.2
-	
-	return direction_to_player * charge_speed_multiplier
 
 func get_basic_separation() -> Vector2:
 	"""Separación básica de otros enemigos"""
@@ -670,43 +774,9 @@ func get_basic_separation() -> Vector2:
 	
 	return separation.normalized() * min(separation.length(), 2.0)
 
-func start_waw_attack():
-	"""Ataque con efecto visual"""
-	if not player or not can_attack():
-		return
-	
-	if sprite:
-		sprite.modulate = Color.ORANGE
-		var prep_tween = create_tween()
-		prep_tween.tween_property(sprite, "scale", sprite.scale * 1.15, 0.1)
-	
-	show_attack_effect()
-	execute_waw_attack()
-
-func show_attack_effect():
-	"""Mostrar efecto visual de ataque rojo"""
-	if not attack_effect_sprite or not player:
-		return
-	
-	var direction_to_player = (player.global_position - global_position).normalized()
-	attack_effect_sprite.rotation = direction_to_player.angle()
-	attack_effect_sprite.global_position = global_position + direction_to_player * 20
-	attack_effect_sprite.visible = true
-	
-	var effect_tween = create_tween()
-	effect_tween.tween_property(attack_effect_sprite, "modulate:a", 0.0, 0.8)
-	# CORREGIDO: función nombrada en lugar de lambda
-	effect_tween.tween_callback(_hide_attack_effect)
-
-func _hide_attack_effect():
-	"""Función para ocultar efecto de ataque"""
-	if attack_effect_sprite:
-		attack_effect_sprite.visible = false
-
-func execute_waw_attack():
-	"""Ejecutar ataque"""
+func execute_player_attack():
+	"""Ejecutar ataque al jugador"""
 	if not player or not is_instance_valid(player):
-		finish_attack()
 		return
 	
 	var distance_to_player = global_position.distance_to(player.global_position)
@@ -717,9 +787,10 @@ func execute_waw_attack():
 		
 		create_attack_effect()
 	
-	finish_attack()
+	last_attack_time = Time.get_ticks_msec() / 1000.0
 
 func create_attack_effect():
+	"""Crear efecto de ataque"""
 	for i in range(5):
 		var particle = Sprite2D.new()
 		var particle_image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
@@ -732,26 +803,7 @@ func create_attack_effect():
 		effect_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
 		effect_tween.parallel().tween_property(particle, "global_position", 
 			particle.global_position + Vector2(randf_range(-25, 25), randf_range(-25, 25)), 0.5)
-		# CORREGIDO: función nombrada en lugar de lambda
-		effect_tween.tween_callback(_cleanup_particle.bind(particle))
-
-func _cleanup_particle(particle: Sprite2D):
-	"""Función para limpiar partícula"""
-	if is_instance_valid(particle):
-		particle.queue_free()
-
-func finish_attack():
-	if sprite:
-		sprite.modulate = Color.WHITE
-		var restore_tween = create_tween()
-		restore_tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.1)
-	
-	# Ocultar efecto de ataque
-	if attack_effect_sprite:
-		attack_effect_sprite.visible = false
-		attack_effect_sprite.modulate = Color(1, 1, 1, 1)  # Resetear alpha
-	
-	last_attack_time = Time.get_ticks_msec() / 1000.0
+		effect_tween.tween_callback(func(): particle.queue_free())
 
 func can_attack() -> bool:
 	var current_time = Time.get_ticks_msec() / 1000.0
@@ -763,12 +815,12 @@ func update_movement_animation():
 	
 	var animated_sprite = sprite as AnimatedSprite2D
 	
-	if current_state == WaWState.SPAWNING:
+	if current_state == ZombieState.SPAWNING:
 		if animated_sprite.animation != "idle":
 			animated_sprite.play("idle")
 		return
 	
-	if velocity.length() > 30.0 and not is_anchored:
+	if velocity.length() > 30.0:
 		if animated_sprite.animation != "walk":
 			animated_sprite.play("walk")
 	else:
@@ -776,17 +828,15 @@ func update_movement_animation():
 			animated_sprite.play("idle")
 
 func take_damage(amount: int, is_headshot: bool = false):
-	"""Recibir daño con texto actualizado"""
+	"""Recibir daño"""
 	if is_dead:
 		return
 	
 	current_health -= amount
 	current_health = max(current_health, 0)
 	
-	current_state = WaWState.STUNNED
+	current_state = ZombieState.STUNNED
 	state_timer = 0.0
-	
-	unanchor()
 	
 	if sprite:
 		if is_headshot:
@@ -831,22 +881,15 @@ func show_damage_number(damage_amount: int, is_headshot: bool = false):
 	var tween = create_tween()
 	tween.parallel().tween_property(damage_label, "position", damage_label.position + Vector2(0, -50), 1.0)
 	tween.parallel().tween_property(damage_label, "modulate:a", 0.0, 1.0)
-	# CORREGIDO: función nombrada en lugar de lambda
-	tween.tween_callback(_cleanup_damage_label.bind(damage_label))
-
-func _cleanup_damage_label(label: Label):
-	"""Función para limpiar etiqueta de daño"""
-	if is_instance_valid(label):
-		label.queue_free()
+	tween.tween_callback(func(): damage_label.queue_free())
 
 func die():
-	"""Muerte con texto"""
+	"""Muerte"""
 	if is_dead:
 		return
 	
 	is_dead = true
-	current_state = WaWState.SPAWNING
-	is_anchored = false
+	current_state = ZombieState.SPAWNING
 	
 	call_deferred("_deactivate_collision")
 	
@@ -861,18 +904,15 @@ func die():
 	if health_bar:
 		health_bar.visible = false
 	
-	var health_text = get_node_or_null("HealthText")
-	if health_text:
-		health_text.visible = false
-	
 	died.emit(self)
 
 func reset_for_pool():
-	"""Reset para pool MANTENIENDO SALUD"""
+	"""Reset para pool"""
 	is_dead = false
-	current_state = WaWState.SPAWNING
-	is_anchored = false
-	anchor_position = Vector2.ZERO
+	current_state = ZombieState.SPAWNING
+	target_barricade = null
+	target_penetrable_wall = null
+	path_blocked = false
 	
 	call_deferred("_deactivate_collision")
 	

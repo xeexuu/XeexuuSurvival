@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - PARTE 1/3 CON TODAS LAS CORRECCIONES
+# scenes/managers/game_manager.gd - CONTROLES MÓVILES MEJORADOS
 extends Node
 class_name GameManager
 
@@ -48,9 +48,11 @@ var movement_joystick_dead_zone: float = 30.0
 var shooting_joystick_max_distance: float = 180.0
 var shooting_joystick_dead_zone: float = 30.0
 
-# Botones móviles adicionales
+# Botones móviles adicionales - MEJORADOS
 var melee_button: Button
 var reload_button: Button
+var melee_touch_id: int = -1
+var reload_touch_id: int = -1
 
 # Variables de juego
 var selected_character_stats: CharacterStats
@@ -246,7 +248,6 @@ func setup_unified_cod_system_safe():
 	
 	player.set_score_system(score_system)
 	
-	# CONFIGURAR NOMBRE DEL PERSONAJE EN EL SISTEMA DE PUNTUACIÓN
 	if selected_character_stats:
 		score_system.set_character_name(selected_character_stats.character_name)
 	
@@ -313,8 +314,13 @@ func setup_pause_menu():
 	
 	mobile_menu_button = MobileMenuButton.new()
 	mobile_menu_button.menu_pressed.connect(_on_mobile_menu_pressed)
-	mobile_menu_button.visible = true
+	mobile_menu_button.visible = is_mobile  # SOLO VISIBLE EN MÓVIL
 	ui_manager.add_child(mobile_menu_button)
+	
+	# FORZAR VISIBILIDAD EN MÓVIL
+	if is_mobile:
+		mobile_menu_button.force_show()
+		print("🎮 MobileMenuButton forzado a visible en GameManager")
 
 func setup_background():
 	"""Configurar fondo"""
@@ -360,15 +366,27 @@ func setup_window():
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
 		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
 		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
-		
-# ===== CONTROLES MÓVILES - PARTE 2/3 =====
+
+# ===== CONTROLES MÓVILES MEJORADOS =====
 
 func handle_touch_event(event: InputEventScreenTouch):
-	"""Manejar toques"""
+	"""Manejar toques MEJORADO"""
 	var touch_pos = event.position
 	var touch_id = event.index
 	
 	if event.pressed:
+		# PRIORIDAD 1: BOTONES DE ACCIÓN (melee y reload)
+		if melee_button and is_point_in_button_area(touch_pos, melee_button) and melee_touch_id == -1:
+			melee_touch_id = touch_id
+			handle_melee_button_press()
+			return
+		
+		if reload_button and is_point_in_button_area(touch_pos, reload_button) and reload_touch_id == -1:
+			reload_touch_id = touch_id
+			handle_reload_button_press()
+			return
+		
+		# PRIORIDAD 2: JOYSTICKS
 		if movement_joystick_area and is_point_in_expanded_area(touch_pos, movement_joystick_area):
 			if movement_touch_id == -1:
 				movement_touch_id = touch_id
@@ -378,12 +396,19 @@ func handle_touch_event(event: InputEventScreenTouch):
 				shoot_touch_id = touch_id
 				handle_shooting_joystick(touch_pos)
 	else:
+		# SOLTAR TOQUES
 		if touch_id == movement_touch_id:
 			movement_touch_id = -1
 			reset_movement_joystick()
 		elif touch_id == shoot_touch_id:
 			shoot_touch_id = -1
 			reset_shooting_joystick()
+		elif touch_id == melee_touch_id:
+			melee_touch_id = -1
+			handle_melee_button_release()
+		elif touch_id == reload_touch_id:
+			reload_touch_id = -1
+			handle_reload_button_release()
 
 func handle_drag_event(event: InputEventScreenDrag):
 	"""Manejar arrastre"""
@@ -394,6 +419,14 @@ func handle_drag_event(event: InputEventScreenDrag):
 		handle_movement_joystick(touch_pos)
 	elif touch_id == shoot_touch_id:
 		handle_shooting_joystick(touch_pos)
+
+func is_point_in_button_area(point: Vector2, button: Button) -> bool:
+	"""Verificar si punto está en área del botón"""
+	if not button:
+		return false
+	
+	var button_rect = Rect2(button.global_position, button.size)
+	return button_rect.has_point(point)
 
 func is_point_in_expanded_area(point: Vector2, area: TouchScreenButton) -> bool:
 	"""Verificar punto en área"""
@@ -453,6 +486,46 @@ func handle_shooting_joystick(touch_pos: Vector2):
 			player.mobile_is_shooting = false
 			player.mobile_shoot_direction = Vector2.ZERO
 
+# NUEVAS FUNCIONES PARA BOTONES DE ACCIÓN
+
+func handle_melee_button_press():
+	"""Manejar presión de botón melee"""
+	if player and player.has_method("perform_melee_attack"):
+		player.perform_melee_attack()
+	
+	if melee_button:
+		var tween = create_tween()
+		tween.tween_property(melee_button, "scale", Vector2(0.9, 0.9), 0.1)
+		tween.tween_property(melee_button, "modulate", Color(1.2, 0.8, 0.8), 0.1)
+
+func handle_melee_button_release():
+	"""Manejar liberación de botón melee"""
+	if melee_button:
+		var tween = create_tween()
+		tween.tween_property(melee_button, "scale", Vector2(1.0, 1.0), 0.1)
+		tween.tween_property(melee_button, "modulate", Color.WHITE, 0.2)
+
+func handle_reload_button_press():
+	"""Manejar presión de botón reload"""
+	if player and player.has_method("start_manual_reload"):
+		var reload_started = player.start_manual_reload()
+		
+		if reload_button:
+			var tween = create_tween()
+			if reload_started:
+				tween.tween_property(reload_button, "modulate", Color.GREEN, 0.2)
+			else:
+				tween.tween_property(reload_button, "modulate", Color.RED, 0.1)
+			
+			tween.tween_property(reload_button, "scale", Vector2(0.9, 0.9), 0.1)
+
+func handle_reload_button_release():
+	"""Manejar liberación de botón reload"""
+	if reload_button:
+		var tween = create_tween()
+		tween.tween_property(reload_button, "scale", Vector2(1.0, 1.0), 0.1)
+		tween.tween_property(reload_button, "modulate", Color.WHITE, 0.2)
+
 func reset_movement_joystick():
 	"""Reset joystick movimiento"""
 	if movement_joystick_knob:
@@ -481,14 +554,14 @@ func setup_mobile_controls():
 	mobile_controls.name = "MobileControls"
 	mobile_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mobile_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mobile_controls.z_index = 100
+	mobile_controls.z_index = 50  # DEBAJO DEL BOTÓN DE MENÚ
 	ui_manager.add_child(mobile_controls)
 	
 	await get_tree().process_frame
 	
 	create_movement_joystick_large()
 	create_shooting_joystick_large()
-	create_mobile_action_buttons()
+	create_mobile_action_buttons_improved()
 	
 	if movement_joystick_base:
 		movement_joystick_base.visible = true
@@ -498,115 +571,64 @@ func setup_mobile_controls():
 		shooting_joystick_base.visible = true  
 		shooting_joystick_base.modulate = Color.WHITE
 
-func create_mobile_action_buttons():
-	"""Crear botones flotantes de melee y reload MEJORADOS"""
+func create_mobile_action_buttons_improved():
+	"""Crear botones de acción MEJORADOS - A LA IZQUIERDA DEL JOYSTICK DE DISPARO"""
 	if not is_mobile or not mobile_controls:
 		return
 	
 	var viewport_size = get_viewport().get_visible_rect().size
 	
-	# Botón MELEE (arriba del joystick de disparo) - MÁS GRANDE
+	# BOTÓN MELEE - A LA IZQUIERDA DEL JOYSTICK DE DISPARO (MÁS GRANDE)
 	melee_button = Button.new()
 	melee_button.text = "⚔"
-	melee_button.size = Vector2(100, 100)  # MÁS GRANDE
+	melee_button.size = Vector2(120, 120)  # MÁS GRANDE
 	melee_button.position = Vector2(
-		viewport_size.x * 0.78 + 30,
-		viewport_size.y * 0.20
+		viewport_size.x * 0.55,  # A LA IZQUIERDA DEL JOYSTICK
+		viewport_size.y * 0.25   # ARRIBA
 	)
-	melee_button.add_theme_font_size_override("font_size", 50)  # FUENTE MÁS GRANDE
+	melee_button.add_theme_font_size_override("font_size", 60)  # FUENTE MÁS GRANDE
 	
 	var melee_style = StyleBoxFlat.new()
-	melee_style.bg_color = Color(0.8, 0.1, 0.1, 0.9)  # ROJO MÁS INTENSO
-	melee_style.corner_radius_top_left = 50
-	melee_style.corner_radius_top_right = 50
-	melee_style.corner_radius_bottom_left = 50
-	melee_style.corner_radius_bottom_right = 50
+	melee_style.bg_color = Color(0.8, 0.1, 0.1, 0.9)
+	melee_style.corner_radius_top_left = 60
+	melee_style.corner_radius_top_right = 60
+	melee_style.corner_radius_bottom_left = 60
+	melee_style.corner_radius_bottom_right = 60
 	melee_style.border_color = Color.YELLOW
-	melee_style.border_width_left = 3
-	melee_style.border_width_right = 3
-	melee_style.border_width_top = 3
-	melee_style.border_width_bottom = 3
+	melee_style.border_width_left = 4
+	melee_style.border_width_right = 4
+	melee_style.border_width_top = 4
+	melee_style.border_width_bottom = 4
 	melee_button.add_theme_stylebox_override("normal", melee_style)
 	
-	# Estilo pressed para melee
-	var melee_pressed_style = StyleBoxFlat.new()
-	melee_pressed_style.bg_color = Color(1.0, 0.3, 0.3, 1.0)
-	melee_pressed_style.corner_radius_top_left = 50
-	melee_pressed_style.corner_radius_top_right = 50
-	melee_pressed_style.corner_radius_bottom_left = 50
-	melee_pressed_style.corner_radius_bottom_right = 50
-	melee_pressed_style.border_color = Color.WHITE
-	melee_pressed_style.border_width_left = 4
-	melee_pressed_style.border_width_right = 4
-	melee_pressed_style.border_width_top = 4
-	melee_pressed_style.border_width_bottom = 4
-	melee_button.add_theme_stylebox_override("pressed", melee_pressed_style)
-	
-	melee_button.pressed.connect(func():
-		if player and player.has_method("perform_melee_attack"):
-			player.perform_melee_attack()
-			# Feedback visual del botón
-			var feedback_tween = create_tween()
-			feedback_tween.tween_property(melee_button, "scale", Vector2(0.9, 0.9), 0.1)
-			feedback_tween.tween_property(melee_button, "scale", Vector2(1.0, 1.0), 0.1)
-	)
 	mobile_controls.add_child(melee_button)
 	
-	# Botón RELOAD (abajo del joystick de disparo) - MÁS GRANDE
+	# BOTÓN RELOAD - DEBAJO DEL MELEE (MÁS GRANDE)
 	reload_button = Button.new()
 	reload_button.text = "🔄"
-	reload_button.size = Vector2(100, 100)  # MÁS GRANDE
+	reload_button.size = Vector2(120, 120)  # MÁS GRANDE
 	reload_button.position = Vector2(
-		viewport_size.x * 0.78 + 30,
-		viewport_size.y * 0.70
+		viewport_size.x * 0.55,  # MISMA X QUE MELEE
+		viewport_size.y * 0.55   # ABAJO
 	)
-	reload_button.add_theme_font_size_override("font_size", 50)  # FUENTE MÁS GRANDE
+	reload_button.add_theme_font_size_override("font_size", 60)  # FUENTE MÁS GRANDE
 	
 	var reload_style = StyleBoxFlat.new()
-	reload_style.bg_color = Color(0.1, 0.4, 0.8, 0.9)  # AZUL MÁS INTENSO
-	reload_style.corner_radius_top_left = 50
-	reload_style.corner_radius_top_right = 50
-	reload_style.corner_radius_bottom_left = 50
-	reload_style.corner_radius_bottom_right = 50
+	reload_style.bg_color = Color(0.1, 0.4, 0.8, 0.9)
+	reload_style.corner_radius_top_left = 60
+	reload_style.corner_radius_top_right = 60
+	reload_style.corner_radius_bottom_left = 60
+	reload_style.corner_radius_bottom_right = 60
 	reload_style.border_color = Color.CYAN
-	reload_style.border_width_left = 3
-	reload_style.border_width_right = 3
-	reload_style.border_width_top = 3
-	reload_style.border_width_bottom = 3
+	reload_style.border_width_left = 4
+	reload_style.border_width_right = 4
+	reload_style.border_width_top = 4
+	reload_style.border_width_bottom = 4
 	reload_button.add_theme_stylebox_override("normal", reload_style)
 	
-	# Estilo pressed para reload
-	var reload_pressed_style = StyleBoxFlat.new()
-	reload_pressed_style.bg_color = Color(0.3, 0.6, 1.0, 1.0)
-	reload_pressed_style.corner_radius_top_left = 50
-	reload_pressed_style.corner_radius_top_right = 50
-	reload_pressed_style.corner_radius_bottom_left = 50
-	reload_pressed_style.corner_radius_bottom_right = 50
-	reload_pressed_style.border_color = Color.WHITE
-	reload_pressed_style.border_width_left = 4
-	reload_pressed_style.border_width_right = 4
-	reload_pressed_style.border_width_top = 4
-	reload_pressed_style.border_width_bottom = 4
-	reload_button.add_theme_stylebox_override("pressed", reload_pressed_style)
-	
-	reload_button.pressed.connect(func():
-		if player and player.has_method("start_manual_reload"):
-			var reload_started = player.start_manual_reload()
-			# Feedback visual del botón
-			var feedback_tween = create_tween()
-			if reload_started:
-				# Si la recarga empezó, animación exitosa
-				feedback_tween.tween_property(reload_button, "modulate", Color.GREEN, 0.2)
-				feedback_tween.tween_property(reload_button, "modulate", Color.WHITE, 0.3)
-			else:
-				# Si no se pudo recargar, animación de error
-				feedback_tween.tween_property(reload_button, "modulate", Color.RED, 0.1)
-				feedback_tween.tween_property(reload_button, "modulate", Color.WHITE, 0.2)
-			
-			feedback_tween.parallel().tween_property(reload_button, "scale", Vector2(0.9, 0.9), 0.1)
-			feedback_tween.parallel().tween_property(reload_button, "scale", Vector2(1.0, 1.0), 0.1)
-	)
 	mobile_controls.add_child(reload_button)
+	
+	print("🎮 Botones de acción creados - Melee: ", melee_button.position, " Reload: ", reload_button.position)
 
 func create_movement_joystick_large():
 	"""Crear joystick movimiento"""
@@ -747,8 +769,8 @@ func create_shooting_joystick_large():
 	
 	shooting_joystick_base.add_child(shooting_joystick_knob)
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
-	
-# ===== GAME OVER Y FUNCIONES FINALES - PARTE 3/3 =====
+
+# ===== GAME OVER Y FUNCIONES FINALES =====
 
 func _on_player_died():
 	"""Cuando muere el jugador"""

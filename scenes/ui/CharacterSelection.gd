@@ -1,4 +1,4 @@
-# scenes/ui/CharacterSelection.gd - ANDROID COMPATIBLE
+# scenes/ui/CharacterSelection.gd - ANDROID COMPATIBLE CON ORDEN CORREGIDO
 extends Control
 class_name CharacterSelection
 
@@ -33,13 +33,37 @@ func setup_selection_ui():
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	scroll_container.add_child(hbox)
 	
-	# CARGAR PERSONAJES
-	var characters = load_all_characters_with_original_values()
+	# CARGAR PERSONAJES EN ORDEN ESPECÍFICO
+	var characters = load_characters_in_correct_order()
 	
 	# Crear tarjetas ocupando todo el alto
 	for character in characters:
 		var character_card = create_android_compatible_character_card(character, viewport_size, is_mobile)
 		hbox.add_child(character_card)
+
+func load_characters_in_correct_order() -> Array[CharacterStats]:
+	"""CARGAR PERSONAJES EN ORDEN ESPECÍFICO: PELAO, JUANCAR, CHICA"""
+	var characters: Array[CharacterStats] = []
+	
+	# ORDEN ESPECÍFICO PARA EVITAR CONFUSIÓN
+	var character_paths_ordered = [
+		"res://scenes/characters/pelao_stats.tres",     # PELAO PRIMERO
+		"res://scenes/characters/juancar_stats.tres",   # JUANCAR SEGUNDO
+		"res://scenes/characters/chica_stats.tres"      # CHICA TERCERO
+	]
+	
+	for path in character_paths_ordered:
+		var character = load_character_preserving_tres_values(path)
+		if character:
+			characters.append(character)
+			print("✅ Personaje cargado: ", character.character_name, " desde ", path)
+		else:
+			print("❌ Error cargando personaje desde: ", path)
+	
+	if characters.is_empty():
+		characters = create_manual_fallback_characters()
+	
+	return characters
 
 func create_android_compatible_character_card(character: CharacterStats, viewport_size: Vector2, is_mobile: bool) -> Control:
 	"""Crear tarjeta TOTALMENTE COMPATIBLE con Android"""
@@ -156,14 +180,15 @@ func create_android_compatible_character_card(character: CharacterStats, viewpor
 	luck_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats_container.add_child(luck_label)
 	
-	# CONEXIÓN DEL BOTÓN PRINCIPAL
+	# CONEXIÓN DEL BOTÓN PRINCIPAL CON VERIFICACIÓN ADICIONAL
 	main_button.pressed.connect(func():
 		print("🎮 Personaje seleccionado: ", character.character_name)
+		print("🎮 Verificación: Stats objeto -> ", character)
 		character_selected.emit(character)
 		queue_free()
 	)
 	
-	# SOPORTE TÁCTIL ADICIONAL para Android
+	# SOPORTE TÁCTIL ADICIONAL para Android CON VERIFICACIÓN
 	if is_mobile:
 		var touch_button = TouchScreenButton.new()
 		touch_button.shape = RectangleShape2D.new()
@@ -172,6 +197,7 @@ func create_android_compatible_character_card(character: CharacterStats, viewpor
 		touch_button.visibility_mode = TouchScreenButton.VISIBILITY_TOUCHSCREEN_ONLY
 		touch_button.pressed.connect(func():
 			print("🎮 TouchScreen - Personaje seleccionado: ", character.character_name)
+			print("🎮 TouchScreen - Verificación: Stats objeto -> ", character)
 			character_selected.emit(character)
 			queue_free()
 		)
@@ -190,37 +216,20 @@ func create_android_compatible_character_card(character: CharacterStats, viewpor
 	
 	return card_container
 
-func load_all_characters_with_original_values() -> Array[CharacterStats]:
-	"""CARGAR PERSONAJES MANTENIENDO VALORES EXACTOS DEL .tres"""
-	var characters: Array[CharacterStats] = []
-	
-	var character_paths = [
-		"res://scenes/characters/pelao_stats.tres",
-		"res://scenes/characters/juancar_stats.tres", 
-		"res://scenes/characters/chica_stats.tres"
-	]
-	
-	for path in character_paths:
-		var character = load_character_preserving_tres_values(path)
-		if character:
-			characters.append(character)
-	
-	if characters.is_empty():
-		characters = create_manual_fallback_characters()
-	
-	return characters
-
 func load_character_preserving_tres_values(file_path: String) -> CharacterStats:
 	"""CARGAR PERSONAJE PRESERVANDO EXACTAMENTE LOS VALORES DEL .tres"""
 	if not ResourceLoader.exists(file_path):
+		print("❌ Archivo no existe: ", file_path)
 		return null
 	
 	var resource = load(file_path)
 	if not resource or not resource is CharacterStats:
+		print("❌ Recurso no válido: ", file_path)
 		return null
 	
 	var character = resource as CharacterStats
 	ensure_character_has_weapon(character)
+	print("✅ Personaje cargado correctamente: ", character.character_name)
 	return character
 
 func ensure_character_has_weapon(character: CharacterStats):
@@ -243,13 +252,13 @@ func ensure_character_has_weapon(character: CharacterStats):
 			character.equipped_weapon.attack_sound = load(sound_path)
 
 func create_manual_fallback_characters() -> Array[CharacterStats]:
-	"""Crear personajes manualmente como último recurso"""
+	"""Crear personajes manualmente como último recurso EN ORDEN CORRECTO"""
 	var characters: Array[CharacterStats] = []
 	
 	var character_configs = [
-		{"name": "pelao", "health": 4, "speed": 300},
-		{"name": "juancar", "health": 4, "speed": 450},
-		{"name": "chica", "health": 4, "speed": 300}
+		{"name": "pelao", "health": 4, "speed": 300},      # PELAO PRIMERO
+		{"name": "juancar", "health": 4, "speed": 450},    # JUANCAR SEGUNDO
+		{"name": "chica", "health": 4, "speed": 300}       # CHICA TERCERO
 	]
 	
 	for config in character_configs:

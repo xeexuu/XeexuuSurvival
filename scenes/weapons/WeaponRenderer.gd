@@ -1,4 +1,4 @@
-# scenes/weapons/WeaponRenderer.gd - SIN SPRITE INVISIBLE EN EL CENTRO
+# scenes/weapons/WeaponRenderer.gd - POSICIÓN CORREGIDA PARA TODAS LAS DIRECCIONES
 extends Node2D
 class_name WeaponRenderer
 
@@ -15,26 +15,7 @@ var original_position: Vector2
 var current_aim_direction: Vector2 = Vector2(1, 0)
 
 func _ready():
-	# NO CONFIGURAR SPRITES HASTA QUE EL ARMA SEA ASIGNADA
 	setup_shooting_timer()
-
-func setup_weapon_sprites():
-	"""Configurar los sprites del arma SOLO cuando el arma esté asignada"""
-	# VERIFICAR QUE TENEMOS WEAPON_STATS ANTES DE CREAR SPRITES
-	if not weapon_stats:
-		return
-	
-	# Sprite principal del arma
-	weapon_sprite = Sprite2D.new()
-	weapon_sprite.name = "WeaponSprite"
-	weapon_sprite.visible = false  # INICIALMENTE INVISIBLE
-	add_child(weapon_sprite)
-	
-	# Sprite del flash del cañón
-	muzzle_flash_sprite = Sprite2D.new()
-	muzzle_flash_sprite.name = "MuzzleFlash"
-	muzzle_flash_sprite.visible = false
-	add_child(muzzle_flash_sprite)
 
 func setup_shooting_timer():
 	"""Configurar timer para la animación de disparo"""
@@ -44,11 +25,27 @@ func setup_shooting_timer():
 	shooting_timer.timeout.connect(_on_shooting_finished)
 	add_child(shooting_timer)
 
+func setup_weapon_sprites():
+	"""Configurar los sprites del arma SOLO cuando el arma esté asignada"""
+	if not weapon_stats:
+		return
+	
+	# Sprite principal del arma
+	weapon_sprite = Sprite2D.new()
+	weapon_sprite.name = "WeaponSprite"
+	weapon_sprite.visible = false
+	add_child(weapon_sprite)
+	
+	# Sprite del flash del cañón
+	muzzle_flash_sprite = Sprite2D.new()
+	muzzle_flash_sprite.name = "MuzzleFlash"
+	muzzle_flash_sprite.visible = false
+	add_child(muzzle_flash_sprite)
+
 func set_weapon_stats(stats: WeaponStats):
 	"""Asignar estadísticas del arma"""
 	weapon_stats = stats
 	if weapon_stats:
-		# AHORA SÍ CONFIGURAR SPRITES
 		setup_weapon_sprites()
 		update_weapon_sprites()
 
@@ -61,13 +58,12 @@ func update_weapon_sprites():
 	if not weapon_stats or not weapon_sprite:
 		return
 	
-	# ASEGURAR QUE EL SPRITE DE LA PISTOLA ESTÉ CARGADO
 	weapon_stats.ensure_sprites_exist()
 	
 	# Configurar sprite principal
 	if weapon_stats.weapon_sprite:
 		weapon_sprite.texture = weapon_stats.weapon_sprite
-		weapon_sprite.visible = true  # HACER VISIBLE SOLO CUANDO TENGAMOS TEXTURA
+		weapon_sprite.visible = true
 	else:
 		weapon_stats.create_default_weapon_sprite()
 		weapon_sprite.texture = weapon_stats.weapon_sprite
@@ -79,35 +75,31 @@ func update_weapon_sprites():
 	
 	if muzzle_flash_sprite:
 		muzzle_flash_sprite.texture = weapon_stats.muzzle_flash_sprite
-		# POSICIONAR FLASH DEL CAÑÓN RELATIVO AL ARMA
 		muzzle_flash_sprite.position = weapon_stats.muzzle_offset
 
-
 func update_weapon_position_and_rotation(aim_direction: Vector2):
-	"""Actualizar posición y rotación del arma - ROTA CON PERSONAJE + MÁS ABAJO"""
+	"""Actualizar posición y rotación del arma - CORREGIDO PARA TODAS LAS DIRECCIONES"""
 	if not weapon_stats or not player_ref or not weapon_sprite:
 		return
 	
-	# NO HACER NADA SI EL ARMA NO ES VISIBLE
 	if not weapon_sprite.visible:
 		return
 	
 	current_aim_direction = aim_direction.normalized()
 	
-	# CALCULAR POSICIÓN DEL ARMA MÁS ABAJO EN EL PERSONAJE
-	var weapon_world_pos = weapon_stats.get_weapon_world_position_lower(player_ref.global_position, current_aim_direction)
+	# POSICIÓN CONSISTENTE DEL ARMA SEGÚN DIRECCIÓN
+	var weapon_world_pos = get_consistent_weapon_position(current_aim_direction)
 	global_position = weapon_world_pos
 	
-	# CALCULAR ROTACIÓN DEL ARMA HACIA LA DIRECCIÓN DE APUNTADO
-	var weapon_rotation = weapon_stats.get_weapon_rotation(current_aim_direction)
+	# ROTACIÓN DEL ARMA
+	var weapon_rotation = current_aim_direction.angle()
 	rotation = weapon_rotation
 	
-	# VOLTEAR EL ARMA SI APUNTA HACIA LA IZQUIERDA
+	# VOLTEAR ARMA SEGÚN DIRECCIÓN
 	if current_aim_direction.x < 0:
 		weapon_sprite.flip_v = true
 		if muzzle_flash_sprite:
 			muzzle_flash_sprite.flip_v = true
-			# AJUSTAR POSICIÓN DEL FLASH CUANDO ESTÁ VOLTEADO
 			muzzle_flash_sprite.position = Vector2(weapon_stats.muzzle_offset.x, -weapon_stats.muzzle_offset.y)
 	else:
 		weapon_sprite.flip_v = false
@@ -115,6 +107,38 @@ func update_weapon_position_and_rotation(aim_direction: Vector2):
 			muzzle_flash_sprite.flip_v = false
 			muzzle_flash_sprite.position = weapon_stats.muzzle_offset
 
+func get_consistent_weapon_position(aim_direction: Vector2) -> Vector2:
+	"""Obtener posición consistente del arma para todas las direcciones"""
+	if not player_ref:
+		return global_position
+	
+	# OFFSET BASE DESDE EL CENTRO DEL JUGADOR
+	var base_offset = Vector2(30, -5)  # Ligeramente hacia adelante y arriba
+	
+	# ROTAR EL OFFSET SEGÚN LA DIRECCIÓN DE AIM
+	var rotated_offset = base_offset.rotated(aim_direction.angle())
+	
+	# AJUSTES ESPECÍFICOS POR CUADRANTE PARA MEJOR APARIENCIA
+	var angle = aim_direction.angle()
+	var angle_degrees = rad_to_deg(angle)
+	
+	# Normalizar ángulo a 0-360
+	if angle_degrees < 0:
+		angle_degrees += 360
+	
+	# AJUSTES FINOS POR DIRECCIÓN
+	var fine_adjustment = Vector2.ZERO
+	
+	if angle_degrees >= 315 or angle_degrees < 45:  # Derecha (0°)
+		fine_adjustment = Vector2(5, -2)
+	elif angle_degrees >= 45 and angle_degrees < 135:  # Abajo (90°)
+		fine_adjustment = Vector2(2, 8)
+	elif angle_degrees >= 135 and angle_degrees < 225:  # Izquierda (180°)
+		fine_adjustment = Vector2(-5, -2)
+	elif angle_degrees >= 225 and angle_degrees < 315:  # Arriba (270°)
+		fine_adjustment = Vector2(2, -12)
+	
+	return player_ref.global_position + rotated_offset + fine_adjustment
 
 func start_shooting_animation():
 	"""Iniciar animación de disparo"""
@@ -138,7 +162,7 @@ func start_shooting_animation():
 	
 	# OCULTAR FLASH DESPUÉS DE UN CORTO TIEMPO
 	var flash_timer = Timer.new()
-	flash_timer.wait_time = 0.05  # Flash muy rápido
+	flash_timer.wait_time = 0.05
 	flash_timer.one_shot = true
 	flash_timer.timeout.connect(func(): 
 		if muzzle_flash_sprite:
@@ -173,20 +197,29 @@ func _on_shooting_finished():
 		weapon_stats.stop_shooting()
 
 func get_muzzle_world_position() -> Vector2:
-	"""Obtener la posición mundial del cañón - DESDE POSICIÓN MÁS BAJA"""
+	"""Obtener la posición mundial del cañón CORREGIDA"""
 	if not weapon_stats or not player_ref:
 		return global_position
 	
-	# USAR LA FUNCIÓN CORREGIDA CON POSICIÓN MÁS BAJA
-	var muzzle_world_pos = weapon_stats.get_muzzle_world_position_lower(player_ref.global_position, current_aim_direction)
+	# USAR POSICIÓN CONSISTENTE DEL ARMA
+	var weapon_world_pos = get_consistent_weapon_position(current_aim_direction)
 	
-	return muzzle_world_pos
+	# CALCULAR POSICIÓN DEL MUZZLE DESDE LA POSICIÓN DEL ARMA
+	var muzzle_offset = weapon_stats.muzzle_offset
+	
+	# AJUSTAR OFFSET SI EL ARMA ESTÁ VOLTEADA
+	if current_aim_direction.x < 0:
+		muzzle_offset = Vector2(muzzle_offset.x, -muzzle_offset.y)
+	
+	# ROTAR EL OFFSET DEL MUZZLE SEGÚN LA ROTACIÓN DEL ARMA
+	var rotated_muzzle_offset = muzzle_offset.rotated(current_aim_direction.angle())
+	
+	return weapon_world_pos + rotated_muzzle_offset
 
 func can_shoot() -> bool:
 	"""Verificar si el arma puede disparar"""
 	return weapon_stats and weapon_stats.can_shoot() and not is_shooting and weapon_sprite and weapon_sprite.visible
 
-# FUNCIÓN PARA OCULTAR EL ARMA COMPLETAMENTE
 func hide_weapon():
 	"""Ocultar completamente el arma"""
 	if weapon_sprite:
@@ -194,7 +227,6 @@ func hide_weapon():
 	if muzzle_flash_sprite:
 		muzzle_flash_sprite.visible = false
 
-# FUNCIÓN PARA MOSTRAR EL ARMA
 func show_weapon():
 	"""Mostrar el arma si tiene stats asignados"""
 	if weapon_stats and weapon_sprite:

@@ -1,4 +1,4 @@
-# scenes/enemies/EnemySpawner.gd - TIPOS DESDE RONDA 1
+# scenes/enemies/EnemySpawner.gd - SPAWN FUERA DE PAREDES + GARANTÍAS ABSOLUTAS
 extends Node2D
 class_name EnemySpawner
 
@@ -14,10 +14,11 @@ signal round_complete()
 var player: Player
 var active_enemies: Array[Enemy] = []
 var rounds_manager: RoundsManager
+var wall_system: WallSystem
 
 # Pool simplificado
 var enemy_pool: Array[Enemy] = []
-var max_pool_size: int = 20
+var max_pool_size: int = 25
 
 # Variables de spawn
 var enemies_to_spawn: int = 0
@@ -29,9 +30,23 @@ var can_spawn: bool = false
 # Control de tipos por ronda
 var current_round_number: int = 1
 
+# SISTEMA DE GARANTÍAS ABSOLUTO
+var guaranteed_spawns_queue: Array[String] = []
+var guaranteed_spawns_completed: Dictionary = {}
+
 func _ready():
 	setup_spawn_timer()
 	initialize_enemy_pool()
+	get_wall_system_reference()
+
+func get_wall_system_reference():
+	"""Obtener referencia al sistema de paredes"""
+	var game_manager = get_tree().get_first_node_in_group("game_manager")
+	if game_manager and game_manager.has_node("WallSystem"):
+		wall_system = game_manager.get_node("WallSystem")
+		print("✅ WallSystem encontrado para spawning")
+	else:
+		print("⚠️ WallSystem no encontrado")
 
 func setup_spawn_timer():
 	"""Configurar timer de spawn"""
@@ -96,15 +111,39 @@ func setup(player_ref: Player, rounds_manager_ref: RoundsManager):
 	rounds_manager = rounds_manager_ref
 
 func start_round(enemies_count: int, _enemy_health: int):
-	"""Iniciar nueva ronda"""
+	"""Iniciar nueva ronda CON GARANTÍAS ABSOLUTAS"""
 	current_round_number = rounds_manager.get_current_round() if rounds_manager else 1
 	enemies_to_spawn = enemies_count
 	enemies_spawned_this_round = 0
 	can_spawn = true
 	
+	# SISTEMA DE GARANTÍAS ABSOLUTO CON COLA
+	setup_absolute_guaranteed_spawns()
+	
 	spawn_delay = max(0.5, 2.5 - (current_round_number * 0.1))
 	
 	_try_spawn_enemy()
+
+func setup_absolute_guaranteed_spawns():
+	"""SISTEMA DE GARANTÍAS ABSOLUTO - SIEMPRE 1 DE CADA TIPO"""
+	guaranteed_spawns_queue.clear()
+	guaranteed_spawns_completed.clear()
+	
+	# TODOS LOS TIPOS DISPONIBLES SEGÚN LA RONDA
+	match current_round_number:
+		1:
+			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler"]
+		2, 3:
+			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler"]
+		4, 5, 6, 7:
+			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler", "zombie_runner"]
+		_:  # 8+
+			guaranteed_spawns_queue = ["zombie_basic", "zombie_dog", "zombie_crawler", "zombie_runner", "zombie_charger"]
+	
+	# MEZCLAR PARA ORDEN ALEATORIO
+	guaranteed_spawns_queue.shuffle()
+	
+	print("🎯 Garantías para ronda ", current_round_number, ": ", guaranteed_spawns_queue)
 
 func _try_spawn_enemy():
 	"""Intentar spawnear enemigo"""
@@ -129,11 +168,11 @@ func _try_spawn_enemy():
 			spawn_timer.start()
 
 func spawn_enemy() -> bool:
-	"""Spawnear nuevo enemigo CON SALUD CORRECTA"""
+	"""Spawnear nuevo enemigo CON SISTEMA ABSOLUTO DE GARANTÍAS"""
 	if not player:
 		return false
 	
-	var spawn_position = get_safe_spawn_position()
+	var spawn_position = get_safe_spawn_position_avoiding_walls()
 	if spawn_position == Vector2.ZERO:
 		return false
 	
@@ -141,8 +180,8 @@ func spawn_enemy() -> bool:
 	if not enemy:
 		return false
 	
-	# DETERMINAR TIPO ANTES DE CONFIGURAR
-	var enemy_type = determine_enemy_type_by_round_with_variety(current_round_number, enemies_spawned_this_round)
+	# DETERMINAR TIPO CON GARANTÍAS ABSOLUTAS
+	var enemy_type = determine_enemy_type_absolute_guarantees()
 	enemy.enemy_type = enemy_type
 	
 	# CONFIGURAR ESTADÍSTICAS ESPECÍFICAS POR TIPO
@@ -151,6 +190,10 @@ func spawn_enemy() -> bool:
 	
 	# CONFIGURAR PARA SPAWN
 	enemy.setup_for_spawn(player, round_health)
+	
+	# ESTABLECER REFERENCIA AL WALL SYSTEM
+	if wall_system:
+		enemy.set_wall_system(wall_system)
 	
 	# POSICIONAR Y ACTIVAR
 	enemy.global_position = spawn_position
@@ -167,7 +210,159 @@ func spawn_enemy() -> bool:
 	active_enemies.append(enemy)
 	enemy_spawned.emit(enemy)
 	
+	print("🧟 Spawneado: ", enemy_type, " - Cola restante: ", guaranteed_spawns_queue.size())
+	
 	return true
+
+func determine_enemy_type_absolute_guarantees() -> String:
+	"""SISTEMA ABSOLUTO DE GARANTÍAS - PRIMERO COLA, LUEGO ALEATORIO"""
+	
+	# PRIORIDAD 1: TIPOS GARANTIZADOS PENDIENTES
+	if not guaranteed_spawns_queue.is_empty():
+		var guaranteed_type = guaranteed_spawns_queue.pop_front()
+		guaranteed_spawns_completed[guaranteed_type] = true
+		print("✅ Spawneando tipo garantizado: ", guaranteed_type)
+		return guaranteed_type
+	
+	# PRIORIDAD 2: TIPOS ALEATORIOS DESPUÉS DE GARANTÍAS
+	return determine_enemy_type_random_after_guarantees()
+
+func determine_enemy_type_random_after_guarantees() -> String:
+	"""Determinar tipo aleatorio después de garantías"""
+	match current_round_number:
+		1, 2, 3:
+			var types = ["zombie_basic", "zombie_dog", "zombie_crawler"]
+			return types[randi() % types.size()]
+		4, 5, 6, 7:
+			var rand_val = randf()
+			if rand_val < 0.1:
+				return "zombie_dog"
+			elif rand_val < 0.25:
+				return "zombie_crawler"
+			elif rand_val < 0.35:
+				return "zombie_runner"
+			else:
+				return "zombie_basic"
+		_:  # 8+
+			var rand_val = randf()
+			if rand_val < 0.08:
+				return "zombie_dog"
+			elif rand_val < 0.18:
+				return "zombie_crawler"
+			elif rand_val < 0.28:
+				return "zombie_runner"
+			elif rand_val < 0.35:
+				return "zombie_charger"
+			else:
+				return "zombie_basic"
+
+func get_safe_spawn_position_avoiding_walls() -> Vector2:
+	"""Obtener posición SEGURA evitando paredes"""
+	if not player:
+		return Vector2.ZERO
+	
+	var player_pos = player.global_position
+	var attempts = 100  # Más intentos para encontrar posición válida
+	
+	for attempt in range(attempts):
+		var angle = randf() * TAU
+		var distance = randf_range(spawn_radius_min, spawn_radius_max)
+		var spawn_pos = player_pos + Vector2.from_angle(angle) * distance
+		
+		# VERIFICAR DISTANCIA AL JUGADOR
+		var distance_to_player = spawn_pos.distance_to(player_pos)
+		if distance_to_player < min_spawn_distance:
+			continue
+		
+		# VERIFICAR LÍMITES DEL MAPA
+		var map_bounds = Rect2(-1000, -1000, 2000, 2000)  # Límites más amplios
+		if not map_bounds.has_point(spawn_pos):
+			continue
+		
+		# VERIFICAR QUE NO ESTÉ EN PAREDES
+		if is_position_in_walls(spawn_pos):
+			continue
+		
+		# VERIFICAR DISTANCIA A OTROS ENEMIGOS
+		var too_close_to_enemy = false
+		for enemy in active_enemies:
+			if is_instance_valid(enemy) and enemy.global_position.distance_to(spawn_pos) < 80.0:
+				too_close_to_enemy = true
+				break
+		
+		if too_close_to_enemy:
+			continue
+		
+		return spawn_pos
+	
+	# POSICIÓN DE EMERGENCIA LEJOS DE LAS PAREDES
+	var emergency_angle = randf() * TAU
+	var emergency_distance = max(min_spawn_distance + 100, spawn_radius_max)
+	return player_pos + Vector2.from_angle(emergency_angle) * emergency_distance
+
+func is_position_in_walls(position: Vector2) -> bool:
+	"""Verificar si una posición está dentro de paredes"""
+	if not wall_system:
+		return false
+	
+	# VERIFICAR PAREDES SÓLIDAS
+	for wall in wall_system.get_all_walls():
+		if not is_instance_valid(wall):
+			continue
+		
+		var wall_rect = get_wall_rect(wall)
+		if wall_rect.has_point(position):
+			return true
+	
+	# VERIFICAR BARRICADAS INTACTAS
+	for barricade in wall_system.get_all_barricades():
+		if not is_instance_valid(barricade):
+			continue
+		
+		var current_planks = barricade.get_meta("current_planks", 0)
+		if current_planks > 0:  # Solo si tiene tablones
+			var barricade_rect = get_barricade_rect(barricade)
+			if barricade_rect.has_point(position):
+				return true
+	
+	# VERIFICAR PUERTAS CERRADAS
+	for door in wall_system.get_all_doors():
+		if not is_instance_valid(door):
+			continue
+		
+		var is_open = door.get_meta("is_open", false)
+		if not is_open:  # Solo si está cerrada
+			var door_rect = get_door_rect(door)
+			if door_rect.has_point(position):
+				return true
+	
+	return false
+
+func get_wall_rect(wall: StaticBody2D) -> Rect2:
+	"""Obtener rectángulo de colisión de una pared"""
+	var collision_shape = wall.get_node_or_null("CollisionShape2D")
+	if not collision_shape or not collision_shape.shape:
+		return Rect2()
+	
+	var shape = collision_shape.shape as RectangleShape2D
+	if not shape:
+		return Rect2()
+	
+	var size = shape.size
+	var position = wall.global_position - size / 2
+	return Rect2(position, size)
+
+func get_barricade_rect(barricade: Node2D) -> Rect2:
+	"""Obtener rectángulo de colisión de una barricada"""
+	var size = barricade.get_meta("size", Vector2(100, 30))
+	var position = barricade.global_position - size / 2
+	return Rect2(position, size)
+
+func get_door_rect(door: Node2D) -> Rect2:
+	"""Obtener rectángulo de colisión de una puerta"""
+	var size = door.get_meta("size", Vector2(80, 50))
+	var position = door.global_position - size / 2
+	return Rect2(position, size)
 
 func configure_enemy_stats_by_type(enemy: Enemy, enemy_type: String, round_health: int):
 	"""Configurar estadísticas específicas según tipo de enemigo"""
@@ -199,109 +394,6 @@ func configure_enemy_stats_by_type(enemy: Enemy, enemy_type: String, round_healt
 			enemy.damage = 1
 	
 	enemy.current_health = enemy.max_health
-
-func determine_enemy_type_by_round_with_variety(round_num: int, spawn_index: int) -> String:
-	"""NUEVO: Determinar tipo de enemigo con VARIEDAD desde ronda 1 + GARANTIZAR PERRO Y CRAWLER"""
-	
-	# RONDA 1: Garantizar MÍNIMO 1 perro y 1 crawler ADICIONALES
-	if round_num == 1:
-		match spawn_index:
-			0:
-				return "zombie_basic"   # Primer enemigo: básico (enemigo principal)
-			1:
-				return "zombie_dog"     # Segundo enemigo: PERRO GARANTIZADO
-			2:
-				return "zombie_crawler" # Tercer enemigo: CRAWLER GARANTIZADO
-			3:
-				return "zombie_basic"   # Cuarto enemigo: básico
-			_:
-				# Resto aleatorio entre todos los tipos disponibles
-				var types = ["zombie_basic", "zombie_dog", "zombie_crawler"]
-				return types[randi() % types.size()]
-	
-	# RONDA 2-3: Más variedad con garantías
-	elif round_num <= 3:
-		# Garantizar diversidad en las primeras spawns
-		if spawn_index == 0:
-			return "zombie_basic"
-		elif spawn_index == 1:
-			return "zombie_dog"
-		elif spawn_index == 2:
-			return "zombie_crawler"
-		else:
-			var rand_val = randf()
-			if rand_val < 0.15:
-				return "zombie_dog"
-			elif rand_val < 0.3:
-				return "zombie_crawler"
-			else:
-				return "zombie_basic"
-	
-	# RONDA 4-7: Añadir runners
-	elif round_num <= 7:
-		var rand_val = randf()
-		if rand_val < 0.1:
-			return "zombie_dog"
-		elif rand_val < 0.25:
-			return "zombie_crawler"
-		elif rand_val < 0.35:
-			return "zombie_runner"
-		else:
-			return "zombie_basic"
-	
-	# RONDA 8+: Todos los tipos incluyendo chargers
-	else:
-		var rand_val = randf()
-		if rand_val < 0.08:
-			return "zombie_dog"
-		elif rand_val < 0.18:
-			return "zombie_crawler"
-		elif rand_val < 0.28:
-			return "zombie_runner"
-		elif rand_val < 0.35:
-			return "zombie_charger"
-		else:
-			return "zombie_basic"
-
-func get_safe_spawn_position() -> Vector2:
-	"""Obtener posición SEGURA de spawn"""
-	if not player:
-		return Vector2.ZERO
-	
-	var player_pos = player.global_position
-	var attempts = 50
-	
-	for attempt in range(attempts):
-		var angle = randf() * TAU
-		var distance = randf_range(spawn_radius_min, spawn_radius_max)
-		var spawn_pos = player_pos + Vector2.from_angle(angle) * distance
-		
-		var distance_to_player = spawn_pos.distance_to(player_pos)
-		
-		if distance_to_player < min_spawn_distance:
-			continue
-		
-		if spawn_pos.distance_to(Vector2.ZERO) < 150.0:
-			continue
-		
-		var map_bounds = Rect2(-750, -750, 1500, 1500)
-		if not map_bounds.has_point(spawn_pos):
-			continue
-		
-		var too_close_to_enemy = false
-		for enemy in active_enemies:
-			if is_instance_valid(enemy) and enemy.global_position.distance_to(spawn_pos) < 80.0:
-				too_close_to_enemy = true
-				break
-		
-		if too_close_to_enemy:
-			continue
-		
-		return spawn_pos
-	
-	var emergency_angle = randf() * TAU
-	var emergency_distance = max(min_spawn_distance, spawn_radius_min)
-	return player_pos + Vector2.from_angle(emergency_angle) * emergency_distance
 
 func get_enemy_from_pool() -> Enemy:
 	"""Obtener enemigo del pool"""
