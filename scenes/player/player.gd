@@ -1,4 +1,4 @@
-# scenes/player/player.gd - ANIMACIONES CORREGIDAS: CAMINAR + DISPARAR SIMULTÁNEO
+# scenes/player/player.gd - ANIMACIONES CORREGIDAS: MOVIMIENTO + DISPARO SEPARADOS Y SINCRONIZADOS
 extends CharacterBody2D
 class_name Player
 
@@ -21,10 +21,11 @@ var mobile_movement_direction: Vector2 = Vector2.ZERO
 var mobile_shoot_direction: Vector2 = Vector2.ZERO
 var mobile_is_shooting: bool = false
 
-# Variables de movimiento y animación - SISTEMA CORREGIDO
+# Variables de movimiento y animación - SISTEMA CORREGIDO Y SINCRONIZADO
 var current_movement_direction: Vector2 = Vector2.ZERO
 var current_aim_direction: Vector2 = Vector2.RIGHT
 var last_shoot_direction: Vector2 = Vector2.RIGHT
+var last_movement_direction: Vector2 = Vector2.ZERO
 
 # Melee attack - SIN AUDIO
 var melee_cooldown: float = 1.5
@@ -43,7 +44,7 @@ var is_fully_initialized: bool = false
 var is_invulnerable: bool = false
 var invulnerability_duration: float = 2.0
 
-# Límites del mapa - PARA ÁREA GIGANTE (4000x3000)
+# Límites del mapa - PARA ÁREA GIGANTE (1600x1200 habitación + márgenes)
 var map_bounds: Rect2 = Rect2(-2000, -1500, 4000, 3000)
 
 func _ready():
@@ -59,7 +60,7 @@ func setup_camera():
 	"""Configurar cámara para área gigante"""
 	if camera:
 		camera.enabled = true
-		camera.zoom = Vector2(0.8, 0.8)  # ZOOM REDUCIDO PARA ÁREA GIGANTE
+		camera.zoom = Vector2(0.75, 0.75)  # ZOOM REDUCIDO PARA ÁREA GIGANTE
 		camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		camera.position_smoothing_enabled = true
 		camera.position_smoothing_speed = 8.0
@@ -158,6 +159,7 @@ func apply_character_stats():
 func set_animation_controller(controller: AnimationController):
 	"""Establecer controlador de animaciones CORREGIDO"""
 	animation_controller = controller
+	print("✅ AnimationController asignado al Player")
 
 func set_score_system(score_sys: ScoreSystem):
 	"""Establecer sistema de puntuación"""
@@ -172,8 +174,8 @@ func _physics_process(delta):
 	update_weapon_position()
 	update_melee_knife_position_improved()
 	
-	# ACTUALIZAR ANIMACIONES CON SISTEMA CORREGIDO
-	update_animations_combined()
+	# ACTUALIZAR ANIMACIONES CON SISTEMA CORREGIDO Y SINCRONIZADO
+	update_animations_combined_and_synchronized()
 	
 	move_and_slide()
 
@@ -205,7 +207,7 @@ func toggle_fullscreen():
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 func handle_movement(_delta):
-	"""Manejar movimiento"""
+	"""Manejar movimiento CON TRACKING MEJORADO"""
 	var input_direction = Vector2.ZERO
 	
 	if is_mobile:
@@ -217,18 +219,60 @@ func handle_movement(_delta):
 	if input_direction.length() > 1.0:
 		input_direction = input_direction.normalized()
 	
-	current_movement_direction = input_direction
+	# ACTUALIZAR DIRECCIONES CON SMOOTHING
+	if input_direction.length() > 0.1:
+		current_movement_direction = input_direction
+		last_movement_direction = input_direction
+	else:
+		current_movement_direction = Vector2.ZERO
 	
 	velocity = input_direction * move_speed
 	apply_map_bounds()
 
-func update_animations_combined():
-	"""ACTUALIZAR ANIMACIONES CON SISTEMA CORREGIDO: MOVIMIENTO + AIM SEPARADOS"""
+func handle_shooting():
+	"""Manejar disparo CON TRACKING MEJORADO DE AIM"""
+	if not shooting_component:
+		return
+	
+	var shoot_direction = Vector2.ZERO
+	
+	if is_mobile:
+		if mobile_is_shooting and mobile_shoot_direction.length() > 0:
+			shoot_direction = mobile_shoot_direction
+	else:
+		shoot_direction.x = Input.get_action_strength("shoot_right") - Input.get_action_strength("shoot_left")
+		shoot_direction.y = Input.get_action_strength("shoot_down") - Input.get_action_strength("shoot_up")
+	
+	# ACTUALIZAR DIRECCIÓN DE AIM
+	if shoot_direction.length() > 0:
+		current_aim_direction = shoot_direction.normalized()
+		last_shoot_direction = current_aim_direction
+		perform_shoot(current_aim_direction)
+	else:
+		# Si no está disparando, mantener última dirección de aim para animaciones
+		# pero resetear current_aim_direction para que las animaciones se basen en movimiento
+		current_aim_direction = Vector2.ZERO
+
+func update_animations_combined_and_synchronized():
+	"""ACTUALIZAR ANIMACIONES CON SISTEMA CORREGIDO Y SINCRONIZADO"""
 	if not animation_controller:
 		return
 	
-	# USAR SISTEMA CORREGIDO QUE MANEJA MOVIMIENTO Y AIM POR SEPARADO
-	animation_controller.update_animation_combined(current_movement_direction, current_aim_direction)
+	# DETERMINAR DIRECCIÓN PARA ANIMACIONES
+	var animation_direction = Vector2.ZERO
+	
+	# PRIORIDAD 1: Si está apuntando/disparando
+	if current_aim_direction.length() > 0.1:
+		animation_direction = current_aim_direction
+	# PRIORIDAD 2: Si se está moviendo
+	elif current_movement_direction.length() > 0.1:
+		animation_direction = current_movement_direction
+	# PRIORIDAD 3: Mantener última dirección conocida
+	else:
+		animation_direction = last_shoot_direction
+	
+	# USAR SISTEMA CORREGIDO QUE MANEJA MOVIMIENTO Y AIM COMBINADOS
+	animation_controller.update_animation_combined(current_movement_direction, animation_direction)
 
 func apply_map_bounds():
 	"""Aplicar límites del mapa PARA ÁREA GIGANTE"""
@@ -247,25 +291,6 @@ func apply_map_bounds():
 	elif next_pos.y > map_bounds.position.y + map_bounds.size.y:
 		velocity.y = min(0, velocity.y)
 		global_position.y = map_bounds.position.y + map_bounds.size.y
-
-func handle_shooting():
-	"""Manejar disparo"""
-	if not shooting_component:
-		return
-	
-	var shoot_direction = Vector2.ZERO
-	
-	if is_mobile:
-		if mobile_is_shooting and mobile_shoot_direction.length() > 0:
-			shoot_direction = mobile_shoot_direction
-	else:
-		shoot_direction.x = Input.get_action_strength("shoot_right") - Input.get_action_strength("shoot_left")
-		shoot_direction.y = Input.get_action_strength("shoot_down") - Input.get_action_strength("shoot_up")
-	
-	if shoot_direction.length() > 0:
-		current_aim_direction = shoot_direction.normalized()
-		last_shoot_direction = current_aim_direction
-		perform_shoot(current_aim_direction)
 
 func perform_shoot(direction: Vector2):
 	"""Realizar disparo con posición corregida"""
@@ -345,7 +370,7 @@ func update_melee_knife_position_improved():
 			melee_knife_sprite.flip_v = false
 
 func perform_melee_attack():
-	"""Melee attack sin audio - solo efectos visuales"""
+	"""Melee attack sin audio - solo efectos visuales CON ANIMACIÓN MEJORADA"""
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if current_time - last_melee_time < melee_cooldown:
 		return
@@ -660,13 +685,19 @@ func get_ammo_info() -> Dictionary:
 		return shooting_component.get_ammo_info()
 	return {"current": 0, "max": 0, "reloading": false, "reload_progress": 0.0}
 
+# FUNCIONES DE DEBUG Y UTILIDAD
+
 func debug_animation_state():
 	"""Depurar estado de animaciones"""
 	if animation_controller:
-		print("🎮 Estado Animación: ", animation_controller.get_current_animation())
-		print("🎮 Movimiento: ", current_movement_direction)
-		print("🎮 Aim: ", current_aim_direction)
-		print("🎮 Melee: ", is_performing_melee)
+		animation_controller.debug_animation_state()
+	print("🎮 === PLAYER DEBUG ===")
+	print("🎮 Movimiento actual: ", current_movement_direction)
+	print("🎮 Aim actual: ", current_aim_direction)
+	print("🎮 Último disparo: ", last_shoot_direction)
+	print("🎮 Último movimiento: ", last_movement_direction)
+	print("🎮 En melee: ", is_performing_melee)
+	print("🎮 =====================")
 
 func force_idle_animation():
 	"""Forzar animación idle"""
@@ -676,8 +707,9 @@ func force_idle_animation():
 func reset_animation_system():
 	"""Resetear sistema de animaciones"""
 	current_movement_direction = Vector2.ZERO
-	current_aim_direction = Vector2.RIGHT
+	current_aim_direction = Vector2.ZERO
 	last_shoot_direction = Vector2.RIGHT
+	last_movement_direction = Vector2.ZERO
 	
 	if animation_controller:
 		animation_controller.reset_animation_state()

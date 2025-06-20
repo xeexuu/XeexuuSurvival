@@ -1,4 +1,4 @@
-# scenes/enemies/EnemySpawner.gd - SIN SHADOWING + GARANTÍAS CORREGIDAS DE TODOS LOS TIPOS
+# scenes/enemies/EnemySpawner.gd - PERROS Y CRAWLERS ADICIONALES EN CADA RONDA
 extends Node2D
 class_name EnemySpawner
 
@@ -18,7 +18,7 @@ var wall_system: WallSystem
 
 # Pool simplificado
 var enemy_pool: Array[Enemy] = []
-var max_pool_size: int = 50  # AUMENTADO PARA MÁS TIPOS
+var max_pool_size: int = 60  # AUMENTADO PARA MÁS TIPOS
 
 # Variables de spawn
 var enemies_to_spawn: int = 0
@@ -30,10 +30,14 @@ var can_spawn: bool = false
 # Control de tipos por ronda
 var current_round_number: int = 1
 
-# SISTEMA DE GARANTÍAS MEJORADO - ASEGURA TODOS LOS TIPOS
+# SISTEMA DE GARANTÍAS MEJORADO + ENEMIGOS ADICIONALES
 var guaranteed_spawns_queue: Array[String] = []
 var guaranteed_spawns_completed: Dictionary = {}
 var types_spawned_this_round: Dictionary = {}
+
+# NUEVOS: ENEMIGOS ADICIONALES POR RONDA
+var additional_dogs_per_round: int = 1  # 1 perro extra por ronda
+var additional_crawlers_per_round: int = 1  # 1 crawler extra por ronda
 
 # ÁREAS DE SPAWN SEGURAS (FUERA DE LA HABITACIÓN)
 var safe_spawn_areas: Array[Rect2] = []
@@ -48,18 +52,18 @@ func setup_safe_spawn_areas():
 	"""Configurar áreas de spawn completamente FUERA de la habitación AMPLIADAS"""
 	safe_spawn_areas = [
 		# ÁREA NORTE (muy lejos de la habitación)
-		Rect2(-1000, -1500, 2000, 200),
+		Rect2(-1200, -1800, 2400, 300),  # MÁS GRANDE
 		# ÁREA SUR (muy lejos de la habitación)
-		Rect2(-1000, 1300, 2000, 200),
+		Rect2(-1200, 1500, 2400, 300),   # MÁS GRANDE
 		# ÁREA ESTE (muy lejos de la habitación)
-		Rect2(1300, -1000, 200, 2000),
+		Rect2(1500, -1200, 300, 2400),   # MÁS GRANDE
 		# ÁREA OESTE (muy lejos de la habitación, evitando la puerta)
-		Rect2(-1500, -1000, 200, 2000),
+		Rect2(-1800, -1200, 300, 2400),  # MÁS GRANDE
 		# ESQUINAS LEJANAS MÁS GRANDES (muy seguras)
-		Rect2(-1500, -1500, 300, 300),  # Noroeste
-		Rect2(1200, -1500, 300, 300),   # Noreste
-		Rect2(-1500, 1200, 300, 300),   # Suroeste
-		Rect2(1200, 1200, 300, 300)     # Sureste
+		Rect2(-1800, -1800, 400, 400),   # Noroeste - MÁS GRANDE
+		Rect2(1400, -1800, 400, 400),    # Noreste - MÁS GRANDE
+		Rect2(-1800, 1400, 400, 400),    # Suroeste - MÁS GRANDE
+		Rect2(1400, 1400, 400, 400)      # Sureste - MÁS GRANDE
 	]
 
 func get_wall_system_reference():
@@ -110,7 +114,7 @@ func create_unified_enemy() -> Enemy:
 		collision.shape = shape
 		enemy.add_child(collision)
 		
-		var attack_timer_node = Timer.new()  # CORREGIDO: nuevo nombre
+		var attack_timer_node = Timer.new()
 		attack_timer_node.name = "AttackTimer"
 		attack_timer_node.wait_time = 2.0
 		attack_timer_node.one_shot = true
@@ -131,45 +135,80 @@ func setup(player_ref: Player, rounds_manager_ref: RoundsManager):
 	rounds_manager = rounds_manager_ref
 
 func start_round(enemies_count: int, _enemy_health: int):
-	"""Iniciar nueva ronda CON GARANTÍAS ESTRICTAS DE TODOS LOS TIPOS"""
+	"""Iniciar nueva ronda CON PERROS Y CRAWLERS ADICIONALES"""
 	current_round_number = rounds_manager.get_current_round() if rounds_manager else 1
-	enemies_to_spawn = enemies_count
+	
+	# CALCULAR ENEMIGOS ADICIONALES POR RONDA
+	var additional_dogs = calculate_additional_dogs(current_round_number)
+	var additional_crawlers = calculate_additional_crawlers(current_round_number)
+	var total_additional = additional_dogs + additional_crawlers
+	
+	# AUMENTAR CONTEO TOTAL DE ENEMIGOS
+	enemies_to_spawn = enemies_count + total_additional
 	enemies_spawned_this_round = 0
 	can_spawn = true
 	
 	# RESETEAR CONTADORES DE TIPOS
 	types_spawned_this_round.clear()
 	
-	# SISTEMA DE GARANTÍAS ESTRICTO - GARANTIZA TODOS LOS TIPOS DISPONIBLES
-	setup_strict_guaranteed_spawns()
+	# SISTEMA DE GARANTÍAS ESTRICTO CON ENEMIGOS ADICIONALES
+	setup_enhanced_guaranteed_spawns(additional_dogs, additional_crawlers)
 	
-	spawn_delay = max(0.5, 2.5 - (current_round_number * 0.1))
+	spawn_delay = max(0.4, 2.5 - (current_round_number * 0.1))  # MÁS RÁPIDO
+	
+	print("🐕 Ronda ", current_round_number, " iniciada:")
+	print("  - Enemigos base: ", enemies_count)
+	print("  - Perros adicionales: ", additional_dogs)
+	print("  - Crawlers adicionales: ", additional_crawlers)
+	print("  - Total a spawnear: ", enemies_to_spawn)
 	
 	_try_spawn_enemy()
 
-func setup_strict_guaranteed_spawns():
-	"""SISTEMA ESTRICTO: GARANTIZA AL MENOS 1 DE CADA TIPO DISPONIBLE EN LA RONDA"""
+func calculate_additional_dogs(round_num: int) -> int:
+	"""Calcular perros adicionales por ronda"""
+	# Perros desde ronda 1, aumentando cada ronda
+	return min(additional_dogs_per_round * round_num, 8)  # Máximo 8 perros adicionales
+
+func calculate_additional_crawlers(round_num: int) -> int:
+	"""Calcular crawlers adicionales por ronda"""
+	# Crawlers desde ronda 1, aumentando cada ronda
+	return min(additional_crawlers_per_round * round_num, 8)  # Máximo 8 crawlers adicionales
+
+func setup_enhanced_guaranteed_spawns(extra_dogs: int, extra_crawlers: int):
+	"""SISTEMA GARANTIZADO CON ENEMIGOS ADICIONALES OBLIGATORIOS"""
 	guaranteed_spawns_queue.clear()
 	guaranteed_spawns_completed.clear()
 	
 	# OBTENER TIPOS DISPONIBLES PARA ESTA RONDA
 	var available_types = get_available_enemy_types_for_round(current_round_number)
 	
-	# GARANTIZAR 1 DE CADA TIPO DISPONIBLE
+	# FASE 1: GARANTIZAR 1 DE CADA TIPO DISPONIBLE
 	for enemy_type in available_types:
 		guaranteed_spawns_queue.append(enemy_type)
 		types_spawned_this_round[enemy_type] = 0
 	
-	# AGREGAR MÁS ENEMIGOS SEGÚN LA CANTIDAD TOTAL A SPAWNEAR
+	# FASE 2: AGREGAR PERROS ADICIONALES OBLIGATORIOS
+	for i in range(extra_dogs):
+		guaranteed_spawns_queue.append("zombie_dog")
+	
+	# FASE 3: AGREGAR CRAWLERS ADICIONALES OBLIGATORIOS
+	for i in range(extra_crawlers):
+		guaranteed_spawns_queue.append("zombie_crawler")
+	
+	# FASE 4: LLENAR EL RESTO CON TIPOS ALEATORIOS BALANCEADOS
 	var remaining_spawns = max(0, enemies_to_spawn - guaranteed_spawns_queue.size())
 	
-	# LLENAR EL RESTO CON TIPOS ALEATORIOS PERO BALANCEADOS
 	for i in range(remaining_spawns):
 		var random_type = get_weighted_random_type(available_types)
 		guaranteed_spawns_queue.append(random_type)
 	
-	# MEZCLAR PARA ORDEN ALEATORIO
+	# MEZCLAR PARA ORDEN ALEATORIO (pero manteniendo las garantías)
 	guaranteed_spawns_queue.shuffle()
+	
+	print("✅ Spawns garantizados configurados: ", guaranteed_spawns_queue.size(), " enemigos")
+	print("  - Tipos únicos garantizados: ", available_types.size())
+	print("  - Perros adicionales: ", extra_dogs)
+	print("  - Crawlers adicionales: ", extra_crawlers)
 
 func get_available_enemy_types_for_round(round_num: int) -> Array[String]:
 	"""Obtener tipos de enemigos disponibles para la ronda"""
@@ -178,10 +217,10 @@ func get_available_enemy_types_for_round(round_num: int) -> Array[String]:
 	# BÁSICO SIEMPRE DISPONIBLE
 	types.append("zombie_basic")
 	
-	# PERRO DESDE RONDA 1
+	# PERRO DESDE RONDA 1 (SIEMPRE DISPONIBLE)
 	types.append("zombie_dog")
 	
-	# CRAWLER DESDE RONDA 1  
+	# CRAWLER DESDE RONDA 1 (SIEMPRE DISPONIBLE)
 	types.append("zombie_crawler")
 	
 	# RUNNER DESDE RONDA 3
@@ -195,7 +234,7 @@ func get_available_enemy_types_for_round(round_num: int) -> Array[String]:
 	return types
 
 func get_weighted_random_type(available_types: Array[String]) -> String:
-	"""Obtener tipo aleatorio con peso balanceado"""
+	"""Obtener tipo aleatorio con peso balanceado favoreciendo perros y crawlers"""
 	# CONTAR CUÁNTOS DE CADA TIPO YA HEMOS SPAWNEADO
 	var least_spawned_count = 999999
 	var least_spawned_types: Array[String] = []
@@ -209,9 +248,17 @@ func get_weighted_random_type(available_types: Array[String]) -> String:
 		elif count == least_spawned_count:
 			least_spawned_types.append(enemy_type)
 	
-	# ELEGIR ENTRE LOS TIPOS MENOS SPAWNEADOS
+	# ELEGIR ENTRE LOS TIPOS MENOS SPAWNEADOS CON PREFERENCIA POR PERROS Y CRAWLERS
 	if not least_spawned_types.is_empty():
-		return least_spawned_types[randi() % least_spawned_types.size()]
+		# FAVORECER PERROS Y CRAWLERS (40% de probabilidad para cada uno)
+		var random_value = randf()
+		
+		if random_value < 0.4 and "zombie_dog" in least_spawned_types:
+			return "zombie_dog"
+		elif random_value < 0.8 and "zombie_crawler" in least_spawned_types:
+			return "zombie_crawler"
+		else:
+			return least_spawned_types[randi() % least_spawned_types.size()]
 	
 	# FALLBACK
 	return available_types[randi() % available_types.size()]
@@ -225,9 +272,9 @@ func _try_spawn_enemy():
 		can_spawn = false
 		return
 	
-	var max_simultaneous = min(35, enemies_to_spawn)  # AUMENTADO
+	var max_simultaneous = min(40, enemies_to_spawn)  # AUMENTADO PARA MÁS ENEMIGOS
 	if active_enemies.size() >= max_simultaneous:
-		spawn_timer.wait_time = 0.5
+		spawn_timer.wait_time = 0.3  # MÁS RÁPIDO
 		spawn_timer.start()
 		return
 	
@@ -239,11 +286,11 @@ func _try_spawn_enemy():
 			spawn_timer.start()
 
 func spawn_enemy() -> bool:
-	"""Spawnear nuevo enemigo GARANTIZANDO QUE NO ESTÉ EN MUROS"""
+	"""Spawnear nuevo enemigo CON SISTEMA MEJORADO"""
 	if not player:
 		return false
 	
-	var spawn_pos = get_guaranteed_safe_spawn_position()  # CORREGIDO: nuevo nombre
+	var spawn_pos = get_guaranteed_safe_spawn_position()
 	if spawn_pos == Vector2.ZERO:
 		return false
 	
@@ -252,7 +299,7 @@ func spawn_enemy() -> bool:
 		return false
 	
 	# DETERMINAR TIPO CON GARANTÍAS ESTRICTAS
-	var enemy_type = determine_enemy_type_with_guarantees()
+	var enemy_type = determine_enemy_type_with_enhanced_guarantees()
 	enemy.enemy_type = enemy_type
 	
 	# ACTUALIZAR CONTADOR DE TIPOS
@@ -284,10 +331,12 @@ func spawn_enemy() -> bool:
 	active_enemies.append(enemy)
 	enemy_spawned.emit(enemy)
 	
+	print("👹 Enemigo spawneado: ", enemy_type, " en ", spawn_pos)
+	
 	return true
 
-func determine_enemy_type_with_guarantees() -> String:
-	"""SISTEMA CON GARANTÍAS ESTRICTAS - ASEGURA TODOS LOS TIPOS"""
+func determine_enemy_type_with_enhanced_guarantees() -> String:
+	"""SISTEMA CON GARANTÍAS MEJORADAS Y PRIORIDAD PARA PERROS/CRAWLERS"""
 	
 	# PRIORIDAD 1: TIPOS GARANTIZADOS PENDIENTES
 	if not guaranteed_spawns_queue.is_empty():
@@ -295,17 +344,29 @@ func determine_enemy_type_with_guarantees() -> String:
 		guaranteed_spawns_completed[guaranteed_type] = true
 		return guaranteed_type
 	
-	# PRIORIDAD 2: TIPOS ALEATORIOS BALANCEADOS
+	# PRIORIDAD 2: TIPOS ALEATORIOS CON PREFERENCIA POR PERROS Y CRAWLERS
 	var available_types = get_available_enemy_types_for_round(current_round_number)
-	return get_weighted_random_type(available_types)
+	
+	# INCREMENTAR PROBABILIDAD DE PERROS Y CRAWLERS EN RONDAS AVANZADAS
+	var dog_bonus = min(current_round_number * 0.1, 0.3)  # Hasta 30% bonus
+	var crawler_bonus = min(current_round_number * 0.1, 0.3)  # Hasta 30% bonus
+	
+	var random_value = randf()
+	
+	if random_value < (0.2 + dog_bonus) and "zombie_dog" in available_types:
+		return "zombie_dog"
+	elif random_value < (0.4 + crawler_bonus) and "zombie_crawler" in available_types:
+		return "zombie_crawler"
+	else:
+		return get_weighted_random_type(available_types)
 
-func get_guaranteed_safe_spawn_position() -> Vector2:  # CORREGIDO: nuevo nombre
+func get_guaranteed_safe_spawn_position() -> Vector2:
 	"""Obtener posición 100% SEGURA fuera de muros con múltiples verificaciones"""
 	if not player:
 		return Vector2.ZERO
 	
 	var player_pos = player.global_position
-	var max_attempts = 300  # MÁS INTENTOS
+	var max_attempts = 400  # MÁS INTENTOS PARA MÁS ENEMIGOS
 	
 	for attempt in range(max_attempts):
 		# SELECCIONAR ÁREA DE SPAWN ALEATORIA
@@ -329,7 +390,7 @@ func get_guaranteed_safe_spawn_position() -> Vector2:  # CORREGIDO: nuevo nombre
 		# VERIFICACIÓN 3: DISTANCIA A OTROS ENEMIGOS
 		var too_close_to_enemy = false
 		for enemy in active_enemies:
-			if is_instance_valid(enemy) and enemy.global_position.distance_to(spawn_pos) < 120.0:
+			if is_instance_valid(enemy) and enemy.global_position.distance_to(spawn_pos) < 100.0:
 				too_close_to_enemy = true
 				break
 		
@@ -352,7 +413,7 @@ func get_guaranteed_safe_spawn_position() -> Vector2:  # CORREGIDO: nuevo nombre
 	
 	return emergency_pos
 
-func is_position_in_any_wall_comprehensive(pos: Vector2) -> bool:  # CORREGIDO: nuevo nombre
+func is_position_in_any_wall_comprehensive(pos: Vector2) -> bool:
 	"""Verificación EXHAUSTIVA si una posición está en cualquier tipo de muro"""
 	if not wall_system:
 		return false
@@ -363,14 +424,6 @@ func is_position_in_any_wall_comprehensive(pos: Vector2) -> bool:  # CORREGIDO: 
 			continue
 		
 		if is_point_inside_wall_body(pos, wall):
-			return true
-	
-	# VERIFICAR BARRICADAS (incluso sin tablones, son obstáculos físicos)
-	for barricade in wall_system.get_all_barricades():
-		if not is_instance_valid(barricade):
-			continue
-		
-		if is_point_inside_barricade(pos, barricade):
 			return true
 	
 	# VERIFICAR PUERTAS CERRADAS
@@ -400,14 +453,6 @@ func is_point_inside_wall_body(point: Vector2, wall: StaticBody2D) -> bool:
 	
 	return (abs(local_point.x) <= half_size.x and abs(local_point.y) <= half_size.y)
 
-func is_point_inside_barricade(point: Vector2, barricade: Node2D) -> bool:
-	"""Verificar si un punto está dentro de una barricada"""
-	var size = barricade.get_meta("size", Vector2(100, 30))
-	var local_point = barricade.to_local(point)
-	var half_size = size / 2.0
-	
-	return (abs(local_point.x) <= half_size.x and abs(local_point.y) <= half_size.y)
-
 func is_point_inside_door(point: Vector2, door: Node2D) -> bool:
 	"""Verificar si un punto está dentro de una puerta"""
 	var size = door.get_meta("size", Vector2(120, 80))
@@ -430,43 +475,43 @@ func has_clear_space_around(center: Vector2, radius: float) -> bool:
 	return true
 
 func configure_enemy_stats_by_type(enemy: Enemy, enemy_type: String, round_health: int):
-	"""Configurar estadísticas específicas según tipo de enemigo"""
+	"""Configurar estadísticas específicas según tipo de enemigo CON MEJORAS"""
 	match enemy_type:
 		"zombie_dog":
-			enemy.max_health = int(float(round_health) * 0.5)
-			enemy.base_move_speed = 200.0
+			enemy.max_health = int(float(round_health) * 0.6)  # LIGERAMENTE MÁS RESISTENTE
+			enemy.base_move_speed = 220.0  # MÁS RÁPIDO
 			enemy.damage = 2
-			enemy.attack_range = 60.0
-			enemy.detection_range = 1200.0
-			enemy.attack_cooldown = 0.8
+			enemy.attack_range = 70.0  # MAYOR RANGO
+			enemy.detection_range = 1400.0  # MAYOR DETECCIÓN
+			enemy.attack_cooldown = 0.7  # MÁS RÁPIDO ATACANDO
 		"zombie_crawler":
-			enemy.max_health = int(float(round_health) * 1.2)
-			enemy.base_move_speed = 80.0
+			enemy.max_health = int(float(round_health) * 1.3)  # MÁS RESISTENTE
+			enemy.base_move_speed = 90.0  # LIGERAMENTE MÁS RÁPIDO
 			enemy.damage = 1
-			enemy.attack_range = 50.0
-			enemy.detection_range = 600.0
-			enemy.attack_cooldown = 1.2
+			enemy.attack_range = 60.0  # MAYOR RANGO
+			enemy.detection_range = 700.0
+			enemy.attack_cooldown = 1.1
 		"zombie_runner":
 			enemy.max_health = int(float(round_health) * 0.7)
-			enemy.base_move_speed = 160.0
+			enemy.base_move_speed = 180.0  # MÁS RÁPIDO
 			enemy.damage = 1
-			enemy.attack_range = 55.0
-			enemy.detection_range = 1000.0
-			enemy.attack_cooldown = 0.9
+			enemy.attack_range = 65.0
+			enemy.detection_range = 1100.0
+			enemy.attack_cooldown = 0.8
 		"zombie_charger":
 			enemy.max_health = int(float(round_health) * 0.9)
-			enemy.base_move_speed = 140.0
+			enemy.base_move_speed = 160.0  # MÁS RÁPIDO
 			enemy.damage = 2
-			enemy.attack_range = 80.0
-			enemy.detection_range = 1100.0
-			enemy.attack_cooldown = 1.1
+			enemy.attack_range = 90.0  # MAYOR RANGO
+			enemy.detection_range = 1200.0
+			enemy.attack_cooldown = 1.0
 		_:  # zombie_basic
 			enemy.max_health = round_health
-			enemy.base_move_speed = 100.0
+			enemy.base_move_speed = 120.0  # LIGERAMENTE MÁS RÁPIDO
 			enemy.damage = 1
-			enemy.attack_range = 60.0
-			enemy.detection_range = 800.0
-			enemy.attack_cooldown = 1.0
+			enemy.attack_range = 70.0  # MAYOR RANGO
+			enemy.detection_range = 900.0
+			enemy.attack_cooldown = 0.9
 	
 	enemy.current_health = enemy.max_health
 	enemy.current_move_speed = enemy.base_move_speed
@@ -505,6 +550,14 @@ func check_round_completion():
 	"""Verificar si ronda completa"""
 	if enemies_spawned_this_round >= enemies_to_spawn and active_enemies.size() == 0:
 		can_spawn = false
+		
+		# MOSTRAR ESTADÍSTICAS DE LA RONDA
+		print("🏁 Ronda ", current_round_number, " completada!")
+		print("  - Enemigos spawneados: ", enemies_spawned_this_round)
+		print("  - Tipos spawneados:")
+		for enemy_type in types_spawned_this_round:
+			print("    * ", enemy_type, ": ", types_spawned_this_round[enemy_type])
+		
 		round_complete.emit()
 
 func despawn_enemy(enemy: Enemy):
@@ -590,6 +643,21 @@ func get_round_info() -> String:
 	for enemy_type in types_spawned_this_round:
 		info += enemy_type + ":" + str(types_spawned_this_round[enemy_type]) + " "
 	return info
+
+func get_enhanced_round_stats() -> Dictionary:
+	"""Obtener estadísticas mejoradas de la ronda"""
+	var additional_dogs = calculate_additional_dogs(current_round_number)
+	var additional_crawlers = calculate_additional_crawlers(current_round_number)
+	
+	return {
+		"round": current_round_number,
+		"total_enemies": enemies_to_spawn,
+		"enemies_spawned": enemies_spawned_this_round,
+		"enemies_active": active_enemies.size(),
+		"additional_dogs": additional_dogs,
+		"additional_crawlers": additional_crawlers,
+		"types_spawned": types_spawned_this_round.duplicate()
+	}
 
 func _exit_tree():
 	"""Limpiar al salir"""

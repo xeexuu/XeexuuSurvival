@@ -1,4 +1,4 @@
-# scenes/world/WallSystem.gd - CORREGIDO: ventanas sin colisión + bocadillos funcionando
+# scenes/world/WallSystem.gd - CORREGIDO: tablones penetrables + habitación gigante + bocadillos mejorados
 extends Node2D
 class_name WallSystem
 
@@ -7,7 +7,7 @@ var penetrable_walls: Array[Area2D] = []
 var barricades: Array[Node2D] = []
 var doors: Array[Node2D] = []
 
-# Referencias a jugador para bocadillos
+# Referencias a jugador para bocadillos MEJORADOS
 var player_ref: Player
 var current_door_prompt: Control
 var current_interaction_prompt: Control
@@ -19,7 +19,7 @@ var door_texture: Texture2D
 
 func _ready():
 	create_wall_textures()
-	create_simple_large_room()
+	create_giant_room_with_penetrable_barricades()  # NUEVA FUNCIÓN
 	call_deferred("get_player_reference")
 
 func get_player_reference():
@@ -110,52 +110,268 @@ func create_door_texture() -> Texture2D:
 	
 	return ImageTexture.create_from_image(image)
 
-func create_simple_large_room():
-	"""Crear UNA HABITACIÓN GRANDE con ventanas barricadas y una puerta cara"""
+func create_giant_room_with_penetrable_barricades():
+	"""Crear HABITACIÓN GIGANTE sin paredes sólidas donde hay tablones"""
 	var room_center = Vector2(0, 0)
-	var room_size = Vector2(800, 600)  # HABITACIÓN MUY GRANDE
-	var wall_thickness = 40  # PAREDES MÁS ESTRECHAS
+	var room_size = Vector2(1600, 1200)  # HABITACIÓN GIGANTE (antes 800x600)
+	var wall_thickness = 60  # PAREDES MÁS GRUESAS
 	
-	# PAREDES EXTERIORES DE LA HABITACIÓN PRINCIPAL - MÁS ESTRECHAS
-	# Pared Norte
-	create_solid_wall(Vector2(room_center.x, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(room_size.x + wall_thickness*2, wall_thickness))
+	print("🏠 Creando habitación gigante de ", room_size, " con centro en ", room_center)
 	
-	# Pared Sur  
-	create_solid_wall(Vector2(room_center.x, room_center.y + room_size.y/2 + wall_thickness/2), Vector2(room_size.x + wall_thickness*2, wall_thickness))
+	# PAREDES EXTERIORES SÓLIDAS (sin huecos donde van las barricadas)
+	create_walls_with_barricade_gaps(room_center, room_size, wall_thickness)
 	
-	# Pared Oeste (con hueco para puerta)
-	create_solid_wall(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y - 150), Vector2(wall_thickness, room_size.y - 200))  # Parte superior
-	create_solid_wall(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y + 150), Vector2(wall_thickness, room_size.y - 200))  # Parte inferior
-	
-	# Pared Este
-	create_solid_wall(Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y), Vector2(wall_thickness, room_size.y + wall_thickness*2))
-	
-	# VENTANAS CON BARRICADAS - DISTRIBUIDAS POR LAS PAREDES
-	create_multiple_window_barricades(room_center, room_size, wall_thickness)
+	# BARRICADAS PENETRABLES EN VENTANAS (sin paredes sólidas debajo)
+	create_penetrable_barricades_only(room_center, room_size, wall_thickness)
 	
 	# PUERTA CARA EN LA PARED OESTE
-	create_expensive_door(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y), Vector2(80, 100))
+	create_expensive_door(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y), Vector2(120, 150))
 
-func create_multiple_window_barricades(room_center: Vector2, room_size: Vector2, wall_thickness: float):
-	"""Crear múltiples ventanas con barricadas en las paredes - SIN COLISIÓN SÓLIDA"""
+func create_walls_with_barricade_gaps(room_center: Vector2, room_size: Vector2, wall_thickness: float):
+	"""Crear paredes sólidas CON HUECOS donde van las barricadas"""
 	
-	# VENTANAS EN PARED NORTE (3 ventanas)
-	create_barricade(Vector2(room_center.x - 200, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(120, wall_thickness), 6)
-	create_barricade(Vector2(room_center.x, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(120, wall_thickness), 6)
-	create_barricade(Vector2(room_center.x + 200, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(120, wall_thickness), 6)
+	# POSICIONES DE LAS BARRICADAS (para crear huecos)
+	var barricade_positions = [
+		# Pared Norte
+		Vector2(room_center.x - 400, room_center.y - room_size.y/2 - wall_thickness/2),
+		Vector2(room_center.x, room_center.y - room_size.y/2 - wall_thickness/2),
+		Vector2(room_center.x + 400, room_center.y - room_size.y/2 - wall_thickness/2),
+		
+		# Pared Sur
+		Vector2(room_center.x - 400, room_center.y + room_size.y/2 + wall_thickness/2),
+		Vector2(room_center.x, room_center.y + room_size.y/2 + wall_thickness/2),
+		Vector2(room_center.x + 400, room_center.y + room_size.y/2 + wall_thickness/2),
+		
+		# Pared Este
+		Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y - 300),
+		Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y + 300),
+		
+		# Pared Oeste (evitando la puerta)
+		Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y - 400),
+		Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y + 400)
+	]
 	
-	# VENTANAS EN PARED SUR (3 ventanas)
-	create_barricade(Vector2(room_center.x - 200, room_center.y + room_size.y/2 + wall_thickness/2), Vector2(120, wall_thickness), 6)
-	create_barricade(Vector2(room_center.x, room_center.y + room_size.y/2 + wall_thickness/2), Vector2(120, wall_thickness), 6)
-	create_barricade(Vector2(room_center.x + 200, room_center.y + room_size.y/2 + wall_thickness/2), Vector2(120, wall_thickness), 6)
+	var barricade_size = 160  # Tamaño del hueco para barricada
 	
-	# VENTANAS EN PARED ESTE (2 ventanas)
-	create_barricade(Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y - 150), Vector2(wall_thickness, 120), 6)
-	create_barricade(Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y + 150), Vector2(wall_thickness, 120), 6)
+	# PARED NORTE - CON HUECOS
+	create_wall_segments_with_gaps(
+		Vector2(room_center.x, room_center.y - room_size.y/2 - wall_thickness/2),
+		Vector2(room_size.x + wall_thickness*2, wall_thickness),
+		barricade_positions.slice(0, 3),
+		barricade_size,
+		true  # horizontal
+	)
 	
-	# VENTANAS EN PARED OESTE (2 ventanas, evitando la puerta)
-	create_barricade(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y - 250), Vector2(wall_thickness, 100), 6)
-	create_barricade(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y + 250), Vector2(wall_thickness, 100), 6)
+	# PARED SUR - CON HUECOS
+	create_wall_segments_with_gaps(
+		Vector2(room_center.x, room_center.y + room_size.y/2 + wall_thickness/2),
+		Vector2(room_size.x + wall_thickness*2, wall_thickness),
+		barricade_positions.slice(3, 6),
+		barricade_size,
+		true  # horizontal
+	)
+	
+	# PARED ESTE - CON HUECOS
+	create_wall_segments_with_gaps(
+		Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y),
+		Vector2(wall_thickness, room_size.y + wall_thickness*2),
+		barricade_positions.slice(6, 8),
+		barricade_size,
+		false  # vertical
+	)
+	
+	# PARED OESTE - CON HUECOS Y HUECO PARA PUERTA
+	var west_barricades = barricade_positions.slice(8, 10)
+	create_wall_segments_with_gaps_and_door(
+		Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y),
+		Vector2(wall_thickness, room_size.y + wall_thickness*2),
+		west_barricades,
+		barricade_size,
+		Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y),  # posición puerta
+		150,  # tamaño hueco puerta
+		false  # vertical
+	)
+
+func create_wall_segments_with_gaps(center_pos: Vector2, total_size: Vector2, gap_positions: Array, gap_size: float, is_horizontal: bool):
+	"""Crear segmentos de pared con huecos para barricadas"""
+	
+	if is_horizontal:
+		# Pared horizontal
+		var start_x = center_pos.x - total_size.x/2
+		var end_x = center_pos.x + total_size.x/2
+		var current_x = start_x
+		
+		for gap_pos in gap_positions:
+			var gap_start = gap_pos.x - gap_size/2
+			var gap_end = gap_pos.x + gap_size/2
+			
+			# Crear segmento antes del hueco
+			if current_x < gap_start:
+				var segment_width = gap_start - current_x
+				var segment_center = Vector2(current_x + segment_width/2, center_pos.y)
+				create_solid_wall(segment_center, Vector2(segment_width, total_size.y))
+			
+			current_x = gap_end
+		
+		# Crear segmento final
+		if current_x < end_x:
+			var segment_width = end_x - current_x
+			var segment_center = Vector2(current_x + segment_width/2, center_pos.y)
+			create_solid_wall(segment_center, Vector2(segment_width, total_size.y))
+	
+	else:
+		# Pared vertical
+		var start_y = center_pos.y - total_size.y/2
+		var end_y = center_pos.y + total_size.y/2
+		var current_y = start_y
+		
+		for gap_pos in gap_positions:
+			var gap_start = gap_pos.y - gap_size/2
+			var gap_end = gap_pos.y + gap_size/2
+			
+			# Crear segmento antes del hueco
+			if current_y < gap_start:
+				var segment_height = gap_start - current_y
+				var segment_center = Vector2(center_pos.x, current_y + segment_height/2)
+				create_solid_wall(segment_center, Vector2(total_size.x, segment_height))
+			
+			current_y = gap_end
+		
+		# Crear segmento final
+		if current_y < end_y:
+			var segment_height = end_y - current_y
+			var segment_center = Vector2(center_pos.x, current_y + segment_height/2)
+			create_solid_wall(segment_center, Vector2(total_size.x, segment_height))
+
+func create_wall_segments_with_gaps_and_door(center_pos: Vector2, total_size: Vector2, gap_positions: Array, gap_size: float, door_pos: Vector2, door_gap_size: float, is_horizontal: bool):
+	"""Crear segmentos de pared con huecos para barricadas Y hueco para puerta"""
+	
+	# Añadir la posición de la puerta a los huecos
+	var all_gaps = gap_positions.duplicate()
+	all_gaps.append(door_pos)
+	
+	# Ordenar los huecos por posición
+	if is_horizontal:
+		all_gaps.sort_custom(func(a, b): return a.x < b.x)
+	else:
+		all_gaps.sort_custom(func(a, b): return a.y < b.y)
+	
+	if is_horizontal:
+		# Pared horizontal
+		var start_x = center_pos.x - total_size.x/2
+		var end_x = center_pos.x + total_size.x/2
+		var current_x = start_x
+		
+		for gap_pos in all_gaps:
+			var gap_size_to_use = door_gap_size if gap_pos == door_pos else gap_size
+			var gap_start = gap_pos.x - gap_size_to_use/2
+			var gap_end = gap_pos.x + gap_size_to_use/2
+			
+			# Crear segmento antes del hueco
+			if current_x < gap_start:
+				var segment_width = gap_start - current_x
+				var segment_center = Vector2(current_x + segment_width/2, center_pos.y)
+				create_solid_wall(segment_center, Vector2(segment_width, total_size.y))
+			
+			current_x = gap_end
+		
+		# Crear segmento final
+		if current_x < end_x:
+			var segment_width = end_x - current_x
+			var segment_center = Vector2(current_x + segment_width/2, center_pos.y)
+			create_solid_wall(segment_center, Vector2(segment_width, total_size.y))
+	
+	else:
+		# Pared vertical
+		var start_y = center_pos.y - total_size.y/2
+		var end_y = center_pos.y + total_size.y/2
+		var current_y = start_y
+		
+		for gap_pos in all_gaps:
+			var gap_size_to_use = door_gap_size if gap_pos == door_pos else gap_size
+			var gap_start = gap_pos.y - gap_size_to_use/2
+			var gap_end = gap_pos.y + gap_size_to_use/2
+			
+			# Crear segmento antes del hueco
+			if current_y < gap_start:
+				var segment_height = gap_start - current_y
+				var segment_center = Vector2(center_pos.x, current_y + segment_height/2)
+				create_solid_wall(segment_center, Vector2(total_size.x, segment_height))
+			
+			current_y = gap_end
+		
+		# Crear segmento final
+		if current_y < end_y:
+			var segment_height = end_y - current_y
+			var segment_center = Vector2(center_pos.x, current_y + segment_height/2)
+			create_solid_wall(segment_center, Vector2(total_size.x, segment_height))
+
+func create_penetrable_barricades_only(room_center: Vector2, room_size: Vector2, wall_thickness: float):
+	"""Crear SOLO barricadas penetrables en las ventanas - SIN PAREDES SÓLIDAS DEBAJO"""
+	
+	print("🪟 Creando barricadas penetrables en ventanas...")
+	
+	# BARRICADAS EN PARED NORTE (3 ventanas)
+	create_penetrable_barricade(Vector2(room_center.x - 400, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(140, wall_thickness), 8)
+	create_penetrable_barricade(Vector2(room_center.x, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(140, wall_thickness), 8)
+	create_penetrable_barricade(Vector2(room_center.x + 400, room_center.y - room_size.y/2 - wall_thickness/2), Vector2(140, wall_thickness), 8)
+	
+	# BARRICADAS EN PARED SUR (3 ventanas)
+	create_penetrable_barricade(Vector2(room_center.x - 400, room_center.y + room_size.y/2 + wall_thickness/2), Vector2(140, wall_thickness), 8)
+	create_penetrable_barricade(Vector2(room_center.x, room_center.y + room_size.y/2 + wall_thickness/2), Vector2(140, wall_thickness), 8)
+	create_penetrable_barricade(Vector2(room_center.x + 400, room_center.y + room_size.y/2 + wall_thickness/2), Vector2(140, wall_thickness), 8)
+	
+	# BARRICADAS EN PARED ESTE (2 ventanas)
+	create_penetrable_barricade(Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y - 300), Vector2(wall_thickness, 140), 8)
+	create_penetrable_barricade(Vector2(room_center.x + room_size.x/2 + wall_thickness/2, room_center.y + 300), Vector2(wall_thickness, 140), 8)
+	
+	# BARRICADAS EN PARED OESTE (2 ventanas, evitando la puerta)
+	create_penetrable_barricade(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y - 400), Vector2(wall_thickness, 120), 8)
+	create_penetrable_barricade(Vector2(room_center.x - room_size.x/2 - wall_thickness/2, room_center.y + 400), Vector2(wall_thickness, 120), 8)
+
+func create_penetrable_barricade(barricade_pos: Vector2, barricade_size: Vector2, max_planks: int) -> Node2D:
+	"""Crear barricada COMPLETAMENTE PENETRABLE - las balas SIEMPRE pasan"""
+	var barricade = Node2D.new()
+	barricade.name = "Barricade_" + str(barricades.size())
+	barricade.position = barricade_pos
+	
+	# Propiedades de la barricada
+	barricade.set_meta("max_planks", max_planks)
+	barricade.set_meta("current_planks", max_planks)
+	barricade.set_meta("size", barricade_size)
+	barricade.set_meta("repair_cost", 10)
+	barricade.set_meta("is_penetrable", true)  # SIEMPRE PENETRABLE
+	
+	# NOTA: NO hay StaticBody2D aquí - las barricadas son SIEMPRE penetrables
+	# Los enemigos pueden ser bloqueados por otras mecánicas, pero las balas siempre pasan
+	
+	# Crear tablones visuales
+	for i in range(max_planks):
+		create_plank_sprite(barricade, i, barricade_size, max_planks)
+	
+	# Área de interacción para reparar
+	var interaction_area = Area2D.new()
+	interaction_area.name = "InteractionArea"
+	interaction_area.collision_layer = 16  # Capa de interacción
+	interaction_area.collision_mask = 1    # Detecta al jugador
+	
+	var interaction_shape = CollisionShape2D.new()
+	var interaction_rect = RectangleShape2D.new()
+	interaction_rect.size = barricade_size * 2.0  # Área más grande para interactuar
+	interaction_shape.shape = interaction_rect
+	interaction_area.add_child(interaction_shape)
+	barricade.add_child(interaction_area)
+	
+	# Conectar señales
+	interaction_area.body_entered.connect(_on_barricade_interaction_entered.bind(barricade))
+	interaction_area.body_exited.connect(_on_barricade_interaction_exited.bind(barricade))
+	
+	add_child(barricade)
+	barricades.append(barricade)
+	
+	print("🪟 Barricada penetrable creada en ", barricade_pos, " con ", max_planks, " tablones")
+	
+	return barricade
 
 func create_expensive_door(door_pos: Vector2, door_size: Vector2):
 	"""Crear puerta cara de 3000 puntos"""
@@ -186,60 +402,9 @@ func create_solid_wall(wall_pos: Vector2, wall_size: Vector2) -> StaticBody2D:
 	add_child(wall)
 	solid_walls.append(wall)
 	
+	print("🧱 Pared sólida creada en ", wall_pos, " de tamaño ", wall_size)
+	
 	return wall
-
-func create_barricade(barricade_pos: Vector2, barricade_size: Vector2, max_planks: int) -> Node2D:
-	"""Crear barricada estilo COD Zombies - SIN COLISIÓN CUANDO TIENE TABLONES"""
-	var barricade = Node2D.new()
-	barricade.name = "Barricade_" + str(barricades.size())
-	barricade.position = barricade_pos
-	
-	# Propiedades de la barricada
-	barricade.set_meta("max_planks", max_planks)
-	barricade.set_meta("current_planks", max_planks)
-	barricade.set_meta("size", barricade_size)
-	barricade.set_meta("repair_cost", 10)  # Puntos por reparar
-	
-	# COLISIÓN SÓLIDA SOLO CUANDO NO HAY TABLONES - EMPIEZA DESHABILITADA
-	var static_body = StaticBody2D.new()
-	static_body.name = "BarricadeBody"
-	static_body.collision_layer = 3  # Misma capa que paredes sólidas
-	static_body.collision_mask = 0
-	
-	var collision_shape = CollisionShape2D.new()
-	collision_shape.name = "BarricadeCollision"
-	var rect_shape = RectangleShape2D.new()
-	rect_shape.size = barricade_size
-	collision_shape.shape = rect_shape
-	collision_shape.disabled = true  # DESHABILITADA INICIALMENTE (tiene tablones)
-	static_body.add_child(collision_shape)
-	barricade.add_child(static_body)
-	
-	# Crear tablones visuales
-	for i in range(max_planks):
-		create_plank_sprite(barricade, i, barricade_size, max_planks)
-	
-	# Área de interacción para reparar
-	var interaction_area = Area2D.new()
-	interaction_area.name = "InteractionArea"
-	interaction_area.collision_layer = 16  # Capa de interacción
-	interaction_area.collision_mask = 1    # Detecta al jugador
-	
-	var interaction_shape = CollisionShape2D.new()
-	var interaction_rect = RectangleShape2D.new()
-	interaction_rect.size = barricade_size * 1.8  # Área más grande para interactuar
-	interaction_shape.shape = interaction_rect
-	interaction_area.add_child(interaction_shape)
-	barricade.add_child(interaction_area)
-	
-	# Conectar señales CORREGIDAS
-	interaction_area.body_entered.connect(_on_barricade_interaction_entered.bind(barricade))
-	interaction_area.body_exited.connect(_on_barricade_interaction_exited.bind(barricade))
-	
-	add_child(barricade)
-	barricades.append(barricade)
-	
-	return barricade
 
 func create_plank_sprite(barricade: Node2D, plank_index: int, barricade_size: Vector2, total_planks: int):
 	"""Crear sprite de tablón individual"""
@@ -311,7 +476,7 @@ func create_purchasable_door(door_pos: Vector2, door_size: Vector2, cost: int, t
 	sprite.scale = Vector2(door_size.x / 64.0, door_size.y / 64.0)
 	door.add_child(sprite)
 	
-	# Área de interacción
+	# Área de interacción MÁS GRANDE
 	var interaction_area = Area2D.new()
 	interaction_area.name = "InteractionArea"
 	interaction_area.collision_layer = 16
@@ -319,25 +484,29 @@ func create_purchasable_door(door_pos: Vector2, door_size: Vector2, cost: int, t
 	
 	var interaction_shape = CollisionShape2D.new()
 	var interaction_rect = RectangleShape2D.new()
-	interaction_rect.size = door_size * 2.0
+	interaction_rect.size = door_size * 3.0  # ÁREA MÁS GRANDE
 	interaction_shape.shape = interaction_rect
 	interaction_area.add_child(interaction_shape)
 	door.add_child(interaction_area)
 	
-	# Conectar señales CORREGIDAS
+	# Conectar señales
 	interaction_area.body_entered.connect(_on_door_interaction_entered.bind(door))
 	interaction_area.body_exited.connect(_on_door_interaction_exited.bind(door))
 	
 	add_child(door)
 	doors.append(door)
 	
+	print("🚪 Puerta creada en ", door_pos, " - Costo: ", cost, " puntos")
+	
 	return door
+
+# RESTO DE FUNCIONES SIN CAMBIOS IMPORTANTES...
 
 func _on_barricade_interaction_entered(barricade: Node2D, body: Node2D):
 	"""Jugador cerca de barricada - mostrar opción de reparar"""
 	if body.name == "Player" or body is Player:
 		var current_planks = barricade.get_meta("current_planks", 0)
-		var max_planks = barricade.get_meta("max_planks", 6)
+		var max_planks = barricade.get_meta("max_planks", 8)
 		
 		if current_planks < max_planks:
 			show_repair_prompt(barricade)
@@ -348,19 +517,19 @@ func _on_barricade_interaction_exited(barricade: Node2D, body: Node2D):
 		hide_interaction_prompt()
 
 func _on_door_interaction_entered(door: Node2D, body: Node2D):
-	"""Jugador cerca de puerta - MOSTRAR BOCADILLO"""
+	"""Jugador cerca de puerta - MOSTRAR BOCADILLO MEJORADO"""
 	if body.name == "Player" or body is Player:
 		var is_open = door.get_meta("is_open", false)
 		if not is_open:
-			show_door_speech_bubble(door)
+			show_door_speech_bubble_improved(door)
 
 func _on_door_interaction_exited(door: Node2D, body: Node2D):
 	"""Jugador se aleja de puerta - OCULTAR BOCADILLO"""
 	if body.name == "Player" or body is Player:
 		hide_door_speech_bubble()
 
-func show_door_speech_bubble(door: Node2D):
-	"""Mostrar bocadillo de diálogo sobre el jugador"""
+func show_door_speech_bubble_improved(door: Node2D):
+	"""BOCADILLO MEJORADO sobre la cabeza del jugador con precio más visible"""
 	if not player_ref:
 		print("❌ No hay player_ref para mostrar bocadillo")
 		return
@@ -370,73 +539,76 @@ func show_door_speech_bubble(door: Node2D):
 	var cost = door.get_meta("cost", 3000)
 	var target_room = door.get_meta("target_room", "área exterior")
 	
-	# Crear bocadillo
+	# Crear bocadillo MÁS GRANDE
 	current_door_prompt = Control.new()
 	current_door_prompt.name = "DoorSpeechBubble"
 	current_door_prompt.z_index = 1000
 	
-	# Panel del bocadillo
+	# Panel del bocadillo MÁS GRANDE
 	var bubble_panel = Panel.new()
-	bubble_panel.size = Vector2(250, 100)
-	bubble_panel.position = Vector2(-125, -140)  # Sobre el jugador
+	bubble_panel.size = Vector2(320, 120)  # MÁS GRANDE
+	bubble_panel.position = Vector2(-160, -160)  # MÁS ARRIBA sobre el jugador
 	
 	var bubble_style = StyleBoxFlat.new()
-	bubble_style.bg_color = Color(0.1, 0.1, 0.2, 0.9)
-	bubble_style.border_color = Color.YELLOW
-	bubble_style.border_width_left = 3
-	bubble_style.border_width_right = 3
-	bubble_style.border_width_top = 3
-	bubble_style.border_width_bottom = 3
-	bubble_style.corner_radius_top_left = 15
-	bubble_style.corner_radius_top_right = 15
-	bubble_style.corner_radius_bottom_left = 15
-	bubble_style.corner_radius_bottom_right = 15
+	bubble_style.bg_color = Color(0.05, 0.05, 0.15, 0.95)  # MÁS OPACO
+	bubble_style.border_color = Color.GOLD  # DORADO para dinero
+	bubble_style.border_width_left = 4  # BORDE MÁS GRUESO
+	bubble_style.border_width_right = 4
+	bubble_style.border_width_top = 4
+	bubble_style.border_width_bottom = 4
+	bubble_style.corner_radius_top_left = 20
+	bubble_style.corner_radius_top_right = 20
+	bubble_style.corner_radius_bottom_left = 20
+	bubble_style.corner_radius_bottom_right = 20
 	bubble_panel.add_theme_stylebox_override("panel", bubble_style)
 	current_door_prompt.add_child(bubble_panel)
 	
-	# Texto del bocadillo
+	# Texto del bocadillo MEJORADO
 	var text_label = Label.new()
-	text_label.text = "ABRIR " + target_room.to_upper() + "\n" + str(cost) + " PUNTOS\n[E para interactuar]"
-	text_label.add_theme_font_size_override("font_size", 16)
-	text_label.add_theme_color_override("font_color", Color.YELLOW)
+	text_label.text = "💰 ABRIR " + target_room.to_upper() + "\n🪙 " + str(cost) + " PUNTOS\n💲 [E / $ para comprar]"
+	text_label.add_theme_font_size_override("font_size", 18)  # FUENTE MÁS GRANDE
+	text_label.add_theme_color_override("font_color", Color.GOLD)  # DORADO
 	text_label.add_theme_color_override("font_shadow_color", Color.BLACK)
-	text_label.add_theme_constant_override("shadow_offset_x", 2)
-	text_label.add_theme_constant_override("shadow_offset_y", 2)
+	text_label.add_theme_constant_override("shadow_offset_x", 3)
+	text_label.add_theme_constant_override("shadow_offset_y", 3)
 	text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	text_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	text_label.add_theme_constant_override("margin_left", 10)
-	text_label.add_theme_constant_override("margin_right", 10)
-	text_label.add_theme_constant_override("margin_top", 5)
-	text_label.add_theme_constant_override("margin_bottom", 5)
+	text_label.add_theme_constant_override("margin_left", 15)
+	text_label.add_theme_constant_override("margin_right", 15)
+	text_label.add_theme_constant_override("margin_top", 10)
+	text_label.add_theme_constant_override("margin_bottom", 10)
 	bubble_panel.add_child(text_label)
 	
-	# Punta del bocadillo (triángulo)
+	# Punta del bocadillo MÁS GRANDE
 	var triangle = Polygon2D.new()
 	triangle.polygon = PackedVector2Array([
-		Vector2(-10, 0),
-		Vector2(10, 0),
-		Vector2(0, 15)
+		Vector2(-15, 0),  # MÁS GRANDE
+		Vector2(15, 0),
+		Vector2(0, 20)
 	])
-	triangle.color = Color(0.1, 0.1, 0.2, 0.9)
+	triangle.color = Color(0.05, 0.05, 0.15, 0.95)
 	triangle.position = Vector2(0, -40)  # Debajo del panel
 	current_door_prompt.add_child(triangle)
 	
 	# Añadir al jugador
 	player_ref.add_child(current_door_prompt)
 	
-	# Animación de aparición
+	# Animación de aparición MÁS LLAMATIVA
 	current_door_prompt.modulate = Color.TRANSPARENT
+	current_door_prompt.scale = Vector2(0.5, 0.5)
 	var tween = create_tween()
-	tween.tween_property(current_door_prompt, "modulate", Color.WHITE, 0.3)
+	tween.parallel().tween_property(current_door_prompt, "modulate", Color.WHITE, 0.3)
+	tween.parallel().tween_property(current_door_prompt, "scale", Vector2(1.0, 1.0), 0.3)
 	
-	print("✅ Bocadillo de puerta mostrado")
+	print("✅ Bocadillo de puerta MEJORADO mostrado - Costo: ", cost, " puntos")
 
 func hide_door_speech_bubble():
 	"""Ocultar bocadillo de diálogo"""
 	if current_door_prompt and is_instance_valid(current_door_prompt):
 		var tween = create_tween()
-		tween.tween_property(current_door_prompt, "modulate", Color.TRANSPARENT, 0.2)
+		tween.parallel().tween_property(current_door_prompt, "modulate", Color.TRANSPARENT, 0.2)
+		tween.parallel().tween_property(current_door_prompt, "scale", Vector2(0.5, 0.5), 0.2)
 		tween.tween_callback(func(): 
 			if current_door_prompt and is_instance_valid(current_door_prompt):
 				current_door_prompt.queue_free()
@@ -458,11 +630,11 @@ func show_repair_prompt(barricade: Node2D):
 	
 	# Panel del bocadillo
 	var bubble_panel = Panel.new()
-	bubble_panel.size = Vector2(200, 80)
-	bubble_panel.position = Vector2(-100, -120)
+	bubble_panel.size = Vector2(240, 100)
+	bubble_panel.position = Vector2(-120, -140)
 	
 	var bubble_style = StyleBoxFlat.new()
-	bubble_style.bg_color = Color(0.1, 0.2, 0.1, 0.9)
+	bubble_style.bg_color = Color(0.05, 0.15, 0.05, 0.95)
 	bubble_style.border_color = Color.GREEN
 	bubble_style.border_width_left = 3
 	bubble_style.border_width_right = 3
@@ -477,8 +649,8 @@ func show_repair_prompt(barricade: Node2D):
 	
 	# Texto del bocadillo
 	var text_label = Label.new()
-	text_label.text = "REPARAR TABLONES\n" + str(cost) + " PUNTOS\n[E para reparar]"
-	text_label.add_theme_font_size_override("font_size", 14)
+	text_label.text = "🔨 REPARAR TABLONES\n💰 " + str(cost) + " PUNTOS\n[E / $ para reparar]"
+	text_label.add_theme_font_size_override("font_size", 16)
 	text_label.add_theme_color_override("font_color", Color.GREEN)
 	text_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	text_label.add_theme_constant_override("shadow_offset_x", 2)
@@ -499,7 +671,7 @@ func show_repair_prompt(barricade: Node2D):
 		Vector2(10, 0),
 		Vector2(0, 15)
 	])
-	triangle.color = Color(0.1, 0.2, 0.1, 0.9)
+	triangle.color = Color(0.05, 0.15, 0.05, 0.95)
 	triangle.position = Vector2(0, -40)
 	current_interaction_prompt.add_child(triangle)
 	
@@ -525,7 +697,7 @@ func hide_interaction_prompt():
 func repair_barricade(barricade: Node2D) -> bool:
 	"""Reparar barricada si el jugador tiene puntos"""
 	var current_planks = barricade.get_meta("current_planks", 0)
-	var max_planks = barricade.get_meta("max_planks", 6)
+	var max_planks = barricade.get_meta("max_planks", 8)
 	var cost = barricade.get_meta("repair_cost", 10)
 	
 	if current_planks >= max_planks:
@@ -540,20 +712,17 @@ func repair_barricade(barricade: Node2D) -> bool:
 	if plank:
 		plank.visible = true
 	
-	# DESHABILITAR COLISIÓN SI TIENE TABLONES (LAS BALAS PUEDEN PASAR)
-	var collision = barricade.get_node_or_null("BarricadeBody/BarricadeCollision")
-	if collision:
-		collision.disabled = true  # CON TABLONES = SIN COLISIÓN SÓLIDA
+	print("🔨 Barricada reparada - Tablones: ", current_planks, "/", max_planks)
 	
 	return true
 
 func damage_barricade(barricade: Node2D, damage_amount: int = 1):
-	"""Dañar barricada (enemigos la rompen) - COD STYLE"""
+	"""Dañar barricada (enemigos la rompen) - PENETRABLE SIEMPRE"""
 	if not is_instance_valid(barricade):
 		return
 		
 	var current_planks = barricade.get_meta("current_planks", 0)
-	var max_planks = barricade.get_meta("max_planks", 6)
+	var max_planks = barricade.get_meta("max_planks", 8)
 	
 	current_planks = max(0, current_planks - damage_amount)
 	barricade.set_meta("current_planks", current_planks)
@@ -567,12 +736,7 @@ func damage_barricade(barricade: Node2D, damage_amount: int = 1):
 			# Efecto de tablón roto
 			create_plank_break_effect(barricade.global_position)
 	
-	# HABILITAR COLISIÓN SI NO HAY TABLONES (BLOQUEA BALAS)
-	if current_planks <= 0:
-		var collision = barricade.get_node_or_null("BarricadeBody/BarricadeCollision")
-		if collision:
-			collision.disabled = false  # SIN TABLONES = COLISIÓN SÓLIDA
-		print("💥 Barricada destruida!")
+	print("💥 Barricada dañada - Tablones restantes: ", current_planks, "/", max_planks)
 
 func create_plank_break_effect(effect_pos: Vector2):
 	"""Crear efecto visual de tablón roto"""
@@ -662,7 +826,7 @@ func can_player_interact() -> Node2D:
 		# Buscar la barricada asociada
 		for barricade in barricades:
 			var current_planks = barricade.get_meta("current_planks", 0)
-			var max_planks = barricade.get_meta("max_planks", 6)
+			var max_planks = barricade.get_meta("max_planks", 8)
 			if current_planks < max_planks:
 				return barricade
 	

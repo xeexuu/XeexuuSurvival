@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - ANDROID CORREGIDO: BOTÓN BACK + GUARDADO + BOTÓN DÓLAR
+# scenes/managers/game_manager.gd - PARTE 1/3: INICIALIZACIÓN Y SETUP
 extends Node
 class_name GameManager
 
@@ -223,7 +223,8 @@ func restore_game_from_save(save_data: Dictionary):
 	if is_mobile:
 		setup_mobile_controls()
 	
-	await setup_unified_cod_system_safe()
+	# CORREGIDO: llamada más segura para evitar cuelgue en línea 231
+	await setup_unified_cod_system_safe_fixed()
 	
 	if player:
 		player.visible = true
@@ -251,7 +252,7 @@ func restore_game_from_save(save_data: Dictionary):
 	start_enemy_spawning_safely()
 
 func setup_wall_system():
-	"""Configurar sistema de paredes"""
+	"""Configurar sistema de paredes CORREGIDO"""
 	wall_system = WallSystem.new()
 	wall_system.name = "WallSystem"
 	add_child(wall_system)
@@ -266,83 +267,145 @@ func setup_collision_layers():
 	"""Configurar capas de colisión"""
 	pass
 
-func _input(event):
-	# MANEJO ESPECIAL DEL BOTÓN BACK EN ANDROID
-	if is_mobile and event is InputEventKey and event.keycode == KEY_BACK and event.pressed:
-		print("📱 Botón BACK presionado en Android")
-		if game_started and game_state == "playing" and not is_game_over:
-			# PAUSAR EN LUGAR DE CERRAR
-			toggle_pause_menu()
-			get_viewport().set_input_as_handled()
-			return
-		elif pause_menu and pause_menu.is_paused:
-			# SI YA ESTÁ PAUSADO, REANUDAR
-			pause_menu.hide_menu()
-			get_viewport().set_input_as_handled()
-			return
-		# EN OTROS CASOS, NO HACER NADA (NO CERRAR EL JUEGO)
-		get_viewport().set_input_as_handled()
-		return
+func setup_background():
+	"""Configurar fondo PARA ÁREA GIGANTE"""
+	background_sprite = Sprite2D.new()
+	background_sprite.name = "Background"
+	background_sprite.z_index = -100
 	
-	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.keycode == KEY_ESCAPE):
-		if game_started and game_state == "playing" and not is_game_over:
-			toggle_pause_menu()
-		return
-	
-	if event.is_action_pressed("toggle_fullscreen"):
-		toggle_fullscreen()
-	
-	# INTERACCIÓN MEJORADA - E para interactuar o comprar
-	if event.is_action_pressed("ui_accept") or (event is InputEventKey and event.keycode == KEY_E):
-		if player and wall_system:
-			handle_interaction()
-		get_viewport().set_input_as_handled()
-		return
-	
-	if not is_mobile or not game_started or game_state != "playing":
-		return
-	
-	if event is InputEventScreenTouch:
-		handle_touch_event(event)
-	elif event is InputEventScreenDrag:
-		handle_drag_event(event)
-
-func handle_interaction():
-	"""Manejar interacción mejorada con elementos del mundo"""
-	var interactable = wall_system.can_player_interact()
-	if not interactable:
-		return
-	
-	if interactable.name.begins_with("Door_"):
-		# Es una puerta
-		var cost = interactable.get_meta("cost", 3000)
-		if score_system and score_system.get_current_score() >= cost:
-			if wall_system.purchase_door(interactable):
-				score_system.add_bonus_points(-cost, interactable.global_position, "door_purchase")
-				print("🚪 Puerta comprada por ", cost, " puntos")
-		else:
-			print("💰 Puntos insuficientes para la puerta")
-	elif interactable.name.begins_with("Barricade_"):
-		# Es una barricada
-		var cost = interactable.get_meta("repair_cost", 10)
-		if score_system and score_system.get_current_score() >= cost:
-			if wall_system.repair_barricade(interactable):
-				score_system.add_repair_points(interactable.global_position, 1)
-				score_system.add_bonus_points(-cost, interactable.global_position, "repair_purchase")
-				print("🔨 Barricada reparada por ", cost, " puntos")
-		else:
-			print("💰 Puntos insuficientes para reparar")
-
-func _physics_process(_delta):
-	"""Aplicar movimiento móvil"""
-	if is_mobile and player:
-		player.mobile_movement_direction = current_movement
+	var jungle_texture = SpriteEffectsHandler.load_texture_safe("res://sprites/background/jungle.png")
+	if jungle_texture:
+		background_sprite.texture = jungle_texture
+		background_sprite.position = Vector2(0, 0)
 		
-		if is_shooting:
-			player.mobile_shoot_direction = current_shoot_direction
-			player.mobile_is_shooting = true
-		else:
-			player.mobile_is_shooting = false
+		var texture_size = jungle_texture.get_size()
+		# ESCALADO GIGANTE PARA ÁREA 4000x3000
+		var scale_factor_x = 20000.0 / float(texture_size.x)
+		var scale_factor_y = 15000.0 / float(texture_size.y)
+		background_sprite.scale = Vector2(scale_factor_x, scale_factor_y)
+		
+		add_child(background_sprite)
+	else:
+		var temp_bg = ColorRect.new()
+		temp_bg.color = Color(0.2, 0.4, 0.2)
+		temp_bg.size = Vector2(8000, 6000)  # FONDO GIGANTE
+		temp_bg.position = Vector2(-4000, -3000)
+		temp_bg.z_index = -100
+		add_child(temp_bg)
+
+func setup_window():
+	"""Configurar ventana"""
+	if is_mobile:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		
+		if OS.get_name() == "Android":
+			DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+			
+		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+		
+		var window = get_window()
+		if window:
+			window.borderless = true
+			
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+
+func setup_pause_menu():
+	"""Configurar menú de pausa"""
+	pause_menu = preload("res://scenes/ui/PauseMenu.tscn").instantiate()
+	pause_menu.resume_game.connect(_on_resume_game)
+	pause_menu.restart_game.connect(_on_restart_game)
+	pause_menu.quit_game.connect(_on_quit_game)
+	ui_manager.add_child(pause_menu)
+	
+	mobile_menu_button = MobileMenuButton.new()
+	mobile_menu_button.menu_pressed.connect(_on_mobile_menu_pressed)
+	mobile_menu_button.visible = is_mobile
+	ui_manager.add_child(mobile_menu_button)
+	
+	if is_mobile:
+		mobile_menu_button.force_show()
+
+# CORREGIDO: función más segura para evitar cuelgue
+func setup_unified_cod_system_safe_fixed():
+	"""Configurar sistemas COD con verificaciones adicionales"""
+	print("🎮 Iniciando setup de sistemas COD...")
+	
+	if not player:
+		print("❌ No hay player para configurar sistemas")
+		return
+	
+	# Crear score system con verificación
+	if not score_system:
+		score_system = ScoreSystem.new()
+		score_system.name = "ScoreSystem"
+		add_child(score_system)
+		print("✅ ScoreSystem creado")
+	
+	# Crear rounds manager con verificación
+	if not rounds_manager:
+		rounds_manager = RoundsManager.new()
+		rounds_manager.name = "RoundsManager"
+		add_child(rounds_manager)
+		print("✅ RoundsManager creado")
+	
+	# Configurar UI solo si existe
+	if fixed_ui_manager:
+		fixed_ui_manager.set_score_system(score_system)
+		fixed_ui_manager.set_rounds_manager(rounds_manager)
+		fixed_ui_manager.set_player_reference(player)
+		print("✅ UI configurada")
+	
+	# Crear enemy spawner con verificación
+	if not enemy_spawner:
+		enemy_spawner = EnemySpawner.new()
+		enemy_spawner.name = "EnemySpawner"
+		enemy_spawner.spawn_radius_min = 1200.0  # PARA ÁREA GIGANTE
+		enemy_spawner.spawn_radius_max = 2000.0  # PARA ÁREA GIGANTE
+		enemy_spawner.despawn_distance = 2800.0
+		add_child(enemy_spawner)
+		print("✅ EnemySpawner creado")
+	
+	# Configurar conexiones de forma segura
+	if enemy_spawner and rounds_manager:
+		enemy_spawner.setup(player, rounds_manager)
+		rounds_manager.set_enemy_spawner(enemy_spawner)
+		print("✅ Conexiones configuradas")
+	
+	# Conectar señales de forma segura
+	if enemy_spawner:
+		if not enemy_spawner.enemy_killed.is_connected(_on_enemy_killed):
+			enemy_spawner.enemy_killed.connect(_on_enemy_killed)
+		if not enemy_spawner.enemy_spawned.is_connected(_on_enemy_spawned):
+			enemy_spawner.enemy_spawned.connect(_on_enemy_spawned)
+		print("✅ Señales de enemigos conectadas")
+	
+	if rounds_manager:
+		if not rounds_manager.round_changed.is_connected(_on_round_changed):
+			rounds_manager.round_changed.connect(_on_round_changed)
+		if not rounds_manager.enemies_remaining_changed.is_connected(_on_enemies_remaining_changed):
+			rounds_manager.enemies_remaining_changed.connect(_on_enemies_remaining_changed)
+		print("✅ Señales de rondas conectadas")
+	
+	# Configurar player con verificaciones
+	if player and score_system:
+		player.set_score_system(score_system)
+		print("✅ Player configurado con score system")
+	
+	# Configurar nombre del personaje en score system
+	if selected_character_stats and score_system:
+		score_system.set_character_name(selected_character_stats.character_name)
+		print("✅ Nombre de personaje configurado")
+	
+	# Iniciar primera ronda
+	if rounds_manager:
+		rounds_manager.start_round(1)
+		print("✅ Primera ronda iniciada")
+	
+	print("🎮 Setup de sistemas COD completado")
 
 func show_character_selection():
 	"""Mostrar selección de personaje"""
@@ -370,7 +433,8 @@ func _on_character_selected(character_stats: CharacterStats):
 	if is_mobile:
 		setup_mobile_controls()
 	
-	await setup_unified_cod_system_safe()
+	# CORREGIDO: llamada más segura
+	await setup_unified_cod_system_safe_fixed()
 	
 	if player:
 		player.visible = true
@@ -426,69 +490,85 @@ func setup_player_after_selection():
 			player.z_index = 10
 			player.velocity = Vector2.ZERO
 
-func setup_unified_cod_system_safe():
-	"""Configurar sistemas COD"""
-	if not player:
+# GAMEMANAGER PARTE 2/3: INPUT Y CONTROLES MÓVILES
+
+func _input(event):
+	# MANEJO ESPECIAL DEL BOTÓN BACK EN ANDROID
+	if is_mobile and event is InputEventKey and event.keycode == KEY_BACK and event.pressed:
+		print("📱 Botón BACK presionado en Android")
+		if game_started and game_state == "playing" and not is_game_over:
+			# PAUSAR EN LUGAR DE CERRAR
+			toggle_pause_menu()
+			get_viewport().set_input_as_handled()
+			return
+		elif pause_menu and pause_menu.is_paused:
+			# SI YA ESTÁ PAUSADO, REANUDAR
+			pause_menu.hide_menu()
+			get_viewport().set_input_as_handled()
+			return
+		# EN OTROS CASOS, NO HACER NADA (NO CERRAR EL JUEGO)
+		get_viewport().set_input_as_handled()
 		return
 	
-	score_system = ScoreSystem.new()
-	score_system.name = "ScoreSystem"
-	add_child(score_system)
-	
-	rounds_manager = RoundsManager.new()
-	rounds_manager.name = "RoundsManager"
-	add_child(rounds_manager)
-	
-	if fixed_ui_manager:
-		fixed_ui_manager.set_score_system(score_system)
-		fixed_ui_manager.set_rounds_manager(rounds_manager)
-		fixed_ui_manager.set_player_reference(player)
-	
-	enemy_spawner = EnemySpawner.new()
-	enemy_spawner.name = "EnemySpawner"
-	enemy_spawner.spawn_radius_min = 1200.0  # PARA ÁREA GIGANTE
-	enemy_spawner.spawn_radius_max = 2000.0  # PARA ÁREA GIGANTE
-	enemy_spawner.despawn_distance = 2800.0
-	add_child(enemy_spawner)
-	
-	enemy_spawner.setup(player, rounds_manager)
-	rounds_manager.set_enemy_spawner(enemy_spawner)
-	
-	enemy_spawner.enemy_killed.connect(_on_enemy_killed)
-	enemy_spawner.enemy_spawned.connect(_on_enemy_spawned)
-	
-	rounds_manager.round_changed.connect(_on_round_changed)
-	rounds_manager.enemies_remaining_changed.connect(_on_enemies_remaining_changed)
-	
-	player.set_score_system(score_system)
-	
-	if selected_character_stats:
-		score_system.set_character_name(selected_character_stats.character_name)
-	
-	rounds_manager.start_round(1)
-
-func _on_round_changed(new_round: int):
-	"""Actualizar ronda"""
-	if score_system:
-		score_system.set_current_round(new_round)
-	
-	# GUARDAR CUANDO CAMBIE DE RONDA
-	if is_mobile:
-		save_game_state()
-
-func _on_enemies_remaining_changed(_remaining: int):
-	"""Enemigos restantes cambiados"""
-	pass
-
-func start_enemy_spawning_safely():
-	"""Iniciar spawning"""
-	if not rounds_manager or not enemy_spawner:
+	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.keycode == KEY_ESCAPE):
+		if game_started and game_state == "playing" and not is_game_over:
+			toggle_pause_menu()
 		return
 	
-	if not player or not player.is_alive() or not player.is_fully_initialized:
+	if event.is_action_pressed("toggle_fullscreen"):
+		toggle_fullscreen()
+	
+	# INTERACCIÓN MEJORADA - E para interactuar o comprar Y R para recargar/interactuar
+	if event.is_action_pressed("ui_accept") or (event is InputEventKey and event.keycode == KEY_E) or event.is_action_pressed("reload"):
+		if player and wall_system:
+			handle_interaction()
+		get_viewport().set_input_as_handled()
 		return
 	
-	rounds_manager.manually_start_spawning()
+	if not is_mobile or not game_started or game_state != "playing":
+		return
+	
+	if event is InputEventScreenTouch:
+		handle_touch_event(event)
+	elif event is InputEventScreenDrag:
+		handle_drag_event(event)
+
+func handle_interaction():
+	"""Manejar interacción mejorada con elementos del mundo"""
+	var interactable = wall_system.can_player_interact()
+	if not interactable:
+		return
+	
+	if interactable.name.begins_with("Door_"):
+		# Es una puerta
+		var cost = interactable.get_meta("cost", 3000)
+		if score_system and score_system.get_current_score() >= cost:
+			if wall_system.purchase_door(interactable):
+				score_system.add_bonus_points(-cost, interactable.global_position, "door_purchase")
+				print("🚪 Puerta comprada por ", cost, " puntos")
+		else:
+			print("💰 Puntos insuficientes para la puerta")
+	elif interactable.name.begins_with("Barricade_"):
+		# Es una barricada
+		var cost = interactable.get_meta("repair_cost", 10)
+		if score_system and score_system.get_current_score() >= cost:
+			if wall_system.repair_barricade(interactable):
+				score_system.add_repair_points(interactable.global_position, 1)
+				score_system.add_bonus_points(-cost, interactable.global_position, "repair_purchase")
+				print("🔨 Barricada reparada por ", cost, " puntos")
+		else:
+			print("💰 Puntos insuficientes para reparar")
+
+func _physics_process(_delta):
+	"""Aplicar movimiento móvil"""
+	if is_mobile and player:
+		player.mobile_movement_direction = current_movement
+		
+		if is_shooting:
+			player.mobile_shoot_direction = current_shoot_direction
+			player.mobile_is_shooting = true
+		else:
+			player.mobile_is_shooting = false
 
 func toggle_fullscreen():
 	"""Alternar pantalla completa"""
@@ -529,72 +609,10 @@ func _on_quit_game():
 	cleanup_before_exit()
 	get_tree().quit()
 
-func setup_pause_menu():
-	"""Configurar menú de pausa"""
-	pause_menu = preload("res://scenes/ui/PauseMenu.tscn").instantiate()
-	pause_menu.resume_game.connect(_on_resume_game)
-	pause_menu.restart_game.connect(_on_restart_game)
-	pause_menu.quit_game.connect(_on_quit_game)
-	ui_manager.add_child(pause_menu)
-	
-	mobile_menu_button = MobileMenuButton.new()
-	mobile_menu_button.menu_pressed.connect(_on_mobile_menu_pressed)
-	mobile_menu_button.visible = is_mobile
-	ui_manager.add_child(mobile_menu_button)
-	
-	if is_mobile:
-		mobile_menu_button.force_show()
-
-func setup_background():
-	"""Configurar fondo PARA ÁREA GIGANTE"""
-	background_sprite = Sprite2D.new()
-	background_sprite.name = "Background"
-	background_sprite.z_index = -100
-	
-	var jungle_texture = SpriteEffectsHandler.load_texture_safe("res://sprites/background/jungle.png")
-	if jungle_texture:
-		background_sprite.texture = jungle_texture
-		background_sprite.position = Vector2(0, 0)
-		
-		var texture_size = jungle_texture.get_size()
-		# ESCALADO GIGANTE PARA ÁREA 4000x3000
-		var scale_factor_x = 20000.0 / float(texture_size.x)
-		var scale_factor_y = 15000.0 / float(texture_size.y)
-		background_sprite.scale = Vector2(scale_factor_x, scale_factor_y)
-		
-		add_child(background_sprite)
-	else:
-		var temp_bg = ColorRect.new()
-		temp_bg.color = Color(0.2, 0.4, 0.2)
-		temp_bg.size = Vector2(8000, 6000)  # FONDO GIGANTE
-		temp_bg.position = Vector2(-4000, -3000)
-		temp_bg.z_index = -100
-		add_child(temp_bg)
-
-func setup_window():
-	"""Configurar ventana"""
-	if is_mobile:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-		
-		if OS.get_name() == "Android":
-			DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
-			
-		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
-		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
-		
-		var window = get_window()
-		if window:
-			window.borderless = true
-			
-	else:
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
-		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
-		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
-
-# ===== CONTROLES MÓVILES CON BOTÓN DÓLAR =====
+# ===== CONTROLES MÓVILES CON BOTÓN DÓLAR MEJORADO =====
 
 func handle_touch_event(event: InputEventScreenTouch):
-	"""Manejar toques CON BOTÓN DÓLAR"""
+	"""Manejar toques CON BOTÓN DÓLAR MEJORADO"""
 	var touch_pos = event.position
 	var touch_id = event.index
 	
@@ -710,7 +728,7 @@ func handle_shooting_joystick(touch_pos: Vector2):
 			player.mobile_is_shooting = false
 			player.mobile_shoot_direction = Vector2.ZERO
 
-# NUEVAS FUNCIONES PARA BOTÓN DÓLAR
+# FUNCIONES PARA BOTÓN DÓLAR MEJORADO
 
 func handle_melee_button_press():
 	"""Manejar presión de botón melee"""
@@ -730,8 +748,8 @@ func handle_melee_button_release():
 		tween.tween_property(melee_button, "modulate", Color.WHITE, 0.2)
 
 func handle_dollar_interact_button_press():
-	"""Manejar presión del botón DÓLAR - SOLO INTERACTUAR/COMPRAR"""
-	# SOLO INTERACCIÓN/COMPRA
+	"""Manejar presión del botón DÓLAR - INTERACTUAR/COMPRAR Y RECARGAR"""
+	# PRIORIDAD 1: INTERACCIÓN/COMPRA
 	if wall_system:
 		var interactable = wall_system.can_player_interact()
 		if interactable:
@@ -743,7 +761,17 @@ func handle_dollar_interact_button_press():
 				tween.tween_property(dollar_interact_button, "scale", Vector2(0.9, 0.9), 0.1)
 			return
 	
-	# SI NO HAY INTERACCIÓN, FEEDBACK VISUAL NEGATIVO
+	# PRIORIDAD 2: RECARGAR ARMA
+	if player and player.has_method("start_manual_reload"):
+		var reload_success = player.start_manual_reload()
+		
+		if reload_success and dollar_interact_button:
+			var tween = create_tween()
+			tween.tween_property(dollar_interact_button, "modulate", Color.CYAN, 0.2)
+			tween.tween_property(dollar_interact_button, "scale", Vector2(0.9, 0.9), 0.1)
+			return
+	
+	# SI NO HAY ACCIÓN, FEEDBACK VISUAL NEGATIVO
 	if dollar_interact_button:
 		var tween = create_tween()
 		tween.tween_property(dollar_interact_button, "modulate", Color.RED, 0.1)
@@ -776,7 +804,7 @@ func reset_shooting_joystick():
 		player.mobile_shoot_direction = Vector2.ZERO
 
 func setup_mobile_controls():
-	"""Configurar controles móviles CON BOTÓN DÓLAR"""
+	"""Configurar controles móviles CON BOTÓN DÓLAR MEJORADO"""
 	if not is_mobile:
 		return
 	
@@ -791,7 +819,7 @@ func setup_mobile_controls():
 	
 	create_movement_joystick_large()
 	create_shooting_joystick_large()
-	create_mobile_action_buttons_with_dollar()
+	create_mobile_action_buttons_with_dollar_improved()
 	
 	if movement_joystick_base:
 		movement_joystick_base.visible = true
@@ -801,8 +829,8 @@ func setup_mobile_controls():
 		shooting_joystick_base.visible = true  
 		shooting_joystick_base.modulate = Color.WHITE
 
-func create_mobile_action_buttons_with_dollar():
-	"""Crear botones con BOTÓN DÓLAR para interacciones"""
+func create_mobile_action_buttons_with_dollar_improved():
+	"""Crear botones con BOTÓN DÓLAR MEJORADO - ICONO DE DÓLAR"""
 	if not is_mobile or not mobile_controls:
 		return
 	
@@ -837,28 +865,34 @@ func create_mobile_action_buttons_with_dollar():
 	
 	mobile_controls.add_child(melee_button)
 	
-	# BOTÓN DÓLAR - INTERACTUAR/COMPRAR - ABAJO
+	# BOTÓN DÓLAR MEJORADO - INTERACTUAR/COMPRAR/RECARGAR - ABAJO
 	dollar_interact_button = Button.new()
-	dollar_interact_button.text = "💰"  # SÍMBOLO DE DÓLAR/DINERO
+	dollar_interact_button.text = "$"  # SÍMBOLO DE DÓLAR CLARO
 	dollar_interact_button.size = Vector2(150, 150)
 	dollar_interact_button.position = Vector2(
 		buttons_x,
 		viewport_size.y * 0.55
 	)
-	dollar_interact_button.add_theme_font_size_override("font_size", 70)
+	dollar_interact_button.add_theme_font_size_override("font_size", 80)  # MÁS GRANDE
 	
 	var dollar_style = StyleBoxFlat.new()
-	dollar_style.bg_color = Color(0.8, 0.6, 0.0, 0.9)  # DORADO
+	dollar_style.bg_color = Color(0.1, 0.6, 0.1, 0.9)  # VERDE PARA DINERO
 	dollar_style.corner_radius_top_left = 75
 	dollar_style.corner_radius_top_right = 75
 	dollar_style.corner_radius_bottom_left = 75
 	dollar_style.corner_radius_bottom_right = 75
 	dollar_style.border_color = Color.GOLD
-	dollar_style.border_width_left = 4
-	dollar_style.border_width_right = 4
-	dollar_style.border_width_top = 4
-	dollar_style.border_width_bottom = 4
+	dollar_style.border_width_left = 6  # BORDE MÁS GRUESO
+	dollar_style.border_width_right = 6
+	dollar_style.border_width_top = 6
+	dollar_style.border_width_bottom = 6
 	dollar_interact_button.add_theme_stylebox_override("normal", dollar_style)
+	
+	# COLOR DEL TEXTO DEL DÓLAR
+	dollar_interact_button.add_theme_color_override("font_color", Color.GOLD)
+	dollar_interact_button.add_theme_color_override("font_shadow_color", Color.BLACK)
+	dollar_interact_button.add_theme_constant_override("shadow_offset_x", 3)
+	dollar_interact_button.add_theme_constant_override("shadow_offset_y", 3)
 	
 	mobile_controls.add_child(dollar_interact_button)
 
@@ -1001,8 +1035,31 @@ func create_shooting_joystick_large():
 	
 	shooting_joystick_base.add_child(shooting_joystick_knob)
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
+	
+# GAMEMANAGER PARTE 3/3: GAME OVER Y FUNCIONES FINALES
 
-# ===== FUNCIONES FINALES =====
+func _on_round_changed(new_round: int):
+	"""Actualizar ronda"""
+	if score_system:
+		score_system.set_current_round(new_round)
+	
+	# GUARDAR CUANDO CAMBIE DE RONDA
+	if is_mobile:
+		save_game_state()
+
+func _on_enemies_remaining_changed(_remaining: int):
+	"""Enemigos restantes cambiados"""
+	pass
+
+func start_enemy_spawning_safely():
+	"""Iniciar spawning"""
+	if not rounds_manager or not enemy_spawner:
+		return
+	
+	if not player or not player.is_alive() or not player.is_fully_initialized:
+		return
+	
+	rounds_manager.manually_start_spawning()
 
 func _on_player_died():
 	"""Cuando muere el jugador CON GUARDADO"""
@@ -1179,7 +1236,7 @@ func restart_entire_game():
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
-func _on_enemy_killed(_enemy: Enemy):
+func _on_enemy_killed(enemy: Enemy):
 	"""Registrar kill de enemigo CON GUARDADO PERIÓDICO"""
 	enemies_killed += 1
 	
