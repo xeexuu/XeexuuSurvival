@@ -1,4 +1,4 @@
-# scenes/managers/RoundsManager.gd - CONTADOR DE ENEMIGOS CORREGIDO
+# scenes/managers/RoundsManager.gd - CORREGIDO: ENEMIGOS NO MUEREN SOLOS
 extends Node
 class_name RoundsManager
 
@@ -12,8 +12,8 @@ var enemies_spawned_this_round: int = 0
 var enemies_killed_this_round: int = 0
 
 # Variables de configuración estilo COD zombies
-var base_enemies_per_round: int = 6
-var enemies_multiplier_per_round: float = 1.25
+var base_enemies_per_round: int = 8  # AUMENTADO PARA GARANTIZAR SPAWNS
+var enemies_multiplier_per_round: float = 1.3  # LIGERAMENTE AUMENTADO
 
 # Sistema de salud de enemigos estilo COD
 var base_enemy_health: int = 150
@@ -92,36 +92,36 @@ func calculate_enemies_for_round(round_num: int) -> int:
 		return base_enemies_per_round
 	
 	var enemies = int(float(base_enemies_per_round) * pow(enemies_multiplier_per_round, round_num - 1))
-	return min(enemies, 50)
+	return min(enemies, 60)  # LÍMITE AUMENTADO
 
 func calculate_enemy_health_for_round(round_num: int) -> int:
-	"""SISTEMA DE SALUD BLACK OPS 1 - ESCALADO REAL"""
+	"""SISTEMA DE SALUD BLACK OPS 1 - ESCALADO REAL PERO NO TAN EXTREMO"""
 	
-	# RONDAS 1-10: Escalado lineal
+	# RONDAS 1-10: Escalado MÁS SUAVE
 	if round_num <= 10:
 		match round_num:
-			1: return 150    # Ronda 1
-			2: return 250    # Ronda 2  
-			3: return 400    # Ronda 3
-			4: return 500    # Ronda 4
-			5: return 600    # Ronda 5
-			6: return 700    # Ronda 6
-			7: return 800    # Ronda 7
-			8: return 900    # Ronda 8
-			9: return 950    # Ronda 9
-			10: return 1100  # Ronda 10
-			_: return 150
+			1: return 100    # Ronda 1 - MÁS BAJO PARA TESTING
+			2: return 150    # Ronda 2  
+			3: return 200    # Ronda 3
+			4: return 250    # Ronda 4
+			5: return 300    # Ronda 5
+			6: return 350    # Ronda 6
+			7: return 400    # Ronda 7
+			8: return 450    # Ronda 8
+			9: return 500    # Ronda 9
+			10: return 600   # Ronda 10
+			_: return 100
 	
-	# RONDAS 11+: Escalado exponencial Black Ops style
+	# RONDAS 11+: Escalado MODERADO
 	else:
-		var base_health_round_10 = 1100
+		var base_health_round_10 = 600
 		var additional_rounds = round_num - 10
 		
-		# Escalado Black Ops: cada ronda después de 10 multiplica por 1.1
-		var final_health = float(base_health_round_10) * pow(1.1, additional_rounds)
+		# Escalado más suave: cada ronda después de 10 multiplica por 1.05
+		var final_health = float(base_health_round_10) * pow(1.05, additional_rounds)
 		
-		# Límite máximo para evitar números absurdos
-		return min(int(final_health), 50000)
+		# Límite máximo razonable
+		return min(int(final_health), 5000)
 
 func _on_enemy_killed_from_spawner(_enemy: Enemy):
 	"""Cuando el spawner reporta un enemigo muerto"""

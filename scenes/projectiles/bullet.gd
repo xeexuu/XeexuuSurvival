@@ -1,4 +1,4 @@
-# scenes/projectiles/bullet.gd - LAS BALAS NO ATRAVIESAN PAREDES SÓLIDAS
+# scenes/projectiles/bullet.gd - LAS BALAS NO ATRAVIESAN PAREDES SÓLIDAS NI BARRICADAS CON TABLONES
 extends Area2D
 class_name Bullet
 
@@ -159,7 +159,7 @@ func _on_area_entered(area: Area2D):
 	handle_piercing_logic(enemy_parent)
 
 func _on_body_entered(body: Node2D):
-	"""DETECTAR CUERPO - INCLUYENDO PAREDES SÓLIDAS"""
+	"""DETECTAR CUERPO - INCLUYENDO PAREDES SÓLIDAS Y BARRICADAS CON TABLONES"""
 	if is_being_destroyed:
 		return
 	
@@ -168,12 +168,26 @@ func _on_body_entered(body: Node2D):
 	
 	# VERIFICAR SI ES UNA PARED SÓLIDA
 	if body is StaticBody2D:
-		# Verificar si es una pared sólida (no una barricada destruida)
+		# Verificar si es una pared sólida o barricada
 		if body.collision_layer & 3:  # Capa 3 = paredes sólidas
-			print("💥 Bala impactó pared sólida")
-			create_wall_impact_effect(global_position)
-			destroy_bullet("wall_impact")
-			return
+			# VERIFICAR SI ES UNA BARRICADA ANTES DE PARAR LA BALA
+			var parent_node = body.get_parent()
+			if parent_node and parent_node.name.begins_with("Barricade_"):
+				# ES UNA BARRICADA - VERIFICAR SI TIENE TABLONES
+				var current_planks = parent_node.get_meta("current_planks", 0)
+				if current_planks > 0:
+					# TIENE TABLONES - LA BALA NO PASA
+					create_wall_impact_effect(global_position)
+					destroy_bullet("barricade_with_planks")
+					return
+				else:
+					# NO TIENE TABLONES - LA BALA PASA A TRAVÉS
+					return
+			else:
+				# ES UNA PARED SÓLIDA NORMAL - LA BALA NO PASA
+				create_wall_impact_effect(global_position)
+				destroy_bullet("wall_impact")
+				return
 	
 	# VERIFICAR SI ES UN ENEMIGO
 	if body is Enemy:

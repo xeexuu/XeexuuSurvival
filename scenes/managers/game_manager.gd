@@ -208,7 +208,7 @@ func _on_character_selected(character_stats: CharacterStats):
 	start_enemy_spawning_safely()
 
 func setup_new_animation_system():
-	"""CONFIGURAR NUEVO SISTEMA DE ANIMACIONES BASADO EN DIRECCIÓN DE DISPARO"""
+	"""CONFIGURAR NUEVO SISTEMA DE ANIMACIONES BASADO EN DIRECCIÓN DE MOVIMIENTO"""
 	if not player or not player.animated_sprite:
 		return
 	
@@ -259,9 +259,9 @@ func setup_unified_cod_system_safe():
 	
 	enemy_spawner = EnemySpawner.new()
 	enemy_spawner.name = "EnemySpawner"
-	enemy_spawner.spawn_radius_min = 400.0
-	enemy_spawner.spawn_radius_max = 800.0
-	enemy_spawner.despawn_distance = 1200.0
+	enemy_spawner.spawn_radius_min = 800.0  # MÁS LEJOS PARA HABITACIÓN GRANDE
+	enemy_spawner.spawn_radius_max = 1500.0  # MÁS LEJOS PARA HABITACIÓN GRANDE
+	enemy_spawner.despawn_distance = 2000.0
 	add_child(enemy_spawner)
 	
 	enemy_spawner.setup(player, rounds_manager)
@@ -279,7 +279,6 @@ func setup_unified_cod_system_safe():
 		score_system.set_character_name(selected_character_stats.character_name)
 	
 	rounds_manager.start_round(1)
-	
 # PARTE 2 DE 3 - FUNCIONES DE EVENTOS Y MANEJO DE CONTROLES
 
 func _on_round_changed(new_round: int):
@@ -348,10 +347,9 @@ func setup_pause_menu():
 	
 	if is_mobile:
 		mobile_menu_button.force_show()
-		print("🎮 MobileMenuButton forzado a visible en GameManager")
 
 func setup_background():
-	"""Configurar fondo"""
+	"""Configurar fondo EXPANDIDO PARA HABITACIÓN GRANDE"""
 	background_sprite = Sprite2D.new()
 	background_sprite.name = "Background"
 	background_sprite.z_index = -100
@@ -362,16 +360,17 @@ func setup_background():
 		background_sprite.position = Vector2(0, 0)
 		
 		var texture_size = jungle_texture.get_size()
-		var scale_factor_x = 7680.0 / float(texture_size.x)
-		var scale_factor_y = 4320.0 / float(texture_size.y)
+		# ESCALADO MAYOR PARA CUBRIR HABITACIÓN MASIVA
+		var scale_factor_x = 12000.0 / float(texture_size.x)  # MÁS GRANDE
+		var scale_factor_y = 8000.0 / float(texture_size.y)   # MÁS GRANDE
 		background_sprite.scale = Vector2(scale_factor_x, scale_factor_y)
 		
 		add_child(background_sprite)
 	else:
 		var temp_bg = ColorRect.new()
 		temp_bg.color = Color(0.2, 0.4, 0.2)
-		temp_bg.size = Vector2(1600, 1600)
-		temp_bg.position = Vector2(-800, -800)
+		temp_bg.size = Vector2(4000, 3000)  # FONDO MÁS GRANDE
+		temp_bg.position = Vector2(-2000, -1500)
 		temp_bg.z_index = -100
 		add_child(temp_bg)
 
@@ -585,7 +584,6 @@ func reset_shooting_joystick():
 	if player:
 		player.mobile_is_shooting = false
 		player.mobile_shoot_direction = Vector2.ZERO
-		
 # PARTE 3 DE 3 - SETUP DE CONTROLES MÓVILES Y FUNCIONES FINALES
 
 func setup_mobile_controls():
@@ -674,8 +672,6 @@ func create_mobile_action_buttons_repositioned():
 	reload_interact_button.add_theme_stylebox_override("normal", reload_style)
 	
 	mobile_controls.add_child(reload_interact_button)
-	
-	print("🎮 Botones reposicionados - Melee: ", melee_button.position, " Reload/Interact: ", reload_interact_button.position)
 
 func create_movement_joystick_large():
 	"""Crear joystick movimiento"""

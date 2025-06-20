@@ -1,4 +1,4 @@
-# scenes/player/shooting_component.gd - SIN AUDIO AL DISPARAR
+# scenes/player/shooting_component.gd - SIN AUDIO AL DISPARAR + CORREGIDO
 extends Node
 class_name ShootingComponent
 
@@ -22,7 +22,7 @@ func _ready():
 		bullet_scene = load("res://scenes/projectiles/Bullet.tscn")
 
 func update_stats_from_player():
-	"""CORREGIDO: Configurar cadencia fija"""
+	"""CORREGIDO: Configurar cadencia fija SIN PROBLEMAS DE INICIALIZACIÓN"""
 	if is_stats_configured:
 		return false
 	
@@ -30,10 +30,19 @@ func update_stats_from_player():
 	if player and player.character_stats and player.character_stats.equipped_weapon:
 		equipped_weapon = player.character_stats.equipped_weapon
 		
+		# ASEGURAR QUE EL ARMA TENGA UN TIMER DE RECARGA VÁLIDO
 		if equipped_weapon.reload_timer and not equipped_weapon.reload_timer.get_parent():
 			add_child(equipped_weapon.reload_timer)
+		elif not equipped_weapon.reload_timer:
+			# CREAR TIMER DE RECARGA SI NO EXISTE
+			equipped_weapon.reload_timer = Timer.new()
+			equipped_weapon.reload_timer.name = "ReloadTimer"
+			equipped_weapon.reload_timer.one_shot = true
+			equipped_weapon.reload_timer.timeout.connect(equipped_weapon._on_reload_finished)
+			add_child(equipped_weapon.reload_timer)
 		
-		shoot_timer.wait_time = 0.33
+		# CADENCIA FIJA RAZONABLE
+		shoot_timer.wait_time = 0.25  # 4 balas por segundo
 		
 		is_stats_configured = true
 		return true
@@ -66,7 +75,7 @@ func shoot(direction: Vector2, start_position: Vector2):
 	if not shoot_timer or not is_instance_valid(shoot_timer):
 		return
 	
-	# ❌ QUITADO: Sistema de audio al disparar
+	# ❌ COMPLETAMENTE QUITADO: Sistema de audio al disparar
 	# El audio ahora solo se reproduce al eliminar enemigos en ScoreSystem
 	
 	var bullets_to_create = 1
@@ -81,7 +90,8 @@ func shoot(direction: Vector2, start_position: Vector2):
 	
 	can_shoot = false
 	
-	shoot_timer.wait_time = 0.33
+	# CADENCIA FIJA ESTABLE
+	shoot_timer.wait_time = 0.25
 	if shoot_timer and is_instance_valid(shoot_timer) and shoot_timer.is_inside_tree():
 		shoot_timer.start()
 

@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - IA COD ZOMBIES CON PERROS Y CRAWLERS + ANIMACIÓN DE ATAQUE
+# scenes/enemies/Enemy.gd - IA COD ZOMBIES SIN SHADOWING + PERROS Y CRAWLERS
 extends CharacterBody2D
 class_name Enemy
 
@@ -534,20 +534,20 @@ func start_spawn_animation():
 	"""Spawn sin ocultar sprite"""
 	current_state = ZombieState.SPAWNING
 	
-	var spawn_timer = Timer.new()
-	spawn_timer.wait_time = 0.1
-	spawn_timer.one_shot = true
-	spawn_timer.timeout.connect(_on_spawn_finished)
-	add_child(spawn_timer)
-	spawn_timer.start()
+	var spawn_timer_node = Timer.new()  # CORREGIDO: nombre único
+	spawn_timer_node.wait_time = 0.1
+	spawn_timer_node.one_shot = true
+	spawn_timer_node.timeout.connect(_on_spawn_finished)
+	add_child(spawn_timer_node)
+	spawn_timer_node.start()
 
 func _on_spawn_finished():
 	"""Función para manejar finalización del spawn"""
 	current_state = ZombieState.HUNTING_PLAYER
 	state_timer = 0.0
-	var spawn_timer = get_node_or_null("Timer")
-	if spawn_timer:
-		spawn_timer.queue_free()
+	var spawn_timer_node = get_node_or_null("Timer")
+	if spawn_timer_node:
+		spawn_timer_node.queue_free()
 
 func update_health_bar():
 	"""Actualizar barra de vida"""
@@ -917,7 +917,7 @@ func start_attack_animation():
 		sprite.modulate = Color(1.5, 0.5, 0.5, 1.0)  # Tinte rojo durante ataque
 	
 	# TIMER PARA FINALIZAR ANIMACIÓN
-	var attack_anim_timer = Timer.new()
+	var attack_anim_timer = Timer.new()  # CORREGIDO: nombre único
 	attack_anim_timer.wait_time = 0.3
 	attack_anim_timer.one_shot = true
 	attack_anim_timer.timeout.connect(_finish_attack_animation)
@@ -945,9 +945,9 @@ func _finish_attack_animation():
 			animated_sprite.play("idle")
 	
 	# Limpiar timer
-	var attack_timer = get_node_or_null("Timer")
-	if attack_timer and attack_timer.name != "AttackTimer":  # No el timer principal
-		attack_timer.queue_free()
+	var attack_anim_timer = get_node_or_null("Timer")
+	if attack_anim_timer and attack_anim_timer.name != "AttackTimer":  # No el timer principal
+		attack_anim_timer.queue_free()
 
 func create_attack_effect():
 	"""Crear efecto de ataque"""
