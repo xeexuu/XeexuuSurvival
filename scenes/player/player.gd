@@ -1,4 +1,4 @@
-# scenes/player/player.gd - SIN AUDIO EN MELEE + SISTEMA DE ANIMACIÓN POR DIRECCIÓN DE DISPARO
+# scenes/player/player.gd - ANIMACIONES CORREGIDAS: CAMINAR + DISPARAR SIMULTÁNEO
 extends CharacterBody2D
 class_name Player
 
@@ -21,12 +21,12 @@ var mobile_movement_direction: Vector2 = Vector2.ZERO
 var mobile_shoot_direction: Vector2 = Vector2.ZERO
 var mobile_is_shooting: bool = false
 
-# Variables de movimiento y animación - SISTEMA ACTUALIZADO POR DIRECCIÓN DE DISPARO
+# Variables de movimiento y animación - SISTEMA CORREGIDO
 var current_movement_direction: Vector2 = Vector2.ZERO
 var current_aim_direction: Vector2 = Vector2.RIGHT
-var last_shoot_direction: Vector2 = Vector2.RIGHT  # NUEVA: Para mantener dirección cuando deja de disparar
+var last_shoot_direction: Vector2 = Vector2.RIGHT
 
-# Melee attack CORREGIDO - SIN AUDIO
+# Melee attack - SIN AUDIO
 var melee_cooldown: float = 1.5
 var last_melee_time: float = 0.0
 var is_performing_melee: bool = false
@@ -43,8 +43,8 @@ var is_fully_initialized: bool = false
 var is_invulnerable: bool = false
 var invulnerability_duration: float = 2.0
 
-# Límites del mapa - PARA HABITACIÓN GRANDE
-var map_bounds: Rect2 = Rect2(-1200, -1000, 2400, 2000)
+# Límites del mapa - PARA ÁREA GIGANTE (4000x3000)
+var map_bounds: Rect2 = Rect2(-2000, -1500, 4000, 3000)
 
 func _ready():
 	is_mobile = OS.has_feature("mobile")
@@ -56,10 +56,10 @@ func _ready():
 	collision_mask = 2 | 3
 
 func setup_camera():
-	"""Configurar cámara"""
+	"""Configurar cámara para área gigante"""
 	if camera:
 		camera.enabled = true
-		camera.zoom = Vector2(1.0, 1.0)  # ZOOM AJUSTADO PARA HABITACIÓN GRANDE
+		camera.zoom = Vector2(0.8, 0.8)  # ZOOM REDUCIDO PARA ÁREA GIGANTE
 		camera.process_callback = Camera2D.CAMERA2D_PROCESS_PHYSICS
 		camera.position_smoothing_enabled = true
 		camera.position_smoothing_speed = 8.0
@@ -72,27 +72,26 @@ func setup_weapon_renderer():
 	add_child(weapon_renderer)
 
 func setup_melee_knife():
-	"""Crear sprite del cuchillo para melee MEJORADO"""
+	"""Crear sprite del cuchillo para melee"""
 	melee_knife_sprite = Sprite2D.new()
 	melee_knife_sprite.name = "MeleeKnife"
 	melee_knife_sprite.visible = false
 	melee_knife_sprite.z_index = 15
 	
-	# Crear sprite de cuchillo MÁS GRANDE Y DETALLADO
 	var knife_image = Image.create(48, 12, false, Image.FORMAT_RGBA8)
 	knife_image.fill(Color.TRANSPARENT)
 	
-	# HOJA DEL CUCHILLO (plateada) - MÁS GRANDE
+	# HOJA DEL CUCHILLO
 	for x in range(28, 48):
 		for y in range(3, 9):
 			knife_image.set_pixel(x, y, Color.LIGHT_GRAY)
 	
-	# MANGO DEL CUCHILLO (marrón) - MÁS GRANDE
+	# MANGO DEL CUCHILLO
 	for x in range(0, 28):
 		for y in range(2, 10):
 			knife_image.set_pixel(x, y, Color(0.6, 0.4, 0.2))
 	
-	# FILO DEL CUCHILLO (blanco brillante)
+	# FILO DEL CUCHILLO
 	for x in range(28, 48):
 		knife_image.set_pixel(x, 2, Color.WHITE)
 		knife_image.set_pixel(x, 9, Color.WHITE)
@@ -111,14 +110,14 @@ func setup_melee_knife():
 	add_child(melee_knife_sprite)
 
 func update_character_stats(new_stats: CharacterStats):
-	"""ACTUALIZAR ESTADÍSTICAS DESDE EL ARCHIVO .tres"""
+	"""Actualizar estadísticas desde el archivo .tres"""
 	character_stats = new_stats
 	apply_character_stats()
 	
 	call_deferred("setup_mini_hud_with_stats")
 
 func setup_mini_hud_with_stats():
-	"""CREAR Y CONFIGURAR MINIHUD CON ESTADÍSTICAS"""
+	"""Crear y configurar mini HUD"""
 	if mini_hud:
 		mini_hud.queue_free()
 		mini_hud = null
@@ -140,7 +139,7 @@ func setup_mini_hud_with_stats():
 			mini_hud.update_character_stats(character_stats)
 
 func apply_character_stats():
-	"""APLICAR ESTADÍSTICAS RESPETANDO EL .tres"""
+	"""Aplicar estadísticas respetando el .tres"""
 	if not character_stats:
 		return
 	
@@ -157,7 +156,7 @@ func apply_character_stats():
 	is_fully_initialized = true
 
 func set_animation_controller(controller: AnimationController):
-	"""Establecer controlador de animaciones"""
+	"""Establecer controlador de animaciones CORREGIDO"""
 	animation_controller = controller
 
 func set_score_system(score_sys: ScoreSystem):
@@ -173,10 +172,13 @@ func _physics_process(delta):
 	update_weapon_position()
 	update_melee_knife_position_improved()
 	
+	# ACTUALIZAR ANIMACIONES CON SISTEMA CORREGIDO
+	update_animations_combined()
+	
 	move_and_slide()
 
 func _input(event):
-	"""MANEJAR INPUTS INCLUYENDO MELEE Y RELOAD"""
+	"""Manejar inputs incluyendo melee y reload"""
 	if not is_fully_initialized:
 		return
 	
@@ -219,25 +221,17 @@ func handle_movement(_delta):
 	
 	velocity = input_direction * move_speed
 	apply_map_bounds()
-	
-	update_movement_animations()
 
-func update_movement_animations():
-	"""ACTUALIZAR ANIMACIONES BASÁNDOSE EN DIRECCIÓN DE DISPARO EN LUGAR DE MOVIMIENTO"""
-	if animation_controller:
-		# PRIORIDAD: DIRECCIÓN DE DISPARO ACTUAL > ÚLTIMA DIRECCIÓN DE DISPARO > MOVIMIENTO
-		var animation_direction = current_aim_direction
-		if animation_direction.length() < 0.1:
-			animation_direction = last_shoot_direction
-		
-		# USAR NUEVA FUNCIÓN QUE PRIORIZA DIRECCIÓN DE DISPARO
-		animation_controller.update_animation_by_shooting_direction(
-			current_movement_direction, 
-			animation_direction
-		)
+func update_animations_combined():
+	"""ACTUALIZAR ANIMACIONES CON SISTEMA CORREGIDO: MOVIMIENTO + AIM SEPARADOS"""
+	if not animation_controller:
+		return
+	
+	# USAR SISTEMA CORREGIDO QUE MANEJA MOVIMIENTO Y AIM POR SEPARADO
+	animation_controller.update_animation_combined(current_movement_direction, current_aim_direction)
 
 func apply_map_bounds():
-	"""Aplicar límites del mapa EXPANDIDOS PARA HABITACIÓN GRANDE"""
+	"""Aplicar límites del mapa PARA ÁREA GIGANTE"""
 	var next_pos = global_position + velocity * get_physics_process_delta_time()
 	
 	if next_pos.x < map_bounds.position.x:
@@ -270,18 +264,17 @@ func handle_shooting():
 	
 	if shoot_direction.length() > 0:
 		current_aim_direction = shoot_direction.normalized()
-		last_shoot_direction = current_aim_direction  # RECORDAR ÚLTIMA DIRECCIÓN
+		last_shoot_direction = current_aim_direction
 		perform_shoot(current_aim_direction)
 
 func perform_shoot(direction: Vector2):
-	"""Realizar disparo CON ALTURA CORREGIDA"""
+	"""Realizar disparo con posición corregida"""
 	if not shooting_component:
 		return
 	
 	current_aim_direction = direction
-	last_shoot_direction = direction  # ACTUALIZAR ÚLTIMA DIRECCIÓN
+	last_shoot_direction = direction
 	
-	# POSICIÓN DE DISPARO AJUSTADA SEGÚN DIRECCIÓN
 	var shoot_pos = get_corrected_bullet_spawn_position(direction)
 	
 	var shot_fired = shooting_component.try_shoot(direction, shoot_pos)
@@ -290,39 +283,33 @@ func perform_shoot(direction: Vector2):
 		weapon_renderer.start_shooting_animation()
 
 func get_corrected_bullet_spawn_position(direction: Vector2) -> Vector2:
-	"""Obtener posición corregida para spawn de balas según dirección"""
-	var base_offset = Vector2(0, -15)  # Offset base desde el centro del jugador
+	"""Obtener posición corregida para spawn de balas"""
+	var base_offset = Vector2(0, -15)
 	
-	# AJUSTAR OFFSET SEGÚN DIRECCIÓN DE DISPARO
 	var angle = direction.angle()
-	
-	# Rotar el offset base según la dirección
 	var rotated_offset = base_offset.rotated(angle)
 	
-	# AJUSTES ESPECÍFICOS POR DIRECCIÓN PARA MEJOR ALINEACIÓN
-	if abs(angle) < PI/4:  # Disparando a la derecha
+	if abs(angle) < PI/4:  # Derecha
 		rotated_offset += Vector2(25, 0)
-	elif abs(angle) > 3*PI/4:  # Disparando a la izquierda
+	elif abs(angle) > 3*PI/4:  # Izquierda
 		rotated_offset += Vector2(-25, 0)
-	elif angle > PI/4 and angle < 3*PI/4:  # Disparando hacia abajo
+	elif angle > PI/4 and angle < 3*PI/4:  # Abajo
 		rotated_offset += Vector2(0, 15)
-	elif angle < -PI/4 and angle > -3*PI/4:  # Disparando hacia arriba
+	elif angle < -PI/4 and angle > -3*PI/4:  # Arriba
 		rotated_offset += Vector2(0, -25)
 	
-	# Si tenemos weapon_renderer, usar su posición
 	if weapon_renderer:
 		var muzzle_pos = weapon_renderer.get_muzzle_world_position()
-		if muzzle_pos != global_position:  # Si el weapon_renderer tiene una posición válida
+		if muzzle_pos != global_position:
 			return muzzle_pos
 	
 	return global_position + rotated_offset
 
 func update_weapon_position():
-	"""Actualizar posición del arma usando ÚLTIMA DIRECCIÓN DE DISPARO"""
+	"""Actualizar posición del arma"""
 	if not weapon_renderer:
 		return
 	
-	# USAR ÚLTIMA DIRECCIÓN DE DISPARO PARA POSICIONAR EL ARMA
 	var aim_direction = current_aim_direction
 	if aim_direction.length() < 0.1:
 		aim_direction = last_shoot_direction
@@ -330,40 +317,35 @@ func update_weapon_position():
 	weapon_renderer.update_weapon_position_and_rotation(aim_direction)
 
 func update_melee_knife_position_improved():
-	"""Actualizar posición del cuchillo MEJORADA según dirección de disparo"""
+	"""Actualizar posición del cuchillo"""
 	if not melee_knife_sprite:
 		return
 	
 	if is_performing_melee:
-		# USAR DIRECCIÓN DE DISPARO COMO PRIORIDAD PARA EL CUCHILLO
 		var knife_direction = Vector2.ZERO
 		
-		# PRIORIDAD 1: Dirección de disparo actual o última
 		if current_aim_direction.length() > 0.1:
 			knife_direction = current_aim_direction.normalized()
 		elif last_shoot_direction.length() > 0.1:
 			knife_direction = last_shoot_direction.normalized()
-		# PRIORIDAD 2: Dirección de movimiento si no hay disparo
 		elif current_movement_direction.length() > 0.1:
 			knife_direction = current_movement_direction.normalized()
 		else:
-			knife_direction = Vector2.RIGHT  # Por defecto hacia la derecha
+			knife_direction = Vector2.RIGHT
 		
-		# POSICIONAR CUCHILLO SEGÚN LA DIRECCIÓN
 		var knife_distance = 50.0
 		var knife_offset = knife_direction * knife_distance
 		
 		melee_knife_sprite.global_position = global_position + knife_offset
 		melee_knife_sprite.rotation = knife_direction.angle()
 		
-		# AJUSTE VISUAL SEGÚN DIRECCIÓN
-		if knife_direction.x < 0:  # Izquierda
+		if knife_direction.x < 0:
 			melee_knife_sprite.flip_v = true
-		else:  # Derecha
+		else:
 			melee_knife_sprite.flip_v = false
 
 func perform_melee_attack():
-	"""MELEE ATTACK SIN AUDIO - SOLO EFECTOS VISUALES"""
+	"""Melee attack sin audio - solo efectos visuales"""
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if current_time - last_melee_time < melee_cooldown:
 		return
@@ -374,28 +356,25 @@ func perform_melee_attack():
 	last_melee_time = current_time
 	is_performing_melee = true
 	
-	# DETERMINAR DIRECCIÓN DE ATAQUE - PRIORIDAD A DIRECCIÓN DE DISPARO
+	# DETERMINAR DIRECCIÓN DE ATAQUE
 	var attack_direction = Vector2.ZERO
 	
-	# PRIORIDAD 1: Dirección de disparo actual
 	if current_aim_direction.length() > 0.1:
 		attack_direction = current_aim_direction.normalized()
-	# PRIORIDAD 2: Última dirección de disparo
 	elif last_shoot_direction.length() > 0.1:
 		attack_direction = last_shoot_direction.normalized()
-	# PRIORIDAD 3: Dirección de movimiento
 	elif current_movement_direction.length() > 0.1:
 		attack_direction = current_movement_direction.normalized()
-	# PRIORIDAD 4: Dirección hacia la derecha por defecto
 	else:
 		attack_direction = Vector2.RIGHT
 	
-	# ACTUALIZAR CURRENT_AIM_DIRECTION PARA ANIMACIONES
+	# ACTUALIZAR DIRECCIONES PARA ANIMACIONES
 	current_aim_direction = attack_direction
 	last_shoot_direction = attack_direction
 	
-	# ANIMACIÓN DEL PERSONAJE (SIN ANIMACIÓN ESPECÍFICA DE MELEE)
-	# El sistema de animación usará la dirección de disparo automáticamente
+	# INICIAR ANIMACIÓN DE MELEE EN EL CONTROLADOR
+	if animation_controller:
+		animation_controller.start_melee_animation()
 	
 	# Mostrar cuchillo y ocultar arma
 	if melee_knife_sprite:
@@ -411,27 +390,23 @@ func perform_melee_attack():
 		if enemy and is_instance_valid(enemy):
 			var distance_to_enemy = enemy.global_position.distance_to(global_position)
 			if distance_to_enemy <= melee_range:
-				# VERIFICAR SI EL ENEMIGO ESTÁ EN LA DIRECCIÓN DE ATAQUE
 				var direction_to_enemy = (enemy.global_position - global_position).normalized()
 				var angle_diff = attack_direction.angle_to(direction_to_enemy)
 				
-				# PERMITIR ÁNGULO DE 90 GRADOS (PI/2) HACIA CADA LADO
 				if abs(angle_diff) <= PI/2:
 					enemies_hit.append(enemy)
 	
 	if not enemies_hit.is_empty():
-		# Atacar enemigos en dirección
 		for enemy in enemies_hit:
 			if enemy.has_method("take_damage"):
 				enemy.take_damage(50, false)
 				
-				# Puntuación de melee - AQUÍ EL SCORE SYSTEM NO REPRODUCIRÁ AUDIO
 				if score_system:
 					score_system.add_kill_points(enemy.global_position, false, true)
 				
 				create_melee_effect(enemy.global_position)
 	
-	# Animación del cuchillo según dirección
+	# Animar cuchillo según dirección
 	animate_melee_knife_directional(attack_direction)
 	
 	# Finalizar melee después de la animación
@@ -447,24 +422,20 @@ func animate_melee_knife_directional(attack_direction: Vector2):
 	if not melee_knife_sprite:
 		return
 	
-	# POSICIONES INICIAL Y FINAL SEGÚN DIRECCIÓN
 	var start_distance = 30.0
 	var end_distance = 60.0
 	
 	var start_pos = global_position + (attack_direction * start_distance)
 	var end_pos = global_position + (attack_direction * end_distance)
 	
-	# POSICIONAR Y ROTAR CUCHILLO
 	melee_knife_sprite.global_position = start_pos
 	melee_knife_sprite.rotation = attack_direction.angle()
 	
-	# FLIP SI ES NECESARIO
 	if attack_direction.x < 0:
 		melee_knife_sprite.flip_v = true
 	else:
 		melee_knife_sprite.flip_v = false
 	
-	# ANIMAR MOVIMIENTO DE SLASH
 	var tween = create_tween()
 	tween.tween_property(melee_knife_sprite, "global_position", end_pos, 0.2)
 	tween.tween_property(melee_knife_sprite, "global_position", start_pos, 0.2)
@@ -509,7 +480,7 @@ func _cleanup_melee_particle(particle: Sprite2D):
 		particle.queue_free()
 
 func on_enemy_killed():
-	"""Callback cuando mata enemigo CON FRASES"""
+	"""Callback cuando mata enemigo"""
 	if character_stats and character_stats.should_say_kill_phrase():
 		var phrase = character_stats.get_random_kill_phrase()
 		show_kill_phrase(phrase)
@@ -542,7 +513,7 @@ func _cleanup_phrase_label(label: Label):
 		label.queue_free()
 
 func take_damage(amount: int):
-	"""RECIBIR DAÑO - ACTUALIZA MINIHUD"""
+	"""Recibir daño - actualiza mini HUD"""
 	if is_invulnerable or not is_alive():
 		return
 	
@@ -672,11 +643,10 @@ func get_camera() -> Camera2D:
 	return camera
 
 func start_manual_reload():
-	"""INICIAR RECARGA MANUAL CON FEEDBACK VISUAL"""
+	"""Iniciar recarga manual con feedback visual"""
 	if shooting_component:
 		var reload_started = shooting_component.start_manual_reload()
 		if reload_started:
-			# Feedback visual de recarga
 			if animated_sprite:
 				var reload_tween = create_tween()
 				reload_tween.tween_property(animated_sprite, "modulate", Color(0.8, 0.8, 1.0, 1.0), 0.2)
@@ -692,15 +662,19 @@ func get_ammo_info() -> Dictionary:
 
 func debug_animation_state():
 	"""Depurar estado de animaciones"""
-	pass
+	if animation_controller:
+		print("🎮 Estado Animación: ", animation_controller.get_current_animation())
+		print("🎮 Movimiento: ", current_movement_direction)
+		print("🎮 Aim: ", current_aim_direction)
+		print("🎮 Melee: ", is_performing_melee)
 
 func force_idle_animation():
-	"""Forzar animación idle (para depuración)"""
+	"""Forzar animación idle"""
 	if animation_controller:
 		animation_controller.force_animation("idle")
 
 func reset_animation_system():
-	"""Resetear sistema de animaciones (para depuración)"""
+	"""Resetear sistema de animaciones"""
 	current_movement_direction = Vector2.ZERO
 	current_aim_direction = Vector2.RIGHT
 	last_shoot_direction = Vector2.RIGHT

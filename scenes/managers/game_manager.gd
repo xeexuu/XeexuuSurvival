@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - PARTE 1 DE 3 - VARIABLES Y SETUP
+# scenes/managers/game_manager.gd - ANDROID CORREGIDO: BOTÓN BACK + GUARDADO + BOTÓN DÓLAR
 extends Node
 class_name GameManager
 
@@ -25,6 +25,10 @@ var wall_system: WallSystem
 # Variables móviles
 var is_mobile: bool = false
 
+# SISTEMA DE GUARDADO PARA ANDROID
+var save_file_path: String = "user://game_save.dat"
+var auto_save_timer: Timer
+
 # Joysticks móviles
 var movement_joystick_base: Control
 var movement_joystick_knob: Control
@@ -48,11 +52,11 @@ var movement_joystick_dead_zone: float = 30.0
 var shooting_joystick_max_distance: float = 180.0
 var shooting_joystick_dead_zone: float = 30.0
 
-# Botones móviles adicionales - NUEVAS POSICIONES
+# Botones móviles CORREGIDOS - BOTÓN DÓLAR
 var melee_button: Button
-var reload_interact_button: Button  # BOTÓN DUAL: RECARGAR/INTERACTUAR
+var dollar_interact_button: Button  # NUEVO: BOTÓN DÓLAR PARA INTERACTUAR/COMPRAR
 var melee_touch_id: int = -1
-var reload_interact_touch_id: int = -1
+var dollar_interact_touch_id: int = -1
 
 # Variables de juego
 var selected_character_stats: CharacterStats
@@ -75,6 +79,7 @@ func _ready():
 	add_to_group("game_manager")
 	is_mobile = OS.has_feature("mobile") or OS.get_name() == "Android" or OS.get_name() == "iOS"
 	
+	setup_android_save_system()
 	setup_collision_layers()
 	setup_background()
 	setup_window()
@@ -82,8 +87,168 @@ func _ready():
 	setup_wall_system()
 	setup_fixed_ui()
 	
+	# CARGAR PARTIDA GUARDADA EN ANDROID
+	if is_mobile:
+		load_game_if_exists()
+	
 	await get_tree().process_frame
-	show_character_selection()
+	
+	# SI NO HAY PARTIDA GUARDADA, EMPEZAR SELECCIÓN
+	if not game_started:
+		show_character_selection()
+
+func setup_android_save_system():
+	"""Configurar sistema de guardado automático para Android"""
+	if not is_mobile:
+		return
+	
+	# Auto-guardado cada 30 segundos
+	auto_save_timer = Timer.new()
+	auto_save_timer.wait_time = 30.0
+	auto_save_timer.autostart = true
+	auto_save_timer.timeout.connect(auto_save_game)
+	add_child(auto_save_timer)
+	
+	print("💾 Sistema de guardado Android inicializado")
+
+func auto_save_game():
+	"""Guardado automático para Android"""
+	if is_mobile and game_started and not is_game_over:
+		save_game_state()
+
+func save_game_state():
+	"""Guardar estado del juego en archivo persistente"""
+	if not is_mobile:
+		return
+	
+	var save_data = {
+		"version": "1.0",
+		"timestamp": Time.get_unix_time_from_system(),
+		"game_started": game_started,
+		"current_round": get_current_round(),
+		"current_score": get_current_score(),
+		"enemies_killed": enemies_killed,
+		"player_health": player.get_current_health() if player and player.has_method("get_current_health") else 4,
+		"player_max_health": player.get_max_health() if player and player.has_method("get_max_health") else 4,
+		"character_name": selected_character_stats.character_name if selected_character_stats else "",
+		"game_state": game_state
+	}
+	
+	var file = FileAccess.open(save_file_path, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(save_data))
+		file.close()
+		print("💾 Juego guardado automáticamente")
+	else:
+		print("❌ Error guardando juego")
+
+func load_game_if_exists():
+	"""Cargar juego guardado si existe"""
+	if not FileAccess.file_exists(save_file_path):
+		print("📁 No hay partida guardada")
+		return
+	
+	var file = FileAccess.open(save_file_path, FileAccess.READ)
+	if not file:
+		print("❌ Error abriendo archivo de guardado")
+		return
+	
+	var json_string = file.get_as_text()
+	file.close()
+	
+	var json = JSON.new()
+	var parse_result = json.parse(json_string)
+	
+	if parse_result != OK:
+		print("❌ Error parseando archivo de guardado")
+		return
+	
+	var save_data = json.data
+	
+	# VERIFICAR VERSIÓN Y DATOS
+	if not save_data.has("version") or not save_data.has("game_started"):
+		print("❌ Archivo de guardado inválido")
+		return
+	
+	if not save_data.game_started:
+		print("📁 Partida guardada no iniciada")
+		return
+	
+	# RESTAURAR ESTADO DEL JUEGO
+	game_started = save_data.get("game_started", false)
+	enemies_killed = save_data.get("enemies_killed", 0)
+	game_state = save_data.get("game_state", "character_selection")
+	
+	# CARGAR PERSONAJE
+	var character_name = save_data.get("character_name", "")
+	if character_name != "":
+		selected_character_stats = load_character_by_name(character_name)
+	
+	print("💾 Partida cargada: Ronda ", save_data.get("current_round", 1), " - Puntos: ", save_data.get("current_score", 0))
+	
+	# RESTAURAR JUEGO DIRECTAMENTE
+	if selected_character_stats:
+		await get_tree().process_frame
+		restore_game_from_save(save_data)
+
+func load_character_by_name(char_name: String) -> CharacterStats:
+	"""Cargar personaje por nombre"""
+	var character_paths = {
+		"pelao": "res://scenes/characters/pelao_stats.tres",
+		"juancar": "res://scenes/characters/juancar_stats.tres",
+		"chica": "res://scenes/characters/chica_stats.tres"
+	}
+	
+	var path = character_paths.get(char_name.to_lower(), "")
+	if path != "" and ResourceLoader.exists(path):
+		return load(path) as CharacterStats
+	
+	return null
+
+func restore_game_from_save(save_data: Dictionary):
+	"""Restaurar juego desde datos guardados"""
+	game_state = "playing"
+	
+	setup_player_after_selection()
+	
+	if not player or player.get_current_health() <= 0:
+		return
+	
+	# RESTAURAR VIDA DEL JUGADOR
+	var saved_health = save_data.get("player_health", 4)
+	var saved_max_health = save_data.get("player_max_health", 4)
+	player.current_health = saved_health
+	player.max_health = saved_max_health
+	
+	if is_mobile:
+		setup_mobile_controls()
+	
+	await setup_unified_cod_system_safe()
+	
+	if player:
+		player.visible = true
+		setup_player_collision_layers()
+		setup_new_animation_system()
+		
+		player.set_physics_process(true)
+		player.set_process(true)
+		if not player.player_died.is_connected(_on_player_died):
+			player.player_died.connect(_on_player_died)
+	
+	# RESTAURAR PUNTUACIÓN Y RONDA
+	if score_system:
+		score_system.current_score = save_data.get("current_score", 0)
+	
+	enemies_killed = save_data.get("enemies_killed", 0)
+	
+	var saved_round = save_data.get("current_round", 1)
+	if rounds_manager:
+		rounds_manager.current_round = saved_round
+	
+	print("🎮 Juego restaurado exitosamente")
+	
+	await get_tree().create_timer(2.0).timeout
+	start_enemy_spawning_safely()
 
 func setup_wall_system():
 	"""Configurar sistema de paredes"""
@@ -102,12 +267,24 @@ func setup_collision_layers():
 	pass
 
 func _input(event):
-	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.keycode == KEY_ESCAPE):
+	# MANEJO ESPECIAL DEL BOTÓN BACK EN ANDROID
+	if is_mobile and event is InputEventKey and event.keycode == KEY_BACK and event.pressed:
+		print("📱 Botón BACK presionado en Android")
 		if game_started and game_state == "playing" and not is_game_over:
+			# PAUSAR EN LUGAR DE CERRAR
 			toggle_pause_menu()
+			get_viewport().set_input_as_handled()
+			return
+		elif pause_menu and pause_menu.is_paused:
+			# SI YA ESTÁ PAUSADO, REANUDAR
+			pause_menu.hide_menu()
+			get_viewport().set_input_as_handled()
+			return
+		# EN OTROS CASOS, NO HACER NADA (NO CERRAR EL JUEGO)
+		get_viewport().set_input_as_handled()
 		return
 	
-	if event is InputEventKey and event.keycode == KEY_BACK:
+	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.keycode == KEY_ESCAPE):
 		if game_started and game_state == "playing" and not is_game_over:
 			toggle_pause_menu()
 		return
@@ -115,7 +292,7 @@ func _input(event):
 	if event.is_action_pressed("toggle_fullscreen"):
 		toggle_fullscreen()
 	
-	# NUEVA: Tecla E para interactuar en PC
+	# INTERACCIÓN MEJORADA - E para interactuar o comprar
 	if event.is_action_pressed("ui_accept") or (event is InputEventKey and event.keycode == KEY_E):
 		if player and wall_system:
 			handle_interaction()
@@ -131,7 +308,7 @@ func _input(event):
 		handle_drag_event(event)
 
 func handle_interaction():
-	"""Manejar interacción con elementos del mundo"""
+	"""Manejar interacción mejorada con elementos del mundo"""
 	var interactable = wall_system.can_player_interact()
 	if not interactable:
 		return
@@ -142,6 +319,9 @@ func handle_interaction():
 		if score_system and score_system.get_current_score() >= cost:
 			if wall_system.purchase_door(interactable):
 				score_system.add_bonus_points(-cost, interactable.global_position, "door_purchase")
+				print("🚪 Puerta comprada por ", cost, " puntos")
+		else:
+			print("💰 Puntos insuficientes para la puerta")
 	elif interactable.name.begins_with("Barricade_"):
 		# Es una barricada
 		var cost = interactable.get_meta("repair_cost", 10)
@@ -149,6 +329,9 @@ func handle_interaction():
 			if wall_system.repair_barricade(interactable):
 				score_system.add_repair_points(interactable.global_position, 1)
 				score_system.add_bonus_points(-cost, interactable.global_position, "repair_purchase")
+				print("🔨 Barricada reparada por ", cost, " puntos")
+		else:
+			print("💰 Puntos insuficientes para reparar")
 
 func _physics_process(_delta):
 	"""Aplicar movimiento móvil"""
@@ -204,11 +387,15 @@ func _on_character_selected(character_stats: CharacterStats):
 	
 	game_started = true
 	
+	# GUARDAR INMEDIATAMENTE DESPUÉS DE SELECCIONAR PERSONAJE
+	if is_mobile:
+		save_game_state()
+	
 	await get_tree().create_timer(3.0).timeout
 	start_enemy_spawning_safely()
 
 func setup_new_animation_system():
-	"""CONFIGURAR NUEVO SISTEMA DE ANIMACIONES BASADO EN DIRECCIÓN DE MOVIMIENTO"""
+	"""CONFIGURAR SISTEMA DE ANIMACIONES CORREGIDO"""
 	if not player or not player.animated_sprite:
 		return
 	
@@ -259,9 +446,9 @@ func setup_unified_cod_system_safe():
 	
 	enemy_spawner = EnemySpawner.new()
 	enemy_spawner.name = "EnemySpawner"
-	enemy_spawner.spawn_radius_min = 800.0  # MÁS LEJOS PARA HABITACIÓN GRANDE
-	enemy_spawner.spawn_radius_max = 1500.0  # MÁS LEJOS PARA HABITACIÓN GRANDE
-	enemy_spawner.despawn_distance = 2000.0
+	enemy_spawner.spawn_radius_min = 1200.0  # PARA ÁREA GIGANTE
+	enemy_spawner.spawn_radius_max = 2000.0  # PARA ÁREA GIGANTE
+	enemy_spawner.despawn_distance = 2800.0
 	add_child(enemy_spawner)
 	
 	enemy_spawner.setup(player, rounds_manager)
@@ -279,12 +466,15 @@ func setup_unified_cod_system_safe():
 		score_system.set_character_name(selected_character_stats.character_name)
 	
 	rounds_manager.start_round(1)
-# PARTE 2 DE 3 - FUNCIONES DE EVENTOS Y MANEJO DE CONTROLES
 
 func _on_round_changed(new_round: int):
 	"""Actualizar ronda"""
 	if score_system:
 		score_system.set_current_round(new_round)
+	
+	# GUARDAR CUANDO CAMBIE DE RONDA
+	if is_mobile:
+		save_game_state()
 
 func _on_enemies_remaining_changed(_remaining: int):
 	"""Enemigos restantes cambiados"""
@@ -309,10 +499,13 @@ func toggle_fullscreen():
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 func toggle_pause_menu():
-	"""Alternar menú de pausa"""
+	"""Alternar menú de pausa CON GUARDADO AUTOMÁTICO"""
 	if pause_menu.is_paused:
 		pause_menu.hide_menu()
 	else:
+		# GUARDAR ANTES DE PAUSAR
+		if is_mobile:
+			save_game_state()
 		pause_menu.show_menu()
 
 func _on_mobile_menu_pressed():
@@ -328,7 +521,11 @@ func _on_restart_game():
 	restart_entire_game()
 
 func _on_quit_game():
-	"""Salir del juego CORRECTAMENTE"""
+	"""Salir del juego CORRECTAMENTE CON GUARDADO"""
+	# GUARDAR ANTES DE SALIR
+	if is_mobile:
+		save_game_state()
+	
 	cleanup_before_exit()
 	get_tree().quit()
 
@@ -349,7 +546,7 @@ func setup_pause_menu():
 		mobile_menu_button.force_show()
 
 func setup_background():
-	"""Configurar fondo EXPANDIDO PARA HABITACIÓN GRANDE"""
+	"""Configurar fondo PARA ÁREA GIGANTE"""
 	background_sprite = Sprite2D.new()
 	background_sprite.name = "Background"
 	background_sprite.z_index = -100
@@ -360,17 +557,17 @@ func setup_background():
 		background_sprite.position = Vector2(0, 0)
 		
 		var texture_size = jungle_texture.get_size()
-		# ESCALADO MAYOR PARA CUBRIR HABITACIÓN MASIVA
-		var scale_factor_x = 12000.0 / float(texture_size.x)  # MÁS GRANDE
-		var scale_factor_y = 8000.0 / float(texture_size.y)   # MÁS GRANDE
+		# ESCALADO GIGANTE PARA ÁREA 4000x3000
+		var scale_factor_x = 20000.0 / float(texture_size.x)
+		var scale_factor_y = 15000.0 / float(texture_size.y)
 		background_sprite.scale = Vector2(scale_factor_x, scale_factor_y)
 		
 		add_child(background_sprite)
 	else:
 		var temp_bg = ColorRect.new()
 		temp_bg.color = Color(0.2, 0.4, 0.2)
-		temp_bg.size = Vector2(4000, 3000)  # FONDO MÁS GRANDE
-		temp_bg.position = Vector2(-2000, -1500)
+		temp_bg.size = Vector2(8000, 6000)  # FONDO GIGANTE
+		temp_bg.position = Vector2(-4000, -3000)
 		temp_bg.z_index = -100
 		add_child(temp_bg)
 
@@ -394,23 +591,23 @@ func setup_window():
 		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
 		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
 
-# ===== CONTROLES MÓVILES CON BOTONES REPOSICIONADOS =====
+# ===== CONTROLES MÓVILES CON BOTÓN DÓLAR =====
 
 func handle_touch_event(event: InputEventScreenTouch):
-	"""Manejar toques MEJORADO con botones reposicionados"""
+	"""Manejar toques CON BOTÓN DÓLAR"""
 	var touch_pos = event.position
 	var touch_id = event.index
 	
 	if event.pressed:
-		# PRIORIDAD 1: BOTONES DE ACCIÓN (MELEE Y RECARGAR/INTERACTUAR)
+		# PRIORIDAD 1: BOTONES DE ACCIÓN (MELEE Y DÓLAR)
 		if melee_button and is_point_in_button_area(touch_pos, melee_button) and melee_touch_id == -1:
 			melee_touch_id = touch_id
 			handle_melee_button_press()
 			return
 		
-		if reload_interact_button and is_point_in_button_area(touch_pos, reload_interact_button) and reload_interact_touch_id == -1:
-			reload_interact_touch_id = touch_id
-			handle_reload_interact_button_press()
+		if dollar_interact_button and is_point_in_button_area(touch_pos, dollar_interact_button) and dollar_interact_touch_id == -1:
+			dollar_interact_touch_id = touch_id
+			handle_dollar_interact_button_press()
 			return
 		
 		# PRIORIDAD 2: JOYSTICKS
@@ -433,9 +630,9 @@ func handle_touch_event(event: InputEventScreenTouch):
 		elif touch_id == melee_touch_id:
 			melee_touch_id = -1
 			handle_melee_button_release()
-		elif touch_id == reload_interact_touch_id:
-			reload_interact_touch_id = -1
-			handle_reload_interact_button_release()
+		elif touch_id == dollar_interact_touch_id:
+			dollar_interact_touch_id = -1
+			handle_dollar_interact_button_release()
 
 func handle_drag_event(event: InputEventScreenDrag):
 	"""Manejar arrastre"""
@@ -513,7 +710,7 @@ func handle_shooting_joystick(touch_pos: Vector2):
 			player.mobile_is_shooting = false
 			player.mobile_shoot_direction = Vector2.ZERO
 
-# NUEVAS FUNCIONES PARA BOTONES REPOSICIONADOS
+# NUEVAS FUNCIONES PARA BOTÓN DÓLAR
 
 func handle_melee_button_press():
 	"""Manejar presión de botón melee"""
@@ -532,39 +729,32 @@ func handle_melee_button_release():
 		tween.tween_property(melee_button, "scale", Vector2(1.0, 1.0), 0.1)
 		tween.tween_property(melee_button, "modulate", Color.WHITE, 0.2)
 
-func handle_reload_interact_button_press():
-	"""Manejar presión del botón DUAL recargar/interactuar"""
-	# PRIORIDAD: INTERACTUAR si hay elemento disponible
+func handle_dollar_interact_button_press():
+	"""Manejar presión del botón DÓLAR - SOLO INTERACTUAR/COMPRAR"""
+	# SOLO INTERACCIÓN/COMPRA
 	if wall_system:
 		var interactable = wall_system.can_player_interact()
 		if interactable:
 			handle_interaction()
 			
-			if reload_interact_button:
+			if dollar_interact_button:
 				var tween = create_tween()
-				tween.tween_property(reload_interact_button, "modulate", Color.CYAN, 0.2)
-				tween.tween_property(reload_interact_button, "scale", Vector2(0.9, 0.9), 0.1)
+				tween.tween_property(dollar_interact_button, "modulate", Color.GOLD, 0.2)
+				tween.tween_property(dollar_interact_button, "scale", Vector2(0.9, 0.9), 0.1)
 			return
 	
-	# SECUNDARIO: RECARGAR si no hay interacción
-	if player and player.has_method("start_manual_reload"):
-		var reload_started = player.start_manual_reload()
-		
-		if reload_interact_button:
-			var tween = create_tween()
-			if reload_started:
-				tween.tween_property(reload_interact_button, "modulate", Color.GREEN, 0.2)
-			else:
-				tween.tween_property(reload_interact_button, "modulate", Color.RED, 0.1)
-			
-			tween.tween_property(reload_interact_button, "scale", Vector2(0.9, 0.9), 0.1)
-
-func handle_reload_interact_button_release():
-	"""Manejar liberación del botón dual"""
-	if reload_interact_button:
+	# SI NO HAY INTERACCIÓN, FEEDBACK VISUAL NEGATIVO
+	if dollar_interact_button:
 		var tween = create_tween()
-		tween.tween_property(reload_interact_button, "scale", Vector2(1.0, 1.0), 0.1)
-		tween.tween_property(reload_interact_button, "modulate", Color.WHITE, 0.2)
+		tween.tween_property(dollar_interact_button, "modulate", Color.RED, 0.1)
+		tween.tween_property(dollar_interact_button, "scale", Vector2(0.9, 0.9), 0.1)
+
+func handle_dollar_interact_button_release():
+	"""Manejar liberación del botón dólar"""
+	if dollar_interact_button:
+		var tween = create_tween()
+		tween.tween_property(dollar_interact_button, "scale", Vector2(1.0, 1.0), 0.1)
+		tween.tween_property(dollar_interact_button, "modulate", Color.WHITE, 0.2)
 
 func reset_movement_joystick():
 	"""Reset joystick movimiento"""
@@ -584,10 +774,9 @@ func reset_shooting_joystick():
 	if player:
 		player.mobile_is_shooting = false
 		player.mobile_shoot_direction = Vector2.ZERO
-# PARTE 3 DE 3 - SETUP DE CONTROLES MÓVILES Y FUNCIONES FINALES
 
 func setup_mobile_controls():
-	"""Configurar controles móviles"""
+	"""Configurar controles móviles CON BOTÓN DÓLAR"""
 	if not is_mobile:
 		return
 	
@@ -602,7 +791,7 @@ func setup_mobile_controls():
 	
 	create_movement_joystick_large()
 	create_shooting_joystick_large()
-	create_mobile_action_buttons_repositioned()
+	create_mobile_action_buttons_with_dollar()
 	
 	if movement_joystick_base:
 		movement_joystick_base.visible = true
@@ -612,24 +801,24 @@ func setup_mobile_controls():
 		shooting_joystick_base.visible = true  
 		shooting_joystick_base.modulate = Color.WHITE
 
-func create_mobile_action_buttons_repositioned():
-	"""Crear botones GRANDES a la IZQUIERDA del joystick de disparo"""
+func create_mobile_action_buttons_with_dollar():
+	"""Crear botones con BOTÓN DÓLAR para interacciones"""
 	if not is_mobile or not mobile_controls:
 		return
 	
 	var viewport_size = get_viewport().get_visible_rect().size
 	
 	# POSICIÓN BASE A LA IZQUIERDA DEL JOYSTICK DE DISPARO
-	var joystick_shooting_x = viewport_size.x * 0.78  # Posición del joystick
-	var buttons_x = joystick_shooting_x - 200  # 200px a la izquierda
+	var joystick_shooting_x = viewport_size.x * 0.78
+	var buttons_x = joystick_shooting_x - 200
 	
 	# BOTÓN MELEE - ARRIBA
 	melee_button = Button.new()
 	melee_button.text = "⚔"
-	melee_button.size = Vector2(150, 150)  # MUY GRANDE
+	melee_button.size = Vector2(150, 150)
 	melee_button.position = Vector2(
 		buttons_x,
-		viewport_size.y * 0.25  # ARRIBA
+		viewport_size.y * 0.25
 	)
 	melee_button.add_theme_font_size_override("font_size", 70)
 	
@@ -648,30 +837,30 @@ func create_mobile_action_buttons_repositioned():
 	
 	mobile_controls.add_child(melee_button)
 	
-	# BOTÓN RECARGAR/INTERACTUAR - ABAJO
-	reload_interact_button = Button.new()
-	reload_interact_button.text = "🔄"
-	reload_interact_button.size = Vector2(150, 150)  # MUY GRANDE
-	reload_interact_button.position = Vector2(
+	# BOTÓN DÓLAR - INTERACTUAR/COMPRAR - ABAJO
+	dollar_interact_button = Button.new()
+	dollar_interact_button.text = "💰"  # SÍMBOLO DE DÓLAR/DINERO
+	dollar_interact_button.size = Vector2(150, 150)
+	dollar_interact_button.position = Vector2(
 		buttons_x,
-		viewport_size.y * 0.55  # ABAJO, SEPARADO DEL MELEE
+		viewport_size.y * 0.55
 	)
-	reload_interact_button.add_theme_font_size_override("font_size", 70)
+	dollar_interact_button.add_theme_font_size_override("font_size", 70)
 	
-	var reload_style = StyleBoxFlat.new()
-	reload_style.bg_color = Color(0.1, 0.4, 0.8, 0.9)
-	reload_style.corner_radius_top_left = 75
-	reload_style.corner_radius_top_right = 75
-	reload_style.corner_radius_bottom_left = 75
-	reload_style.corner_radius_bottom_right = 75
-	reload_style.border_color = Color.CYAN
-	reload_style.border_width_left = 4
-	reload_style.border_width_right = 4
-	reload_style.border_width_top = 4
-	reload_style.border_width_bottom = 4
-	reload_interact_button.add_theme_stylebox_override("normal", reload_style)
+	var dollar_style = StyleBoxFlat.new()
+	dollar_style.bg_color = Color(0.8, 0.6, 0.0, 0.9)  # DORADO
+	dollar_style.corner_radius_top_left = 75
+	dollar_style.corner_radius_top_right = 75
+	dollar_style.corner_radius_bottom_left = 75
+	dollar_style.corner_radius_bottom_right = 75
+	dollar_style.border_color = Color.GOLD
+	dollar_style.border_width_left = 4
+	dollar_style.border_width_right = 4
+	dollar_style.border_width_top = 4
+	dollar_style.border_width_bottom = 4
+	dollar_interact_button.add_theme_stylebox_override("normal", dollar_style)
 	
-	mobile_controls.add_child(reload_interact_button)
+	mobile_controls.add_child(dollar_interact_button)
 
 func create_movement_joystick_large():
 	"""Crear joystick movimiento"""
@@ -813,21 +1002,25 @@ func create_shooting_joystick_large():
 	shooting_joystick_base.add_child(shooting_joystick_knob)
 	shooting_joystick_center = shooting_joystick_base.global_position + Vector2(shooting_joystick_max_distance, shooting_joystick_max_distance)
 
-# ===== GAME OVER Y FUNCIONES FINALES =====
+# ===== FUNCIONES FINALES =====
 
 func _on_player_died():
-	"""Cuando muere el jugador"""
+	"""Cuando muere el jugador CON GUARDADO"""
 	if is_game_over:
 		return
 	
 	is_game_over = true
 	pause_enemy_spawning()
 	
+	# GUARDAR ESTADO FINAL
+	if is_mobile:
+		save_game_state()
+	
 	await get_tree().create_timer(1.0).timeout
 	show_game_over_screen()
 
 func show_game_over_screen():
-	"""Mostrar pantalla Game Over"""
+	"""Mostrar pantalla Game Over MEJORADA"""
 	if game_over_screen:
 		return
 	
@@ -843,7 +1036,7 @@ func show_game_over_screen():
 	
 	var panel = Panel.new()
 	var viewport_size = get_viewport().get_visible_rect().size
-	var panel_size = Vector2(400, 300) if not is_mobile else Vector2(min(viewport_size.x * 0.9, 500), 400)
+	var panel_size = Vector2(400, 350) if not is_mobile else Vector2(min(viewport_size.x * 0.9, 500), 450)
 	panel.size = panel_size
 	panel.position = Vector2(
 		(viewport_size.x - panel_size.x) / 2.0,
@@ -865,7 +1058,7 @@ func show_game_over_screen():
 	game_over_screen.add_child(panel)
 	
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 30)
+	vbox.add_theme_constant_override("separation", 25)
 	vbox.position = Vector2(30, 30)
 	vbox.size = Vector2(panel_size.x - 60, panel_size.y - 60)
 	panel.add_child(vbox)
@@ -908,6 +1101,15 @@ func show_game_over_screen():
 	kills_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats_container.add_child(kills_label)
 	
+	# MENSAJE ESPECIAL PARA ANDROID
+	if is_mobile:
+		var save_info = Label.new()
+		save_info.text = "💾 Partida guardada automáticamente"
+		save_info.add_theme_font_size_override("font_size", 16)
+		save_info.add_theme_color_override("font_color", Color.GREEN)
+		save_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stats_container.add_child(save_info)
+	
 	var buttons_container = VBoxContainer.new()
 	buttons_container.add_theme_constant_override("separation", 15)
 	vbox.add_child(buttons_container)
@@ -932,7 +1134,7 @@ func show_game_over_screen():
 	buttons_container.add_child(retry_btn)
 	
 	var quit_btn = Button.new()
-	quit_btn.text = "❌ SALIR"
+	quit_btn.text = "❌ SALIR" if not is_mobile else "🏠 MENÚ PRINCIPAL"
 	quit_btn.custom_minimum_size = Vector2(300, 50) if not is_mobile else Vector2(350, 60)
 	quit_btn.add_theme_font_size_override("font_size", 20)
 	quit_btn.add_theme_color_override("font_color", Color.WHITE)
@@ -946,7 +1148,12 @@ func show_game_over_screen():
 	quit_btn.add_theme_stylebox_override("normal", quit_style)
 	
 	quit_btn.pressed.connect(func():
-		get_tree().quit()
+		if is_mobile:
+			# EN MÓVIL: VOLVER AL MENÚ PRINCIPAL
+			restart_entire_game()
+		else:
+			# EN PC: SALIR COMPLETAMENTE
+			get_tree().quit()
 	)
 	buttons_container.add_child(quit_btn)
 	
@@ -954,22 +1161,34 @@ func show_game_over_screen():
 	get_tree().paused = true
 
 func restart_entire_game():
-	"""Reiniciar juego completo"""
+	"""Reiniciar juego completo CON LIMPIEZA DE GUARDADO"""
 	clear_all_enemies()
 	is_game_over = false
 	game_started = false
 	enemies_killed = 0
 	game_state = "character_selection"
 	
+	# LIMPIAR ARCHIVO DE GUARDADO EN MÓVIL
+	if is_mobile and FileAccess.file_exists(save_file_path):
+		var file = FileAccess.open(save_file_path, FileAccess.WRITE)
+		if file:
+			file.store_string("")  # LIMPIAR ARCHIVO
+			file.close()
+		print("💾 Archivo de guardado limpiado")
+	
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 
 func _on_enemy_killed(_enemy: Enemy):
-	"""Registrar kill de enemigo"""
+	"""Registrar kill de enemigo CON GUARDADO PERIÓDICO"""
 	enemies_killed += 1
 	
 	if rounds_manager:
 		rounds_manager.on_enemy_killed()
+	
+	# GUARDAR CADA 10 KILLS EN MÓVIL
+	if is_mobile and enemies_killed % 10 == 0:
+		save_game_state()
 
 func _on_enemy_spawned(_enemy: Enemy):
 	"""Enemigo spawneado"""
@@ -1014,19 +1233,33 @@ func is_game_active() -> bool:
 	return game_started and not is_game_over and game_state == "playing"
 
 func _notification(what):
-	"""Manejar notificaciones del sistema"""
+	"""Manejar notificaciones del sistema CON GUARDADO"""
 	match what:
 		NOTIFICATION_WM_CLOSE_REQUEST:
+			# GUARDAR ANTES DE CERRAR
+			if is_mobile:
+				save_game_state()
 			cleanup_before_exit()
 			get_tree().quit()
 		NOTIFICATION_APPLICATION_PAUSED:
-			if is_game_active():
-				toggle_pause_menu()
+			# GUARDAR CUANDO LA APP SE PAUSA
+			if is_mobile and is_game_active():
+				save_game_state()
+				if not pause_menu.is_paused:
+					toggle_pause_menu()
+		NOTIFICATION_APPLICATION_RESUMED:
+			# CUANDO LA APP SE REANUDA
+			if is_mobile:
+				print("📱 Aplicación reanudada")
 
 func cleanup_before_exit():
-	"""Limpiar todo antes de salir del juego"""
+	"""Limpiar todo antes de salir"""
 	set_process(false)
 	set_physics_process(false)
+	
+	# GUARDAR FINAL EN MÓVIL
+	if is_mobile:
+		save_game_state()
 	
 	if enemy_spawner:
 		enemy_spawner.clear_all_enemies()
