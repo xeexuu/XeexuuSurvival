@@ -1,4 +1,4 @@
-# AnimationController.gd - SISTEMA DE ANIMACIÓN CORREGIDO CON MOVIMIENTO + DISPARO SEPARADOS
+# AnimationController.gd - SISTEMA DE ANIMACIÓN CORREGIDO CON ÁNGULOS ESPECÍFICOS
 extends Node
 class_name AnimationController
 
@@ -10,6 +10,8 @@ var is_system_ready: bool = false
 # Atlas completos
 var walk_right_down_atlas: Texture2D
 var walk_right_up_atlas: Texture2D
+var walk_left_up_atlas: Texture2D
+var walk_left_down_atlas: Texture2D
 
 # Estado de animación
 var current_animation: String = "idle"
@@ -24,17 +26,23 @@ func setup(sprite: AnimatedSprite2D, char_name: String):
 	create_directional_animations()
 
 func load_atlases():
-	"""Cargar los dos atlas principales"""
+	"""Cargar los cuatro atlas principales"""
 	var folder = get_character_folder_name()
 	
 	walk_right_down_atlas = load_texture_safe("res://sprites/player/" + folder + "/walk_Right_Down.png")
 	walk_right_up_atlas = load_texture_safe("res://sprites/player/" + folder + "/walk_Right_Up.png")
+	walk_left_up_atlas = load_texture_safe("res://sprites/player/" + folder + "/walk_Left_Up.png")
+	walk_left_down_atlas = load_texture_safe("res://sprites/player/" + folder + "/walk_Left_Down.png")
 	
 	# Fallback a chica si no encuentra
 	if not walk_right_down_atlas:
 		walk_right_down_atlas = load_texture_safe("res://sprites/player/chica/walk_Right_Down.png")
 	if not walk_right_up_atlas:
 		walk_right_up_atlas = load_texture_safe("res://sprites/player/chica/walk_Right_Up.png")
+	if not walk_left_up_atlas:
+		walk_left_up_atlas = load_texture_safe("res://sprites/player/chica/walk_Left_Up.png")
+	if not walk_left_down_atlas:
+		walk_left_down_atlas = load_texture_safe("res://sprites/player/chica/walk_Left_Down.png")
 
 func load_texture_safe(path: String) -> Texture2D:
 	if ResourceLoader.exists(path):
@@ -56,7 +64,7 @@ func create_directional_animations():
 		var first_frame = extract_frame(walk_right_down_atlas, 0)
 		sprite_frames.add_frame("idle", first_frame)
 	
-	# WALK_RIGHT_DOWN (hacia abajo a la derecha)
+	# WALK_RIGHT_DOWN (1° a 89°)
 	sprite_frames.add_animation("walk_right_down")
 	sprite_frames.set_animation_speed("walk_right_down", 12.0)
 	sprite_frames.set_animation_loop("walk_right_down", true)
@@ -65,7 +73,7 @@ func create_directional_animations():
 			var frame = extract_frame(walk_right_down_atlas, i)
 			sprite_frames.add_frame("walk_right_down", frame)
 	
-	# WALK_RIGHT_UP (hacia arriba a la derecha)
+	# WALK_RIGHT_UP (90° a 179°)
 	sprite_frames.add_animation("walk_right_up")
 	sprite_frames.set_animation_speed("walk_right_up", 12.0)
 	sprite_frames.set_animation_loop("walk_right_up", true)
@@ -73,19 +81,30 @@ func create_directional_animations():
 		for i in range(8):
 			var frame = extract_frame(walk_right_up_atlas, i)
 			sprite_frames.add_frame("walk_right_up", frame)
-	else:
-		# Si no hay up, copiar down
-		for i in range(sprite_frames.get_frame_count("walk_right_down")):
-			var frame = sprite_frames.get_frame_texture("walk_right_down", i)
-			sprite_frames.add_frame("walk_right_up", frame)
+	
+	# WALK_LEFT_UP (180° a 270°)
+	sprite_frames.add_animation("walk_left_up")
+	sprite_frames.set_animation_speed("walk_left_up", 12.0)
+	sprite_frames.set_animation_loop("walk_left_up", true)
+	if walk_left_up_atlas:
+		for i in range(8):
+			var frame = extract_frame(walk_left_up_atlas, i)
+			sprite_frames.add_frame("walk_left_up", frame)
+	
+	# WALK_LEFT_DOWN (271° a 0°)
+	sprite_frames.add_animation("walk_left_down")
+	sprite_frames.set_animation_speed("walk_left_down", 12.0)
+	sprite_frames.set_animation_loop("walk_left_down", true)
+	if walk_left_down_atlas:
+		for i in range(8):
+			var frame = extract_frame(walk_left_down_atlas, i)
+			sprite_frames.add_frame("walk_left_down", frame)
 	
 	# Asignar y configurar
 	animated_sprite.sprite_frames = sprite_frames
 	animated_sprite.play("idle")
 	animated_sprite.pause()
 	is_system_ready = true
-	
-	print("✅ Sistema de animación direccional listo para: ", character_name)
 
 func extract_frame(atlas: Texture2D, frame_index: int) -> Texture2D:
 	var frame_width = 128.0
@@ -97,9 +116,9 @@ func extract_frame(atlas: Texture2D, frame_index: int) -> Texture2D:
 	
 	return atlas_frame
 
-# FUNCIÓN PRINCIPAL CORREGIDA: ANIMACIÓN COMBINADA MOVIMIENTO + DISPARO
+# FUNCIÓN PRINCIPAL: ANIMACIÓN COMBINADA MOVIMIENTO + DISPARO CON ÁNGULOS ESPECÍFICOS
 func update_animation_combined(movement: Vector2, aim_direction: Vector2):
-	"""SISTEMA CORREGIDO: maneja movimiento y disparo por separado"""
+	"""SISTEMA CON ÁNGULOS ESPECÍFICOS SEGÚN ESPECIFICACIONES"""
 	if not is_system_ready:
 		return
 	
@@ -116,7 +135,7 @@ func update_animation_combined(movement: Vector2, aim_direction: Vector2):
 	if is_aiming:
 		# PRIORIDAD 1: Dirección de aim/disparo
 		animation_direction = aim_direction.normalized()
-		last_aim_direction = animation_direction  # Recordar para cuando no esté apuntando
+		last_aim_direction = animation_direction
 	elif is_moving:
 		# PRIORIDAD 2: Dirección de movimiento
 		animation_direction = movement.normalized()
@@ -126,53 +145,45 @@ func update_animation_combined(movement: Vector2, aim_direction: Vector2):
 	
 	# APLICAR ANIMACIÓN BASÁNDOSE EN LA DIRECCIÓN PRINCIPAL
 	if is_moving or is_aiming:
-		# DETERMINAR ANIMACIÓN Y FLIP
-		var animation_name = "walk_right_down"  # Por defecto
-		var should_flip = false
+		# DETERMINAR ANIMACIÓN SEGÚN ÁNGULOS ESPECÍFICOS
+		var animation_name = determine_animation_by_exact_angles(animation_direction)
 		
-		# LÓGICA MEJORADA DE ANIMACIÓN BASADA EN DIRECCIÓN:
-		var angle = animation_direction.angle()
-		var angle_degrees = rad_to_deg(angle)
-		
-		# Normalizar ángulo a 0-360
-		if angle_degrees < 0:
-			angle_degrees += 360
-		
-		# DETERMINAR ANIMACIÓN SEGÚN CUADRANTE
-		if angle_degrees >= 315 or angle_degrees < 45:
-			# DERECHA (0°-45° y 315°-360°)
-			animation_name = "walk_right_down"
-			should_flip = false
-		elif angle_degrees >= 45 and angle_degrees < 135:
-			# ABAJO (45°-135°)
-			animation_name = "walk_right_down"
-			should_flip = false
-		elif angle_degrees >= 135 and angle_degrees < 225:
-			# IZQUIERDA (135°-225°)
-			animation_name = "walk_right_down"
-			should_flip = true
-		elif angle_degrees >= 225 and angle_degrees < 315:
-			# ARRIBA (225°-315°)
-			animation_name = "walk_right_up"
-			should_flip = true
-		
-		# Si está entre arriba-derecha y arriba-izquierda, usar animación up
-		if angle_degrees >= 315 or angle_degrees < 45:
-			if angle_degrees > 330 or angle_degrees < 30:
-				# Más hacia arriba, usar animación up
-				animation_name = "walk_right_up"
-		
-		# APLICAR ANIMACIÓN Y FLIP
+		# APLICAR ANIMACIÓN SIN FLIP (ya está manejado por los atlas específicos)
 		play_animation(animation_name)
-		animated_sprite.flip_h = should_flip
-		
-		# DEBUG: Mostrar información
-		print("🎯 Dir: ", animation_direction, " Angle: ", int(angle_degrees), "° -> Anim: ", animation_name, " Flip: ", should_flip)
-		
+		animated_sprite.flip_h = false  # Los atlas ya manejan la orientación
 	else:
 		# IDLE
 		play_animation("idle")
 		animated_sprite.pause()
+
+func determine_animation_by_exact_angles(direction: Vector2) -> String:
+	"""Determinar animación según ángulos específicos"""
+	var angle = direction.angle()
+	var angle_degrees = rad_to_deg(angle)
+	
+	# Normalizar ángulo a 0-360
+	if angle_degrees < 0:
+		angle_degrees += 360
+	
+	# APLICAR ÁNGULOS ESPECÍFICOS SEGÚN ESPECIFICACIONES
+	if angle_degrees >= 1 and angle_degrees <= 89:
+		# 1° a 89° - DERECHA ABAJO
+		return "walk_right_down"
+	elif angle_degrees >= 90 and angle_degrees <= 179:
+		# 90° a 179° - DERECHA ARRIBA
+		return "walk_right_up"
+	elif angle_degrees >= 180 and angle_degrees <= 270:
+		# 180° a 270° - IZQUIERDA ARRIBA
+		return "walk_left_up"
+	elif angle_degrees >= 271 and angle_degrees <= 360:
+		# 271° a 360° - IZQUIERDA ABAJO
+		return "walk_left_down"
+	elif angle_degrees >= 0 and angle_degrees < 1:
+		# 0° (exacto) - DERECHA ABAJO
+		return "walk_right_down"
+	else:
+		# Fallback
+		return "walk_right_down"
 
 # FUNCIÓN BACKWARD COMPATIBILITY
 func update_animation_by_shooting_direction(movement: Vector2, shooting: Vector2):
@@ -189,7 +200,7 @@ func start_melee_animation():
 	
 	# Cambiar sprite a versión más agresiva (usar primer frame con tinte rojo)
 	if animated_sprite:
-		animated_sprite.modulate = Color(1.3, 0.8, 0.8, 1.0)  # Tinte rojizo
+		animated_sprite.modulate = Color(1.3, 0.8, 0.8, 1.0)
 	
 	# Timer para finalizar animación de melee
 	var melee_timer = Timer.new()
@@ -247,8 +258,8 @@ func reset_animation_state():
 	if is_system_ready:
 		animated_sprite.play("idle")
 		animated_sprite.pause()
-		animated_sprite.flip_h = false  # RESETEAR FLIP
-		animated_sprite.modulate = Color.WHITE  # RESETEAR COLOR
+		animated_sprite.flip_h = false
+		animated_sprite.modulate = Color.WHITE
 
 func get_character_folder_name() -> String:
 	var char_name_lower = character_name.to_lower()
@@ -266,8 +277,6 @@ func get_current_animation() -> String:
 	"""Obtener animación actual"""
 	return current_animation
 
-# FUNCIONES ADICIONALES PARA COMPATIBILIDAD
-
 func update_animation_for_movement(movement_direction: Vector2, aim_direction: Vector2):
 	"""COMPATIBILITY: Actualizar animación para movimiento"""
 	update_animation_combined(movement_direction, aim_direction)
@@ -284,10 +293,6 @@ func set_character_direction(direction: Vector2):
 	"""Establecer dirección del personaje para idle"""
 	if direction.length() > 0.1:
 		last_aim_direction = direction.normalized()
-		
-		# Si está en idle, aplicar flip inmediatamente
-		if current_animation == "idle":
-			animated_sprite.flip_h = (last_aim_direction.x < 0)
 
 func get_current_facing_direction() -> Vector2:
 	"""Obtener dirección actual hacia la que mira el personaje"""
@@ -295,22 +300,11 @@ func get_current_facing_direction() -> Vector2:
 
 func is_facing_left() -> bool:
 	"""Verificar si está mirando hacia la izquierda"""
-	return animated_sprite.flip_h if animated_sprite else false
+	return false  # Ya no usamos flip_h
 
 func is_facing_right() -> bool:
 	"""Verificar si está mirando hacia la derecha"""
-	return not animated_sprite.flip_h if animated_sprite else true
-
-func debug_animation_state():
-	"""Función de debug para verificar estado"""
-	print("🎮 === ANIMATION DEBUG ===")
-	print("🎮 Sistema listo: ", is_system_ready)
-	print("🎮 Animación actual: ", current_animation)
-	print("🎮 En melee: ", is_melee_attacking)
-	print("🎮 Última dirección aim: ", last_aim_direction)
-	print("🎮 Flip horizontal: ", animated_sprite.flip_h if animated_sprite else "N/A")
-	print("🎮 Sprite frames: ", sprite_frames != null)
-	print("🎮 =========================")
+	return true  # Ya no usamos flip_h
 
 func _exit_tree():
 	"""Limpiar al salir"""
