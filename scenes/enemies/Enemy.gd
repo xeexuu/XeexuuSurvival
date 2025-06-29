@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - SISTEMA MEJORADO: MAYOR RANGO + SIN SOLAPAMIENTO + EFECTOS
+# scenes/enemies/Enemy.gd - HITBOXES COMPLETAS + IA MEJORADA + EFECTO CONO SIMPLE
 extends CharacterBody2D
 class_name Enemy
 signal died(enemy: Enemy)
@@ -9,7 +9,7 @@ signal damaged(enemy: Enemy, damage: int)
 @export var current_health: int = 150
 @export var base_move_speed: float = 120.0
 @export var damage: int = 1
-@export var attack_range: float = 180.0  # ⚡ RANGO MUCHO MAYOR (antes 80)
+@export var attack_range: float = 180.0
 @export var barricade_attack_range: float = 200.0
 @export var detection_range: float = 1400.0
 @export var attack_cooldown: float = 1.0
@@ -31,7 +31,7 @@ var zombie_atlas: Texture2D
 var current_direction: Vector2 = Vector2.RIGHT
 var last_movement_direction: Vector2 = Vector2.RIGHT
 
-# 🎯 SISTEMA DE HITBOX EXPANDIDA COMPLETA
+# 🎯 HITBOXES COMPLETAS QUE CUBREN TODO EL SPRITE
 var head_area: Area2D
 var body_area: Area2D
 var legs_area: Area2D
@@ -49,7 +49,7 @@ var last_position: Vector2
 var jump_cooldown: float = 0.0
 var is_jumping: bool = false
 var path_blocked_timer: float = 0.0
-var collision_avoidance_range: float = 80.0  # 🔧 Evitar solapamiento
+var collision_avoidance_range: float = 80.0
 
 # Estados de pathfinding mejorado
 var is_searching_alternate_route: bool = false
@@ -76,20 +76,26 @@ var search_timer: float = 0.0
 var barricade_destruction_timer: float = 0.0
 var barricade_check_timer: float = 0.0
 var path_verification_timer: float = 0.0
-var barricade_search_range: float = 500.0  # ⚡ RANGO AUMENTADO para búsqueda
+var barricade_search_range: float = 500.0
 
 func _ready():
 	add_to_group("enemies")
 	setup_enemy()
 	call_deferred("_setup_variant")
 	call_deferred("setup_animation_system")
-	call_deferred("setup_expanded_hitbox_full_sprite")
+	call_deferred("setup_complete_hitboxes")
 	last_position = global_position
 
-func setup_expanded_hitbox_full_sprite():
-	"""🎯 CONFIGURAR HITBOXES EXPANDIDAS QUE OCUPEN TODO EL SPRITE + PERÍMETRO COMPLETO"""
+func setup_complete_hitboxes():
+	"""🎯 CONFIGURAR HITBOXES QUE CUBREN COMPLETAMENTE TODO EL ALTO DEL SPRITE"""
 	
-	# ÁREA DE CABEZA - OCUPA 1/3 SUPERIOR DEL SPRITE
+	# CALCULAR POSICIONES CORRECTAS PARA CUBRIR TODO EL SPRITE
+	# Si el sprite es 128 de alto y está centrado, va de -64 a +64
+	var sprite_top = -full_sprite_height / 2.0    # -64
+	var sprite_bottom = full_sprite_height / 2.0  # +64
+	var area_height = full_sprite_height / 3.0    # 42.67 cada área
+	
+	# ÁREA DE CABEZA - 1/3 SUPERIOR (de -64 a -21.33)
 	head_area = Area2D.new()
 	head_area.name = "HeadArea"
 	head_area.collision_layer = 8
@@ -97,13 +103,13 @@ func setup_expanded_hitbox_full_sprite():
 	
 	var head_shape = CollisionShape2D.new()
 	var head_rect = RectangleShape2D.new()
-	head_rect.size = Vector2(full_sprite_width, full_sprite_height / 3.0)
-	head_shape.position = Vector2(0, -full_sprite_height / 3.0)  # Arriba
+	head_rect.size = Vector2(full_sprite_width, area_height)
+	head_shape.position = Vector2(0, sprite_top + area_height / 2.0)  # -42.67
 	head_shape.shape = head_rect
 	head_area.add_child(head_shape)
 	add_child(head_area)
 	
-	# ÁREA DE CUERPO - OCUPA 1/3 CENTRAL DEL SPRITE
+	# ÁREA DE CUERPO - 1/3 CENTRAL (de -21.33 a +21.33)
 	body_area = Area2D.new()
 	body_area.name = "BodyArea"
 	body_area.collision_layer = 8
@@ -111,13 +117,13 @@ func setup_expanded_hitbox_full_sprite():
 	
 	var body_shape = CollisionShape2D.new()
 	var body_rect = RectangleShape2D.new()
-	body_rect.size = Vector2(full_sprite_width, full_sprite_height / 3.0)
-	body_shape.position = Vector2(0, 0)  # Centro
+	body_rect.size = Vector2(full_sprite_width, area_height)
+	body_shape.position = Vector2(0, 0)  # Centro exacto
 	body_shape.shape = body_rect
 	body_area.add_child(body_shape)
 	add_child(body_area)
 	
-	# ÁREA DE PIERNAS - OCUPA 1/3 INFERIOR DEL SPRITE
+	# ÁREA DE PIERNAS - 1/3 INFERIOR (de +21.33 a +64)
 	legs_area = Area2D.new()
 	legs_area.name = "LegsArea"
 	legs_area.collision_layer = 8
@@ -125,8 +131,8 @@ func setup_expanded_hitbox_full_sprite():
 	
 	var legs_shape = CollisionShape2D.new()
 	var legs_rect = RectangleShape2D.new()
-	legs_rect.size = Vector2(full_sprite_width, full_sprite_height / 3.0)
-	legs_shape.position = Vector2(0, full_sprite_height / 3.0)  # Abajo
+	legs_rect.size = Vector2(full_sprite_width, area_height)
+	legs_shape.position = Vector2(0, sprite_bottom - area_height / 2.0)  # +42.67
 	legs_shape.shape = legs_rect
 	legs_area.add_child(legs_shape)
 	add_child(legs_area)
@@ -273,8 +279,8 @@ func _physics_process(delta):
 	dog_movement_timer += delta
 	path_verification_timer += delta
 	
-	# 🎯 **SISTEMA DE ATAQUE MEJORADO CON MAYOR RANGO + EFECTOS**
-	execute_enhanced_attack_system_with_effects()
+	# 🎯 **ATAQUE INMEDIATO AL JUGADOR CUANDO ESTÉ CERCA**
+	execute_immediate_player_attack()
 	
 	# 🚀 SISTEMA ANTI-SOLAPAMIENTO MEJORADO
 	update_collision_avoidance_system(delta)
@@ -282,8 +288,8 @@ func _physics_process(delta):
 	# DETECCIÓN INSTANTÁNEA DE BARRICADAS SIN TABLONES
 	check_barricades_instant_jump()
 	
-	# 🔍 VERIFICAR CON MAYOR RANGO SI NECESITA IR A BARRICADAS
-	check_if_barricades_needed_extended_range()
+	# 🔍 VERIFICAR SI NECESITA IR A BARRICADAS (MEJORADO PARA BÁSICOS)
+	check_if_barricades_needed_improved()
 	
 	# PATHFINDING INTELIGENTE
 	update_intelligent_pathfinding(delta)
@@ -300,188 +306,144 @@ func _physics_process(delta):
 	# Mover SIN TELEPORT
 	move_and_slide()
 
-func execute_enhanced_attack_system_with_effects():
-	"""🎯 **SISTEMA DE ATAQUE MEJORADO - MAYOR RANGO + DESDE CUALQUIER PUNTO DEL PERÍMETRO**"""
+func execute_immediate_player_attack():
+	"""🎯 ATAQUE POR PROXIMIDAD/COLISIÓN - SIN NECESIDAD DE SALTAR"""
 	if not player or not is_instance_valid(player):
 		return
 	
 	if is_dead:
 		return
 	
-	# 🎯 VERIFICAR DISTANCIA CON MAYOR RANGO
+	# 🎯 VERIFICAR DISTANCIA Y COLISIÓN DIRECTA
 	var distance_to_player = global_position.distance_to(player.global_position)
-	if distance_to_player > attack_range:  # Ahora 180 en lugar de 80
+	if distance_to_player > attack_range:
 		return
 	
-	# VERIFICAR COOLDOWN INDIVIDUAL
+	# VERIFICAR COOLDOWN
 	var current_time = Time.get_ticks_msec() / 1000.0
 	if (current_time - last_attack_time) < attack_cooldown:
 		return
 	
-	# VERIFICAR LÍNEA DE VISTA SIMPLE
-	if not has_clear_line_of_sight_simple():
+	# ⚡ ATAQUE POR PROXIMIDAD - NO NECESITA LÍNEA DE VISTA PERFECTA
+	# Si está muy cerca (colisión casi directa), atacar inmediatamente
+	if distance_to_player <= 100.0:
+		execute_attack_with_simple_cone_effect()
 		return
 	
-	# 🎯 CALCULAR PUNTO DE ATAQUE DESDE EL PERÍMETRO MÁS CERCANO
-	var attack_point = get_closest_perimeter_point_to_player()
-	
-	# EJECUTAR ATAQUE INMEDIATO CON EFECTOS MEJORADOS
-	execute_enhanced_attack_with_visual_effects(attack_point)
+	# Para distancias medias, verificar línea de vista básica
+	if has_basic_line_of_sight():
+		execute_attack_with_simple_cone_effect()
 
-func get_closest_perimeter_point_to_player() -> Vector2:
-	"""🎯 OBTENER EL PUNTO MÁS CERCANO DEL PERÍMETRO DEL ENEMIGO AL JUGADOR"""
-	var to_player = (player.global_position - global_position).normalized()
+func has_basic_line_of_sight() -> bool:
+	"""Verificación básica de línea de vista - MÁS PERMISIVA"""
+	if not player:
+		return false
 	
-	# Calcular punto en el borde de la hitbox del enemigo más cercano al jugador
-	var hitbox_half_width = full_sprite_width / 2.0
-	var hitbox_half_height = full_sprite_height / 2.0
+	var space_state = get_world_2d().direct_space_state
+	var query = PhysicsRayQueryParameters2D.create(
+		global_position,
+		player.global_position
+	)
+	query.collision_mask = 3  # Solo paredes sólidas y barricadas
+	query.exclude = [self]
 	
-	# Determinar qué lado del perímetro está más cerca
-	var perimeter_point = global_position
+	var result = space_state.intersect_ray(query)
 	
-	if abs(to_player.x) > abs(to_player.y):
-		# Lado izquierdo o derecho
-		perimeter_point.x += hitbox_half_width * sign(to_player.x)
-		perimeter_point.y += hitbox_half_height * to_player.y * 0.5
-	else:
-		# Lado superior o inferior
-		perimeter_point.y += hitbox_half_height * sign(to_player.y)
-		perimeter_point.x += hitbox_half_width * to_player.x * 0.5
+	# Si no hay obstáculos, puede atacar
+	if result.is_empty():
+		return true
 	
-	return perimeter_point
+	# Si hay una barricada sin tablones, también puede atacar
+	var collider = result.get("collider")
+	if collider and collider is StaticBody2D:
+		var parent = collider.get_parent()
+		if parent and parent.name.begins_with("Barricade_"):
+			var planks = get_safe_barricade_planks(parent)
+			return planks == 0
+	
+	# Si está muy cerca del jugador, ignorar obstáculos menores
+	var distance_to_player = global_position.distance_to(player.global_position)
+	if distance_to_player <= 80.0:
+		return true
+	
+	return false
 
-func execute_enhanced_attack_with_visual_effects(attack_point: Vector2):
-	"""🎯 EJECUTAR ATAQUE CON EFECTOS VISUALES MEJORADOS"""
+func execute_attack_with_simple_cone_effect():
+	"""🎯 EJECUTAR ATAQUE CON EFECTO DE CONO SIMPLE"""
 	# ACTUALIZAR TIEMPO INMEDIATAMENTE
 	last_attack_time = Time.get_ticks_msec() / 1000.0
 	
-	# APLICAR DAÑO DIRECTO
+	# APLICAR DAÑO DIRECTO AL JUGADOR
 	if player and player.has_method("take_damage"):
 		player.take_damage(damage)
 	
-	# 🎨 CREAR EFECTOS VISUALES IMPRESIONANTES
-	create_dramatic_attack_effects(attack_point)
+	# 🎨 CREAR EFECTO DE CONO SIMPLE
+	create_simple_cone_attack_effect()
 
-func create_dramatic_attack_effects(attack_point: Vector2):
-	"""🎨 CREAR EFECTOS VISUALES DRAMÁTICOS PARA EL ATAQUE"""
+func create_simple_cone_attack_effect():
+	"""🎨 CREAR EFECTO DE ATAQUE EN CONO SIMPLE"""
 	if not player:
 		return
 	
+	var attack_direction = (player.global_position - global_position).normalized()
 	var attack_color = get_attack_color()
+	var cone_length = attack_range
+	var cone_angle = 45.0  # Ángulo del cono en grados
 	
-	# 1. 🔥 LÍNEA DE ATAQUE PRINCIPAL MÁS GRUESA
-	var attack_line = Line2D.new()
-	attack_line.width = 8.0  # MÁS GRUESA
-	attack_line.default_color = attack_color
-	attack_line.z_index = 60
-	attack_line.add_point(attack_point)
-	attack_line.add_point(player.global_position)
-	get_tree().current_scene.add_child(attack_line)
+	# CREAR LÍNEAS DEL CONO (5 líneas para formar el cono)
+	var cone_lines = []
+	var angle_step = cone_angle / 4.0  # 4 pasos = 5 líneas
 	
-	# 2. 🌟 EXPLOSIÓN EN EL PUNTO DE ATAQUE
-	create_attack_burst_effect(attack_point, attack_color)
+	for i in range(5):
+		var line_angle_offset = deg_to_rad(-cone_angle/2.0 + (i * angle_step))
+		var line_direction = attack_direction.rotated(line_angle_offset)
+		var line_end_pos = global_position + (line_direction * cone_length)
+		
+		var cone_line = Line2D.new()
+		cone_line.width = 4.0
+		cone_line.default_color = attack_color
+		cone_line.z_index = 60
+		cone_line.add_point(global_position)
+		cone_line.add_point(line_end_pos)
+		get_tree().current_scene.add_child(cone_line)
+		cone_lines.append(cone_line)
 	
-	# 3. ⚡ ONDAS DE CHOQUE
-	create_shockwave_effect(attack_point, attack_color)
+	# CREAR ÁREA RELLENA DEL CONO
+	var cone_fill = Polygon2D.new()
+	cone_fill.color = Color(attack_color.r, attack_color.g, attack_color.b, 0.3)
+	cone_fill.z_index = 59
 	
-	# 4. 🎆 PARTÍCULAS DIRECCIONALES
-	create_directional_particles(attack_point, player.global_position, attack_color)
+	# Puntos del cono
+	var cone_points = []
+	cone_points.append(Vector2.ZERO)  # Centro del enemigo
 	
-	# 5. 📳 EFECTO DE IMPACTO EN EL JUGADOR
+	for i in range(5):
+		var line_angle_offset = deg_to_rad(-cone_angle/2.0 + (i * angle_step))
+		var line_direction = attack_direction.rotated(line_angle_offset)
+		var point = line_direction * cone_length
+		cone_points.append(point)
+	
+	cone_fill.polygon = PackedVector2Array(cone_points)
+	cone_fill.global_position = global_position
+	get_tree().current_scene.add_child(cone_fill)
+	
+	# 📳 EFECTO DE IMPACTO EN EL JUGADOR
 	create_player_impact_effect()
 	
 	# AUTOLIMPIEZA RÁPIDA
 	var cleanup_timer = Timer.new()
-	cleanup_timer.wait_time = 0.25
+	cleanup_timer.wait_time = 0.2  # Muy rápido
 	cleanup_timer.one_shot = true
 	cleanup_timer.timeout.connect(func():
-		if is_instance_valid(attack_line):
-			attack_line.queue_free()
+		for line in cone_lines:
+			if is_instance_valid(line):
+				line.queue_free()
+		if is_instance_valid(cone_fill):
+			cone_fill.queue_free()
 		cleanup_timer.queue_free()
 	)
 	get_tree().current_scene.add_child(cleanup_timer)
 	cleanup_timer.start()
-
-func create_attack_burst_effect(pos: Vector2, color: Color):
-	"""🌟 CREAR EXPLOSIÓN EN EL PUNTO DE ATAQUE"""
-	for i in range(12):  # MÁS PARTÍCULAS
-		var burst_particle = Sprite2D.new()
-		var particle_size = randi_range(6, 12)
-		var particle_image = Image.create(particle_size, particle_size, false, Image.FORMAT_RGBA8)
-		particle_image.fill(color)
-		
-		burst_particle.texture = ImageTexture.create_from_image(particle_image)
-		burst_particle.global_position = pos
-		get_tree().current_scene.add_child(burst_particle)
-		
-		# Explosión radial
-		var angle = (float(i) * PI * 2.0) / 12.0
-		var end_pos = pos + Vector2.from_angle(angle) * randf_range(30, 50)
-		
-		var tween = create_tween()
-		tween.parallel().tween_property(burst_particle, "global_position", end_pos, 0.15)
-		tween.parallel().tween_property(burst_particle, "modulate:a", 0.0, 0.15)
-		tween.parallel().tween_property(burst_particle, "scale", Vector2(2.0, 2.0), 0.15)
-		tween.tween_callback(func():
-			if is_instance_valid(burst_particle):
-				burst_particle.queue_free()
-		)
-
-func create_shockwave_effect(pos: Vector2, color: Color):
-	"""⚡ CREAR ONDAS DE CHOQUE"""
-	for wave in range(3):
-		var shockwave = Sprite2D.new()
-		var wave_image = Image.create(80, 80, false, Image.FORMAT_RGBA8)
-		wave_image.fill(Color.TRANSPARENT)
-		
-		# Crear anillo
-		var center = Vector2(40, 40)
-		for x in range(80):
-			for y in range(80):
-				var dist = Vector2(x, y).distance_to(center)
-				if dist >= 35 and dist <= 40:
-					wave_image.set_pixel(x, y, color)
-		
-		shockwave.texture = ImageTexture.create_from_image(wave_image)
-		shockwave.global_position = pos
-		shockwave.modulate.a = 0.7 - (wave * 0.2)
-		get_tree().current_scene.add_child(shockwave)
-		
-		var delay = wave * 0.05
-		await get_tree().create_timer(delay).timeout
-		
-		var tween = create_tween()
-		tween.parallel().tween_property(shockwave, "scale", Vector2(3.0, 3.0), 0.3)
-		tween.parallel().tween_property(shockwave, "modulate:a", 0.0, 0.3)
-		tween.tween_callback(func():
-			if is_instance_valid(shockwave):
-				shockwave.queue_free()
-		)
-
-func create_directional_particles(start_pos: Vector2, end_pos: Vector2, color: Color):
-	"""🎆 CREAR PARTÍCULAS DIRECCIONALES DESDE EL ATAQUE HACIA EL JUGADOR"""
-	var direction = (end_pos - start_pos).normalized()
-	
-	for i in range(8):
-		var particle = Sprite2D.new()
-		var particle_image = Image.create(8, 8, false, Image.FORMAT_RGBA8)
-		particle_image.fill(color.lightened(0.3))
-		particle.texture = ImageTexture.create_from_image(particle_image)
-		
-		var offset = Vector2(randf_range(-20, 20), randf_range(-20, 20))
-		particle.global_position = start_pos + offset
-		get_tree().current_scene.add_child(particle)
-		
-		var travel_distance = randf_range(40, 80)
-		var end_particle_pos = particle.global_position + (direction * travel_distance)
-		
-		var tween = create_tween()
-		tween.parallel().tween_property(particle, "global_position", end_particle_pos, 0.2)
-		tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.2)
-		tween.tween_callback(func():
-			if is_instance_valid(particle):
-				particle.queue_free()
-		)
 
 func create_player_impact_effect():
 	"""📳 CREAR EFECTO DE IMPACTO EN EL JUGADOR"""
@@ -585,8 +547,8 @@ func check_barricades_instant_jump():
 			reset_barricade_attack_state()
 			return
 
-func check_if_barricades_needed_extended_range():
-	"""🔍 VERIFICAR BARRICADAS CON RANGO EXTENDIDO"""
+func check_if_barricades_needed_improved():
+	"""🔍 VERIFICAR BARRICADAS - CORREGIDO PARA TODAS LAS DIRECCIONES"""
 	if not wall_system or is_jumping:
 		return
 	
@@ -600,40 +562,49 @@ func check_if_barricades_needed_extended_range():
 				reset_barricade_attack_state()
 			return
 		else:
-			# NO tiene ruta libre - usar lógica específica por tipo CON RANGO EXTENDIDO
+			# NO tiene ruta libre - VERIFICAR DESDE TODAS LAS DIRECCIONES
 			if current_state == EnemyState.MOVING_TO_PLAYER:
-				handle_blocked_path_extended()
+				handle_blocked_path_all_directions()
 
-func handle_blocked_path_extended():
-	"""🔍 MANEJAR CAMINO BLOQUEADO CON BÚSQUEDA EXTENDIDA"""
+func handle_blocked_path_all_directions():
+	"""🔍 MANEJAR CAMINO BLOQUEADO DESDE CUALQUIER DIRECCIÓN"""
 	match enemy_type:
 		"zombie_crawler", "zombie_dog":
 			# Crawlers y perros saltan directamente
 			current_state = EnemyState.JUMPING
 		
 		"zombie_basic":
-			# ENEMIGOS BÁSICOS: BUSCAR BARRICADAS EN RANGO EXTENDIDO ANTES DE SALTAR
-			check_barricades_before_jumping_extended()
+			# 🎯 ENEMIGOS BÁSICOS: VERIFICAR BARRICADAS O SALTAR
+			if not search_for_barricades_actively():
+				# Si no encuentra barricadas, saltar inmediatamente
+				current_state = EnemyState.JUMPING
 
-func check_barricades_before_jumping_extended():
-	"""🔍 **VERIFICACIÓN EXTENDIDA PRE-SALTO CON MAYOR RANGO**"""
-	# PRIORIDAD 1: Buscar barricadas vacías en RANGO EXTENDIDO
+func search_for_barricades_actively() -> bool:
+	"""🎯 BÚSQUEDA ACTIVA DE BARRICADAS - RETORNA true SI ENCUENTRA ALGO"""
+	# PRIORIDAD 1: Buscar barricadas vacías cercanas
 	var empty_barricade = find_nearby_empty_barricade_extended()
 	if empty_barricade:
 		target_barricade = empty_barricade
 		current_state = EnemyState.MOVING_TO_PLAYER
-		return
+		return true
 	
-	# PRIORIDAD 2: Buscar barricadas con tablones para destruir en RANGO EXTENDIDO
-	var blocking_barricade = find_blocking_barricade_extended()
+	# PRIORIDAD 2: Buscar barricadas con tablones para destruir
+	var blocking_barricade = find_blocking_barricade_with_increased_range()
 	if blocking_barricade:
 		target_barricade = blocking_barricade
 		current_state = EnemyState.ATTACKING_BARRICADE
 		is_attacking_barricade = true
-		return
+		return true
 	
-	# PRIORIDAD 3: Solo saltar si no hay barricadas en el rango extendido
-	current_state = EnemyState.JUMPING
+	# PRIORIDAD 3: Buscar barricadas en rango amplio
+	var distant_barricade = find_any_barricade_in_wide_range()
+	if distant_barricade:
+		target_barricade = distant_barricade
+		current_state = EnemyState.SEARCHING_BARRICADE
+		return true
+	
+	# NO ENCONTRÓ NADA - necesita saltar
+	return false
 
 func find_nearby_empty_barricade_extended() -> Node2D:
 	"""🔍 BUSCAR BARRICADAS VACÍAS EN RANGO EXTENDIDO"""
@@ -648,7 +619,7 @@ func find_nearby_empty_barricade_extended() -> Node2D:
 			continue
 		
 		var distance = global_position.distance_to(barricade.global_position)
-		if distance > barricade_search_range:  # AHORA 500 en lugar de 300
+		if distance > barricade_search_range:
 			continue
 		
 		var current_planks = get_safe_barricade_planks(barricade)
@@ -658,18 +629,20 @@ func find_nearby_empty_barricade_extended() -> Node2D:
 	
 	return nearest_empty_barricade
 
-func find_blocking_barricade_extended() -> Node2D:
-	"""🔍 ENCONTRAR BARRICADA BLOQUEANTE EN RANGO EXTENDIDO"""
+func find_blocking_barricade_with_increased_range() -> Node2D:
+	"""🔍 ENCONTRAR BARRICADA BLOQUEANTE CON RANGO AUMENTADO PARA DESTRUCCIÓN"""
 	if not wall_system:
 		return null
 	
 	var space_state = get_world_2d().direct_space_state
 	var direction_to_player = (player.global_position - global_position).normalized()
 	
-	# Búsqueda extendida
+	# RANGO AUMENTADO PARA DESTRUIR TABLONES DESDE ARRIBA Y ABAJO
+	var extended_search_range = barricade_search_range * 1.5  # 750 en lugar de 500
+	
 	var query = PhysicsRayQueryParameters2D.create(
 		global_position, 
-		global_position + direction_to_player * barricade_search_range  # RANGO EXTENDIDO
+		global_position + direction_to_player * extended_search_range
 	)
 	query.collision_mask = 3
 	query.exclude = [self]
@@ -686,6 +659,28 @@ func find_blocking_barricade_extended() -> Node2D:
 					return parent
 	
 	return null
+
+func find_any_barricade_in_wide_range() -> Node2D:
+	"""🔍 ENCONTRAR CUALQUIER BARRICADA EN RANGO MUY AMPLIO"""
+	if not wall_system:
+		return null
+	
+	var nearest_barricade = null
+	var nearest_distance = INF
+	var wide_search_range = barricade_search_range * 2.0  # 1000 unidades
+	
+	for barricade in wall_system.get_all_barricades():
+		if not is_instance_valid(barricade):
+			continue
+		
+		var distance = global_position.distance_to(barricade.global_position)
+		if distance <= wide_search_range and distance < nearest_distance:
+			var current_planks = get_safe_barricade_planks(barricade)
+			if current_planks > 0:
+				nearest_distance = distance
+				nearest_barricade = barricade
+	
+	return nearest_barricade
 
 func execute_emergency_jump():
 	"""🚀 SALTAR EVITANDO SOLAPAMIENTO CON JUGADOR Y OTROS ENEMIGOS"""
@@ -785,7 +780,7 @@ func is_stuck_against_wall() -> bool:
 	return false
 
 func handle_wall_blockage():
-	"""Manejar bloqueo por paredes"""
+	"""Manejar bloqueo por paredes - CORREGIDO PARA TODAS LAS DIRECCIONES"""
 	if not is_searching_alternate_route:
 		is_searching_alternate_route = true
 		alternate_route_attempts = 0
@@ -795,17 +790,19 @@ func handle_wall_blockage():
 	if alternate_route_attempts <= max_route_attempts:
 		attempt_alternate_route()
 	else:
-		# **VERIFICACIÓN PRE-SALTO EXTENDIDA PARA ENEMIGOS BÁSICOS**
+		# FORZAR SALTO DESDE CUALQUIER DIRECCIÓN
 		if enemy_type == "zombie_basic":
-			check_barricades_before_jumping_extended()
+			# Intentar barricadas una vez más, si no, saltar
+			if not search_for_barricades_actively():
+				force_jump_from_any_direction()
 		else:
-			current_state = EnemyState.JUMPING
+			force_jump_from_any_direction()
 		
 		is_searching_alternate_route = false
 		alternate_route_attempts = 0
 
 func attempt_alternate_route():
-	"""Intentar ruta alternativa"""
+	"""Intentar ruta alternativa - MEJORADO PARA FORZAR SALTO"""
 	var alternative_directions = [
 		Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN,
 		Vector2.LEFT + Vector2.UP, Vector2.RIGHT + Vector2.UP,
@@ -817,11 +814,8 @@ func attempt_alternate_route():
 			velocity = direction.normalized() * get_normal_speed()
 			return
 	
-	# Si no puede moverse en ninguna dirección alternativa
-	if enemy_type == "zombie_basic":
-		check_barricades_before_jumping_extended()
-	else:
-		current_state = EnemyState.JUMPING
+	# Si no puede moverse en NINGUNA dirección alternativa, FORZAR SALTO
+	force_jump_from_any_direction()
 
 func can_move_in_direction(direction: Vector2) -> bool:
 	"""Verificar si puede moverse en una dirección específica"""
@@ -837,15 +831,26 @@ func can_move_in_direction(direction: Vector2) -> bool:
 	var result = space_state.intersect_ray(query)
 	return result.is_empty()
 
-func handle_advanced_stuck_situation():
-	"""Manejar situación de atasco avanzada"""
-	if enemy_type == "zombie_basic":
-		check_barricades_before_jumping_extended()
-	else:
+func force_jump_from_any_direction():
+	"""FORZAR SALTO DESDE CUALQUIER DIRECCIÓN - ESPECIALMENTE IZQUIERDA"""
+	current_state = EnemyState.JUMPING
+	
+	# DEBUGGING: Verificar desde qué dirección viene el enemigo
+	var direction_to_player = (player.global_position - global_position).normalized()
+	var player_is_right = direction_to_player.x > 0
+	var player_is_left = direction_to_player.x < 0
+	
+	# Si el jugador está a la derecha y el enemigo viene de la izquierda, forzar salto
+	if player_is_right or player_is_left:
 		current_state = EnemyState.JUMPING
 
+func handle_advanced_stuck_situation():
+	"""Manejar situación de atasco avanzada - MEJORADO"""
+	# SIEMPRE saltar cuando está atascado, independiente del tipo
+	current_state = EnemyState.JUMPING
+
 func has_clear_path_to_player() -> bool:
-	"""VERIFICAR SI TIENE RUTA LIBRE AL JUGADOR"""
+	"""VERIFICAR SI TIENE RUTA LIBRE AL JUGADOR - MEJORADO PARA TODAS LAS DIRECCIONES"""
 	if not player:
 		return false
 	
@@ -854,10 +859,11 @@ func has_clear_path_to_player() -> bool:
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
 	var clear_paths = 0
-	var total_checks = 3
+	var total_checks = 5  # Más verificaciones
 	
+	# Verificar múltiples ángulos hacia el jugador
 	for i in range(total_checks):
-		var angle_offset = deg_to_rad((-10 + i * 10))
+		var angle_offset = deg_to_rad((-20 + i * 10))  # De -20° a +20°
 		var check_direction = direction_to_player.rotated(angle_offset)
 		
 		var query = PhysicsRayQueryParameters2D.create(
@@ -880,7 +886,12 @@ func has_clear_path_to_player() -> bool:
 					if planks == 0:
 						clear_paths += 1
 	
-	return clear_paths >= 2
+	# Ser más permisivo para enemigos de la izquierda
+	var required_clear_paths = 2
+	if direction_to_player.x > 0:  # Enemigo viene desde la izquierda hacia la derecha
+		required_clear_paths = 1  # Más permisivo para enemigos de la izquierda
+	
+	return clear_paths >= required_clear_paths
 
 func update_improved_ai(delta):
 	"""SISTEMA DE IA MEJORADO"""
@@ -901,7 +912,8 @@ func update_improved_ai(delta):
 					is_attacking_barricade = true
 				else:
 					if enemy_type == "zombie_basic":
-						check_barricades_before_jumping_extended()
+						if not search_for_barricades_actively():
+							current_state = EnemyState.JUMPING
 					else:
 						current_state = EnemyState.JUMPING
 		
@@ -937,12 +949,12 @@ func execute_barricade_search():
 	last_movement_direction = direction
 
 func execute_barricade_attack_enhanced(_delta):
-	"""ATACAR BARRICADA CON DETECCIÓN MEJORADA"""
+	"""ATACAR BARRICADA CON RANGO MEJORADO PARA DESTRUIR DESDE ARRIBA Y ABAJO"""
 	if not target_barricade or not is_instance_valid(target_barricade) or target_barricade == null:
 		reset_barricade_attack_state()
 		return
 	
-	if not is_touching_barricade_area_enhanced(target_barricade):
+	if not is_touching_barricade_area_enhanced_range(target_barricade):
 		var direction = (target_barricade.global_position - global_position).normalized()
 		velocity = direction * get_normal_speed()
 		current_direction = direction
@@ -963,6 +975,23 @@ func execute_barricade_attack_enhanced(_delta):
 	if barricade_destruction_timer >= 0.6:
 		barricade_destruction_timer = 0.0
 		damage_barricade_immediate()
+
+func is_touching_barricade_area_enhanced_range(barricade: Node2D) -> bool:
+	"""DETECCIÓN MEJORADA CON RANGO AUMENTADO PARA DESTRUIR DESDE ARRIBA Y ABAJO"""
+	if not barricade or not is_instance_valid(barricade) or barricade == null:
+		return false
+	
+	var barricade_pos = barricade.global_position
+	var barricade_size = get_safe_barricade_size(barricade)
+	var enemy_pos = global_position
+	
+	# RANGO MUCHO MÁS GRANDE PARA PERMITIR ATAQUE DESDE ARRIBA Y ABAJO
+	var expanded_size = barricade_size + Vector2(200, 200)  # AUMENTADO de 120 a 200
+	var half_size = expanded_size / 2.0
+	
+	var relative_pos = enemy_pos - barricade_pos
+	
+	return (abs(relative_pos.x) <= half_size.x and abs(relative_pos.y) <= half_size.y)
 
 func damage_barricade_immediate():
 	"""DAÑAR BARRICADA INMEDIATAMENTE CON VERIFICACIONES SEGURAS"""
@@ -1020,22 +1049,6 @@ func get_safe_barricade_size(barricade: Node2D) -> Vector2:
 		return Vector2(200, 60)
 	
 	return barricade.get_meta("size", Vector2(200, 60))
-
-func is_touching_barricade_area_enhanced(barricade: Node2D) -> bool:
-	"""DETECCIÓN MEJORADA: Área más grande y más permisiva CON VERIFICACIONES SEGURAS"""
-	if not barricade or not is_instance_valid(barricade) or barricade == null:
-		return false
-	
-	var barricade_pos = barricade.global_position
-	var barricade_size = get_safe_barricade_size(barricade)
-	var enemy_pos = global_position
-	
-	var expanded_size = barricade_size + Vector2(120, 120)
-	var half_size = expanded_size / 2.0
-	
-	var relative_pos = enemy_pos - barricade_pos
-	
-	return (abs(relative_pos.x) <= half_size.x and abs(relative_pos.y) <= half_size.y)
 
 func find_nearest_barricade() -> Node2D:
 	"""Buscar la barricada más cercana CON VERIFICACIONES SEGURAS"""
@@ -1262,7 +1275,7 @@ func _setup_variant():
 		base_move_speed = 140.0
 		current_move_speed = 140.0
 		damage = 1
-		attack_range = 200.0  # ⚡ MAYOR RANGO PARA PERROS
+		attack_range = 200.0
 		barricade_attack_range = 200.0
 		attack_cooldown = 1.0
 	elif rand_val < 0.50:
@@ -1270,7 +1283,7 @@ func _setup_variant():
 		base_move_speed = 130.0
 		current_move_speed = 130.0
 		damage = 1
-		attack_range = 160.0  # ⚡ MAYOR RANGO PARA CRAWLERS
+		attack_range = 160.0
 		barricade_attack_range = 180.0
 		attack_cooldown = 1.0
 	else:
@@ -1278,7 +1291,7 @@ func _setup_variant():
 		base_move_speed = 100.0
 		current_move_speed = 100.0
 		damage = 1
-		attack_range = 180.0  # ⚡ MAYOR RANGO PARA BÁSICOS
+		attack_range = 180.0
 		barricade_attack_range = 200.0
 		attack_cooldown = 1.0
 
