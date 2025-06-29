@@ -1,0 +1,34 @@
+cd X:\xeexuu_\Escritorio\Godot\XeexuuSurvival
+
+# En tu carpeta del proyecto Godot
+git init
+git add .gitignore
+git add .
+git commit -m "Versión muy jugable"
+
+# Agregar remote (reemplaza con tu URL real)
+git remote add origin https://github.com/xeexuu/XeexuuSurvival.git
+
+# Push inicial						git branch -M main
+git push -u origin main					git push origin main
+
+
+
+parece que los enemigos dejan de hacer daño al jugador cuando ya le han golpeado unas 4 veces, solucionalo definitivamente! ya que como el jugador se cura deben poder seguir quitándole vida
+
+los enemigos no deben buscar barricadas para destruir si tienen ruta libre hacia el jugador, la prioridad siempre será el jugador!, los enemigos tienen que tardar menos en destuckearse y tienen que moverse muchísimo mas rápido cuando esten buscando una ruta y no persiguiendo al jugador
+
+a veces los enemigos colisionan entre ellos o con el jugador y se hacen tp a otra posición, esto NUNCA debe pasar
+los enemigos deben estar mas cerca del jugador para golpearlo y el ataque no debe ser un daño instantáneo sino una especie de "zarpazo" que se desplazara un poco mas lento hacia el jugador
+
+
+los botones en android deben ser mas grandes y estar un poco mas arriba, quiero añadir un botón en Android a la izquierda de los actuales aprovechando el mapa de entrada sprint
+el personaje aumentara 1.5 su velocidad de movimiento
+debe aparecer el mensaje "Puerta con coste (el coste)" cuando te acerques a la puerta y "Interacciona para reparar" cuando te acerques a unos tablones que se puedan reparar
+los mensajes flotantes deben desaparecer casi al instante, los puntos deben restarse al reparar tablones
+quiero que en Android la partida se guarde exactamente igual que lo dejas cuando cierras el juego, con los mismos enemigos restante, la misma posición de enemigos, ronda... 
+la próxima vez que se inicie el juego si se ha guardado la partida, se iniciara en el menú de pausa tal cual como se dejó
+si mueres no se guardara la partida y se iniciara el juego normal la próxima vez
+
+acuerdate sobre todo de devolverme el script de enemy
+

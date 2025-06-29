@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CharacterStats" load_steps=2 format=3 uid="uid://cvm4kf6jl4j1c"]
+
+[ext_resource type="Script" uid="uid://c5ivwppfa71e6" path="res://scenes/characters/CharacterStats.gd" id="1_yl7to"]
+
+[resource]
+script = ExtResource("1_yl7to")
+character_name = "chica"
+max_health = 4
+current_health = 4
+movement_speed = 300
+luck = 5
+ability1_name = "Habilidad 1"
+ability1_cooldown = 5.0
+ability2_name = "Habilidad 2"
+ability2_cooldown = 8.0
+metadata/_custom_type_script = "uid://c5ivwppfa71e6"
