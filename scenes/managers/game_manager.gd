@@ -1,4 +1,4 @@
-# scenes/managers/game_manager.gd - SISTEMA COMPLETO CON GUARDADO ANDROID + SPRINT
+# scenes/managers/game_manager.gd - SISTEMA COMPLETO CON GUARDADO ANDROID + SPRINT + MENSAJES CORREGIDOS
 extends Node
 class_name GameManager
 @onready var level_manager = $LevelManager
@@ -41,10 +41,10 @@ var movement_joystick_dead_zone: float = 35.0
 var shooting_joystick_max_distance: float = 200.0  # MÁS GRANDE
 var shooting_joystick_dead_zone: float = 35.0
 
-# BOTONES DE ACCIÓN MEJORADOS
+# BOTONES DE ACCIÓN MEJORADOS + SPRINT
 var melee_button: Button
 var interact_button: Button
-var sprint_button: Button  # NUEVO BOTÓN DE SPRINT
+var sprint_button: Button  # BOTÓN DE SPRINT
 var melee_touch_id: int = -1
 var interact_touch_id: int = -1
 var sprint_touch_id: int = -1
@@ -66,10 +66,11 @@ var is_repairing_barricade: bool = false
 var repair_timer: Timer
 var interaction_check_timer: Timer
 
-# SISTEMA DE MENSAJES MEJORADO
+# SISTEMA DE MENSAJES MEJORADO - LIMPIEZA AUTOMÁTICA GARANTIZADA
 var interaction_message_label: Label = null
 var message_display_timer: Timer = null
 var current_message_tween: Tween = null
+var all_active_messages: Array[Control] = []  # NUEVO: Seguimiento de todos los mensajes
 
 var selected_character_stats: CharacterStats
 var game_started: bool = false
@@ -155,7 +156,6 @@ func setup_android_save_system():
 	auto_save_timer.timeout.connect(auto_save_game_complete)
 	add_child(auto_save_timer)
 
-
 func auto_save_game_complete():
 	"""Guardado automático COMPLETO para Android"""
 	if is_mobile and game_started and not is_game_over and game_state == "playing":
@@ -166,9 +166,9 @@ func setup_interaction_message_system():
 	"""Configurar sistema de mensajes de interacción en pantalla"""
 	message_display_timer = Timer.new()
 	message_display_timer.name = "MessageDisplayTimer"
-	message_display_timer.wait_time = 1.5  # MÁS CORTO
+	message_display_timer.wait_time = 1.2  # MÁS CORTO
 	message_display_timer.one_shot = true
-	message_display_timer.timeout.connect(_hide_interaction_message)
+	message_display_timer.timeout.connect(_hide_interaction_message_force)
 	add_child(message_display_timer)
 
 func setup_interaction_check_timer():
@@ -219,11 +219,11 @@ func _check_available_interactions():
 	# SIN INTERACCIÓN: Volver a reload
 	if previous_type != "none":
 		update_interact_button_to_reload()
-		hide_interaction_message()
+		hide_interaction_message_force()
 
 func show_interaction_message(message_text: String, message_color: Color = Color.WHITE):
-	"""Mostrar mensaje de interacción ESPECÍFICO"""
-	hide_interaction_message()
+	"""Mostrar mensaje de interacción ESPECÍFICO CON LIMPIEZA GARANTIZADA"""
+	hide_interaction_message_force()  # LIMPIAR ANTERIORES PRIMERO
 	
 	interaction_message_label = Label.new()
 	interaction_message_label.name = "InteractionMessage"
@@ -249,6 +249,9 @@ func show_interaction_message(message_text: String, message_color: Color = Color
 	
 	ui_manager.add_child(interaction_message_label)
 	
+	# AÑADIR A SEGUIMIENTO DE MENSAJES ACTIVOS
+	all_active_messages.append(interaction_message_label)
+	
 	# ANIMACIÓN DE APARICIÓN
 	interaction_message_label.modulate = Color.TRANSPARENT
 	interaction_message_label.scale = Vector2(0.5, 0.5)
@@ -264,28 +267,44 @@ func show_interaction_message(message_text: String, message_color: Color = Color
 	# Timer para ocultar automáticamente
 	message_display_timer.start()
 
-func _hide_interaction_message():
-	"""Ocultar mensaje RÁPIDAMENTE"""
-	if not interaction_message_label or not is_instance_valid(interaction_message_label):
-		return
-	
-	if current_message_tween:
-		current_message_tween.kill()
-	
-	current_message_tween = create_tween()
-	current_message_tween.parallel().tween_property(interaction_message_label, "modulate", Color.TRANSPARENT, 0.2)  # MÁS RÁPIDO
-	current_message_tween.parallel().tween_property(interaction_message_label, "scale", Vector2(0.5, 0.5), 0.2)
-	current_message_tween.tween_callback(func():
-		if interaction_message_label and is_instance_valid(interaction_message_label):
-			interaction_message_label.queue_free()
-			interaction_message_label = null
-	)
+func _hide_interaction_message_force():
+	"""FORZAR OCULTACIÓN INMEDIATA Y LIMPIEZA TOTAL"""
+	hide_interaction_message_force()
 
-func hide_interaction_message():
-	"""Función pública para ocultar mensaje inmediatamente"""
+func hide_interaction_message_force():
+	"""FUNCIÓN MEJORADA DE LIMPIEZA TOTAL DE MENSAJES"""
+	# LIMPIAR TIMER
 	if message_display_timer:
 		message_display_timer.stop()
-	_hide_interaction_message()
+	
+	# LIMPIAR TWEEN
+	if current_message_tween:
+		current_message_tween.kill()
+		current_message_tween = null
+	
+	# LIMPIAR MENSAJE PRINCIPAL
+	if interaction_message_label and is_instance_valid(interaction_message_label):
+		interaction_message_label.queue_free()
+		interaction_message_label = null
+	
+	# LIMPIAR TODOS LOS MENSAJES ACTIVOS
+	for message in all_active_messages:
+		if message and is_instance_valid(message):
+			message.queue_free()
+	all_active_messages.clear()
+	
+	# LIMPIEZA ADICIONAL: Buscar y eliminar cualquier mensaje huérfano
+	cleanup_orphaned_messages()
+
+func cleanup_orphaned_messages():
+	"""Limpieza adicional de mensajes huérfanos"""
+	if not ui_manager:
+		return
+	
+	for child in ui_manager.get_children():
+		if child.name.contains("Message") or child.name.contains("Prompt") or child.name.contains("Bubble"):
+			if child != interaction_message_label:  # No eliminar el mensaje actual si existe
+				child.queue_free()
 
 func create_interaction_sprites():
 	"""Crear texturas para botones dinámicos + SPRINT"""
@@ -395,8 +414,18 @@ func _on_repair_timer_timeout():
 			var cost = current_interaction_target.get_meta("repair_cost", 10)
 			if score_system.get_current_score() >= cost:
 				if wall_system.repair_barricade(current_interaction_target):
-					# **RESTAR PUNTOS AL REPARAR**
-					score_system.add_bonus_points(-cost, current_interaction_target.global_position, "repair_purchase")
+					# **RESTAR PUNTOS AL REPARAR CON ACTUALIZACIÓN INMEDIATA**
+					var current_score = score_system.get_current_score()
+					var new_score = current_score - cost
+					
+					# FORZAR ACTUALIZACIÓN INMEDIATA DEL MARCADOR
+					if score_system.has_signal("score_changed"):
+						score_system.score_changed.emit(new_score)
+					
+					# Usar el método correcto para restar puntos
+					score_system.current_score = new_score
+					
+					# Añadir puntos de reparación (positivos)
 					score_system.add_repair_points(current_interaction_target.global_position, 1)
 					
 					var current_planks = current_interaction_target.get_meta("current_planks", 0)
@@ -431,12 +460,21 @@ func show_floating_message_instant(text: String, world_pos: Vector2, color: Colo
 	
 	get_tree().current_scene.add_child(message_label)
 	
+	# AÑADIR A SEGUIMIENTO PARA LIMPIEZA AUTOMÁTICA
+	all_active_messages.append(message_label)
+	
 	# DESAPARECE CASI AL INSTANTE (0.8 segundos)
 	var tween = create_tween()
 	tween.parallel().tween_property(message_label, "global_position", 
 		message_label.global_position + Vector2(0, -60), 0.8)
 	tween.parallel().tween_property(message_label, "modulate:a", 0.0, 0.8)
-	tween.tween_callback(func(): message_label.queue_free())
+	tween.tween_callback(func(): 
+		if message_label and is_instance_valid(message_label):
+			message_label.queue_free()
+		# Remover del seguimiento
+		if message_label in all_active_messages:
+			all_active_messages.erase(message_label)
+	)
 
 func stop_repairing():
 	"""Detener reparación continua"""
@@ -598,7 +636,12 @@ func attempt_door_purchase(door: Node2D):
 	
 	if current_score >= cost:
 		if wall_system.purchase_door(door):
-			score_system.add_bonus_points(-cost, door.global_position, "door_purchase")
+			# RESTAR PUNTOS CON ACTUALIZACIÓN INMEDIATA
+			var new_score = current_score - cost
+			score_system.current_score = new_score
+			if score_system.has_signal("score_changed"):
+				score_system.score_changed.emit(new_score)
+			
 			show_floating_message_instant("🚪 " + target_room.to_upper(), door.global_position, Color.GREEN)
 			show_interaction_message("✅ " + target_room.to_upper() + " desbloqueada!", Color.GREEN)
 		else:
@@ -626,8 +669,12 @@ func start_barricade_repair(barricade: Node2D):
 	
 	# Reparar inmediatamente una vez
 	if wall_system.repair_barricade(barricade):
-		# **RESTAR PUNTOS INMEDIATAMENTE**
-		score_system.add_bonus_points(-cost, barricade.global_position, "repair_purchase")
+		# **RESTAR PUNTOS INMEDIATAMENTE CON ACTUALIZACIÓN DEL MARCADOR**
+		var new_score = current_score - cost
+		score_system.current_score = new_score
+		if score_system.has_signal("score_changed"):
+			score_system.score_changed.emit(new_score)
+		
 		score_system.add_repair_points(barricade.global_position, 1)
 		
 		show_floating_message_instant("🔨 REPARADO", barricade.global_position, Color.CYAN)
@@ -965,67 +1012,26 @@ func setup_mobile_controls():
 		shooting_joystick_base.modulate = Color.WHITE
 
 func create_mobile_action_buttons_with_sprint():
-	"""Crear botones CON SPRINT incluido - MÁS GRANDES Y MÁS ARRIBA"""
+	"""🎮 CREAR BOTONES CON SPRINT A LA IZQUIERDA - MÁS GRANDES Y MEJOR POSICIONADOS"""
 	if not is_mobile or not mobile_controls:
 		return
 	
 	var viewport_size = get_viewport().get_visible_rect().size
 	var joystick_shooting_x = viewport_size.x * 0.78
-	var buttons_x = joystick_shooting_x - 200  # MÁS SEPARADO
 	
-	# TAMAÑOS MÁS GRANDES
+	# TAMAÑOS MÁS GRANDES PARA MEJOR ACCESIBILIDAD
 	var button_size = Vector2(140, 140)  # MUCHO MÁS GRANDE
-	var button_spacing = 20
+	var button_spacing = 25
 	
-	# POSICIÓN MÁS ARRIBA
-	var base_y = viewport_size.y - 320  # MÁS ARRIBA
+	# POSICIÓN BASE MÁS ARRIBA PARA MEJOR ALCANCE
+	var base_y = viewport_size.y - 380  # MÁS ARRIBA
 	
-	# BOTÓN MELEE - ARRIBA
-	melee_button = Button.new()
-	melee_button.text = "⚔"
-	melee_button.size = button_size
-	melee_button.position = Vector2(buttons_x, base_y)
-	melee_button.add_theme_font_size_override("font_size", 70)  # FUENTE MÁS GRANDE
-	
-	var melee_style = StyleBoxFlat.new()
-	melee_style.bg_color = Color(0.8, 0.1, 0.1, 0.9)
-	melee_style.corner_radius_top_left = 70
-	melee_style.corner_radius_top_right = 70
-	melee_style.corner_radius_bottom_left = 70
-	melee_style.corner_radius_bottom_right = 70
-	melee_style.border_color = Color.YELLOW
-	melee_style.border_width_left = 5
-	melee_style.border_width_right = 5
-	melee_style.border_width_top = 5
-	melee_style.border_width_bottom = 5
-	melee_button.add_theme_stylebox_override("normal", melee_style)
-	mobile_controls.add_child(melee_button)
-	
-	# BOTÓN DINÁMICO RELOAD/MARTILLO/DOLLAR - CENTRO
-	interact_button = Button.new()
-	interact_button.text = ""
-	interact_button.size = button_size
-	interact_button.position = Vector2(buttons_x, base_y + button_size.y + button_spacing)
-	
-	var interact_style = StyleBoxFlat.new()
-	interact_style.bg_color = Color(0.0, 0.4, 0.6, 0.9)
-	interact_style.corner_radius_top_left = 70
-	interact_style.corner_radius_top_right = 70
-	interact_style.corner_radius_bottom_left = 70
-	interact_style.corner_radius_bottom_right = 70
-	interact_style.border_color = Color.CYAN
-	interact_style.border_width_left = 6
-	interact_style.border_width_right = 6
-	interact_style.border_width_top = 6
-	interact_style.border_width_bottom = 6
-	interact_button.add_theme_stylebox_override("normal", interact_style)
-	mobile_controls.add_child(interact_button)
-	
-	# NUEVO: BOTÓN DE SPRINT - ABAJO
+	# 🆕 BOTÓN DE SPRINT - A LA IZQUIERDA (NUEVO)
+	var sprint_x = joystick_shooting_x - 380  # MÁS A LA IZQUIERDA
 	sprint_button = Button.new()
 	sprint_button.text = ""  # Usaremos sprite
 	sprint_button.size = button_size
-	sprint_button.position = Vector2(buttons_x, base_y + (button_size.y + button_spacing) * 2)
+	sprint_button.position = Vector2(sprint_x, base_y)
 	
 	var sprint_style = StyleBoxFlat.new()
 	sprint_style.bg_color = Color(0.8, 0.6, 0.0, 0.9)  # Dorado
@@ -1051,6 +1057,49 @@ func create_mobile_action_buttons_with_sprint():
 	sprint_button.add_child(sprint_sprite_rect)
 	
 	mobile_controls.add_child(sprint_button)
+	
+	# BOTÓN MELEE - EN EL CENTRO
+	var melee_x = joystick_shooting_x - 200  # CENTRADO
+	melee_button = Button.new()
+	melee_button.text = "⚔"
+	melee_button.size = button_size
+	melee_button.position = Vector2(melee_x, base_y)
+	melee_button.add_theme_font_size_override("font_size", 70)  # FUENTE MÁS GRANDE
+	
+	var melee_style = StyleBoxFlat.new()
+	melee_style.bg_color = Color(0.8, 0.1, 0.1, 0.9)
+	melee_style.corner_radius_top_left = 70
+	melee_style.corner_radius_top_right = 70
+	melee_style.corner_radius_bottom_left = 70
+	melee_style.corner_radius_bottom_right = 70
+	melee_style.border_color = Color.YELLOW
+	melee_style.border_width_left = 5
+	melee_style.border_width_right = 5
+	melee_style.border_width_top = 5
+	melee_style.border_width_bottom = 5
+	melee_button.add_theme_stylebox_override("normal", melee_style)
+	mobile_controls.add_child(melee_button)
+	
+	# BOTÓN DINÁMICO RELOAD/MARTILLO/DOLLAR - A LA DERECHA
+	var interact_x = joystick_shooting_x - 20  # MÁS A LA DERECHA
+	interact_button = Button.new()
+	interact_button.text = ""
+	interact_button.size = button_size
+	interact_button.position = Vector2(interact_x, base_y)
+	
+	var interact_style = StyleBoxFlat.new()
+	interact_style.bg_color = Color(0.0, 0.4, 0.6, 0.9)
+	interact_style.corner_radius_top_left = 70
+	interact_style.corner_radius_top_right = 70
+	interact_style.corner_radius_bottom_left = 70
+	interact_style.corner_radius_bottom_right = 70
+	interact_style.border_color = Color.CYAN
+	interact_style.border_width_left = 6
+	interact_style.border_width_right = 6
+	interact_style.border_width_top = 6
+	interact_style.border_width_bottom = 6
+	interact_button.add_theme_stylebox_override("normal", interact_style)
+	mobile_controls.add_child(interact_button)
 	
 	# Inicializar interact button con sprite de reload
 	update_interact_button_to_reload()
@@ -1642,7 +1691,7 @@ func restart_entire_game():
 	current_interaction_target = null
 	interaction_type = "none"
 	stop_repairing()
-	hide_interaction_message()
+	hide_interaction_message_force()  # USAR FUNCIÓN MEJORADA
 	
 	# LIMPIAR SPRINT
 	is_sprinting = false
@@ -1737,7 +1786,7 @@ func cleanup_before_exit():
 	stop_repairing()
 	current_interaction_target = null
 	interaction_type = "none"
-	hide_interaction_message()
+	# hide_interaction_message()
 	
 	if is_mobile:
 		auto_save_game_complete()

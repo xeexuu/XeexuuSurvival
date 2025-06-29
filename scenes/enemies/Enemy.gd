@@ -1,4 +1,4 @@
-# scenes/enemies/Enemy.gd - HITBOXES COMPLETAS + IA MEJORADA + EFECTO CONO SIMPLE
+# scenes/enemies/Enemy.gd - ATAQUES LENTOS + PERROS MENOS AGRESIVOS + HEALTH BAR MEJORADA
 extends CharacterBody2D
 class_name Enemy
 signal died(enemy: Enemy)
@@ -56,11 +56,12 @@ var is_searching_alternate_route: bool = false
 var alternate_route_attempts: int = 0
 var max_route_attempts: int = 3
 
-# MECÁNICAS ESPECÍFICAS POR TIPO
+# MECÁNICAS ESPECÍFICAS POR TIPO - PERROS MENOS AGRESIVOS
 var crawler_jump_timer: float = 0.0
 var crawler_last_jump_time: float = 0.0
 var dog_movement_timer: float = 0.0
 var dog_derrap_offset: Vector2 = Vector2.ZERO
+var dog_aggression_cooldown: float = 0.0  # NUEVO: Cooldown para perros
 
 # ESTADOS SIMPLES
 enum EnemyState { 
@@ -78,13 +79,80 @@ var barricade_check_timer: float = 0.0
 var path_verification_timer: float = 0.0
 var barricade_search_range: float = 500.0
 
+# 🆕 SISTEMA DE ATAQUES LENTOS QUE VIAJAN
+var is_launching_attack: bool = false
+var attack_projectiles: Array = []
+
+# 📊 HEALTH BAR MEJORADA
+var health_label: Label
+
 func _ready():
 	add_to_group("enemies")
 	setup_enemy()
 	call_deferred("_setup_variant")
 	call_deferred("setup_animation_system")
 	call_deferred("setup_complete_hitboxes")
+	call_deferred("setup_improved_health_bar")
 	last_position = global_position
+
+func setup_improved_health_bar():
+	"""📊 CONFIGURAR HEALTH BAR MÁS GRANDE CON NÚMEROS"""
+	if health_bar:
+		# Hacer barra más grande
+		health_bar.size = Vector2(80, 16)  # Más ancha y alta
+		health_bar.position = Vector2(-40, -60)  # Más arriba
+		
+		# Configurar colores
+		health_bar.show_percentage = false
+		
+		# Estilo personalizado
+		var style_bg = StyleBoxFlat.new()
+		style_bg.bg_color = Color(0.2, 0.0, 0.0, 0.8)  # Fondo rojo oscuro
+		style_bg.border_color = Color.BLACK
+		style_bg.border_width_left = 2
+		style_bg.border_width_right = 2
+		style_bg.border_width_top = 2
+		style_bg.border_width_bottom = 2
+		health_bar.add_theme_stylebox_override("background", style_bg)
+		
+		var style_fill = StyleBoxFlat.new()
+		style_fill.bg_color = Color.RED
+		health_bar.add_theme_stylebox_override("fill", style_fill)
+		
+		# Añadir label con números
+		health_label = Label.new()
+		health_label.name = "HealthLabel"
+		health_label.size = Vector2(80, 16)
+		health_label.position = Vector2(-40, -60)
+		health_label.add_theme_font_size_override("font_size", 12)
+		health_label.add_theme_color_override("font_color", Color.WHITE)
+		health_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+		health_label.add_theme_constant_override("shadow_offset_x", 1)
+		health_label.add_theme_constant_override("shadow_offset_y", 1)
+		health_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		health_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		health_label.text = str(current_health) + "/" + str(max_health)
+		add_child(health_label)
+	
+	update_health_display()
+
+func update_health_display():
+	"""Actualizar display de salud"""
+	if health_bar:
+		health_bar.max_value = max_health
+		health_bar.value = current_health
+	
+	if health_label:
+		health_label.text = str(current_health) + "/" + str(max_health)
+		
+		# Cambiar color según salud
+		var health_percentage = float(current_health) / float(max_health)
+		if health_percentage > 0.6:
+			health_label.add_theme_color_override("font_color", Color.GREEN)
+		elif health_percentage > 0.3:
+			health_label.add_theme_color_override("font_color", Color.YELLOW)
+		else:
+			health_label.add_theme_color_override("font_color", Color.RED)
 
 func setup_complete_hitboxes():
 	"""🎯 CONFIGURAR HITBOXES QUE CUBREN COMPLETAMENTE TODO EL ALTO DEL SPRITE"""
@@ -277,10 +345,11 @@ func _physics_process(delta):
 	barricade_check_timer += delta
 	crawler_jump_timer -= delta
 	dog_movement_timer += delta
+	dog_aggression_cooldown -= delta  # NUEVO: Cooldown para perros
 	path_verification_timer += delta
 	
-	# 🎯 **ATAQUE INMEDIATO AL JUGADOR CUANDO ESTÉ CERCA**
-	execute_immediate_player_attack()
+	# 🎯 **ATAQUE CON PROYECTIL LENTO HACIA EL JUGADOR**
+	execute_slow_traveling_attack()
 	
 	# 🚀 SISTEMA ANTI-SOLAPAMIENTO MEJORADO
 	update_collision_avoidance_system(delta)
@@ -297,21 +366,24 @@ func _physics_process(delta):
 	# SISTEMA DE IA MEJORADO
 	update_improved_ai(delta)
 	
-	# MECÁNICAS ESPECÍFICAS POR TIPO
-	update_type_specific_mechanics(delta)
+	# MECÁNICAS ESPECÍFICAS POR TIPO - PERROS MENOS AGRESIVOS
+	update_type_specific_mechanics_balanced(delta)
 	
 	# Actualizar animaciones
 	update_animations_with_flip()
 	
+	# Procesar proyectiles de ataque
+	update_attack_projectiles(delta)
+	
 	# Mover SIN TELEPORT
 	move_and_slide()
 
-func execute_immediate_player_attack():
-	"""🎯 ATAQUE POR PROXIMIDAD/COLISIÓN - SIN NECESIDAD DE SALTAR"""
+func execute_slow_traveling_attack():
+	"""🎯 ATAQUE QUE VIAJA LENTAMENTE HACIA EL JUGADOR"""
 	if not player or not is_instance_valid(player):
 		return
 	
-	if is_dead:
+	if is_dead or is_launching_attack:
 		return
 	
 	# 🎯 VERIFICAR DISTANCIA Y COLISIÓN DIRECTA
@@ -324,15 +396,147 @@ func execute_immediate_player_attack():
 	if (current_time - last_attack_time) < attack_cooldown:
 		return
 	
-	# ⚡ ATAQUE POR PROXIMIDAD - NO NECESITA LÍNEA DE VISTA PERFECTA
-	# Si está muy cerca (colisión casi directa), atacar inmediatamente
+	# ⚡ ATAQUE POR PROXIMIDAD
 	if distance_to_player <= 100.0:
-		execute_attack_with_simple_cone_effect()
+		launch_slow_attack_projectile()
 		return
 	
 	# Para distancias medias, verificar línea de vista básica
 	if has_basic_line_of_sight():
-		execute_attack_with_simple_cone_effect()
+		launch_slow_attack_projectile()
+
+func launch_slow_attack_projectile():
+	"""🚀 LANZAR PROYECTIL DE ATAQUE LENTO"""
+	if is_launching_attack:
+		return
+	
+	is_launching_attack = true
+	last_attack_time = Time.get_ticks_msec() / 1000.0
+	
+	# Crear proyectil que viaja hacia el jugador
+	var attack_projectile = create_attack_projectile()
+	attack_projectiles.append(attack_projectile)
+	
+	# Timer para permitir siguiente ataque
+	var attack_reset_timer = Timer.new()
+	attack_reset_timer.wait_time = 0.5  # Medio segundo para el próximo ataque
+	attack_reset_timer.one_shot = true
+	attack_reset_timer.timeout.connect(func():
+		is_launching_attack = false
+		attack_reset_timer.queue_free()
+	)
+	add_child(attack_reset_timer)
+	attack_reset_timer.start()
+
+func create_attack_projectile() -> Dictionary:
+	"""Crear proyectil de ataque visual"""
+	var attack_direction = (player.global_position - global_position).normalized()
+	var attack_color = get_attack_color()
+	
+	# Crear efecto visual del ataque
+	var attack_visual = Sprite2D.new()
+	var attack_image = Image.create(20, 20, false, Image.FORMAT_RGBA8)
+	
+	# Crear círculo de ataque
+	var center = Vector2(10, 10)
+	for x in range(20):
+		for y in range(20):
+			var dist = Vector2(x, y).distance_to(center)
+			if dist < 8:
+				attack_image.set_pixel(x, y, attack_color)
+			elif dist < 10:
+				attack_image.set_pixel(x, y, attack_color.darkened(0.3))
+	
+	attack_visual.texture = ImageTexture.create_from_image(attack_image)
+	attack_visual.global_position = global_position
+	attack_visual.z_index = 60
+	get_tree().current_scene.add_child(attack_visual)
+	
+	return {
+		"visual": attack_visual,
+		"direction": attack_direction,
+		"speed": 150.0,  # VELOCIDAD LENTA
+		"start_time": Time.get_ticks_msec() / 1000.0,
+		"lifetime": 3.0,
+		"damage": damage,
+		"has_hit": false
+	}
+
+func update_attack_projectiles(delta):
+	"""Actualizar proyectiles de ataque"""
+	var current_time = Time.get_ticks_msec() / 1000.0
+	var projectiles_to_remove = []
+	
+	for i in range(attack_projectiles.size()):
+		var projectile = attack_projectiles[i]
+		
+		# Verificar tiempo de vida
+		if current_time - projectile.start_time > projectile.lifetime:
+			cleanup_projectile(projectile)
+			projectiles_to_remove.append(i)
+			continue
+		
+		# Mover proyectil
+		if is_instance_valid(projectile.visual):
+			var movement = projectile.direction * projectile.speed * delta
+			projectile.visual.global_position += movement
+			
+			# Verificar colisión con jugador
+			if not projectile.has_hit and player and is_instance_valid(player):
+				var distance_to_player = projectile.visual.global_position.distance_to(player.global_position)
+				if distance_to_player < 40.0:  # Radio de colisión
+					# ¡IMPACTO!
+					if player.has_method("take_damage"):
+						player.take_damage(projectile.damage)
+					
+					create_player_impact_effect_from_projectile(projectile.visual.global_position)
+					projectile.has_hit = true
+					cleanup_projectile(projectile)
+					projectiles_to_remove.append(i)
+		else:
+			projectiles_to_remove.append(i)
+	
+	# Remover proyectiles terminados
+	for i in range(projectiles_to_remove.size() - 1, -1, -1):
+		var index = projectiles_to_remove[i]
+		if index < attack_projectiles.size():
+			attack_projectiles.remove_at(index)
+
+func cleanup_projectile(projectile):
+	"""Limpiar proyectil"""
+	if projectile.has("visual") and is_instance_valid(projectile.visual):
+		projectile.visual.queue_free()
+
+func create_player_impact_effect_from_projectile(impact_pos: Vector2):
+	"""📳 CREAR EFECTO DE IMPACTO EN EL JUGADOR desde proyectil"""
+	if not player or not player.animated_sprite:
+		return
+	
+	# Flash rojo en el jugador
+	var original_modulate = player.animated_sprite.modulate
+	player.animated_sprite.modulate = Color(2.0, 0.5, 0.5, 1.0)
+	
+	var tween = create_tween()
+	tween.tween_property(player.animated_sprite, "modulate", original_modulate, 0.15)
+	
+	# Efecto adicional en el punto de impacto
+	for i in range(8):
+		var particle = Sprite2D.new()
+		var particle_size = 6
+		var particle_image = Image.create(particle_size, particle_size, false, Image.FORMAT_RGBA8)
+		particle_image.fill(Color.ORANGE)
+		particle.texture = ImageTexture.create_from_image(particle_image)
+		particle.global_position = impact_pos + Vector2(randf_range(-20, 20), randf_range(-20, 20))
+		get_tree().current_scene.add_child(particle)
+		
+		var particle_tween = create_tween()
+		particle_tween.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
+		particle_tween.parallel().tween_property(particle, "global_position", 
+			particle.global_position + Vector2(randf_range(-30, 30), randf_range(-30, 30)), 0.5)
+		particle_tween.tween_callback(func():
+			if is_instance_valid(particle):
+				particle.queue_free()
+		)
 
 func has_basic_line_of_sight() -> bool:
 	"""Verificación básica de línea de vista - MÁS PERMISIVA"""
@@ -368,94 +572,12 @@ func has_basic_line_of_sight() -> bool:
 	
 	return false
 
-func execute_attack_with_simple_cone_effect():
-	"""🎯 EJECUTAR ATAQUE CON EFECTO DE CONO SIMPLE"""
-	# ACTUALIZAR TIEMPO INMEDIATAMENTE
-	last_attack_time = Time.get_ticks_msec() / 1000.0
-	
-	# APLICAR DAÑO DIRECTO AL JUGADOR
-	if player and player.has_method("take_damage"):
-		player.take_damage(damage)
-	
-	# 🎨 CREAR EFECTO DE CONO SIMPLE
-	create_simple_cone_attack_effect()
-
-func create_simple_cone_attack_effect():
-	"""🎨 CREAR EFECTO DE ATAQUE EN CONO SIMPLE"""
-	if not player:
-		return
-	
-	var attack_direction = (player.global_position - global_position).normalized()
-	var attack_color = get_attack_color()
-	var cone_length = attack_range
-	var cone_angle = 45.0  # Ángulo del cono en grados
-	
-	# CREAR LÍNEAS DEL CONO (5 líneas para formar el cono)
-	var cone_lines = []
-	var angle_step = cone_angle / 4.0  # 4 pasos = 5 líneas
-	
-	for i in range(5):
-		var line_angle_offset = deg_to_rad(-cone_angle/2.0 + (i * angle_step))
-		var line_direction = attack_direction.rotated(line_angle_offset)
-		var line_end_pos = global_position + (line_direction * cone_length)
-		
-		var cone_line = Line2D.new()
-		cone_line.width = 4.0
-		cone_line.default_color = attack_color
-		cone_line.z_index = 60
-		cone_line.add_point(global_position)
-		cone_line.add_point(line_end_pos)
-		get_tree().current_scene.add_child(cone_line)
-		cone_lines.append(cone_line)
-	
-	# CREAR ÁREA RELLENA DEL CONO
-	var cone_fill = Polygon2D.new()
-	cone_fill.color = Color(attack_color.r, attack_color.g, attack_color.b, 0.3)
-	cone_fill.z_index = 59
-	
-	# Puntos del cono
-	var cone_points = []
-	cone_points.append(Vector2.ZERO)  # Centro del enemigo
-	
-	for i in range(5):
-		var line_angle_offset = deg_to_rad(-cone_angle/2.0 + (i * angle_step))
-		var line_direction = attack_direction.rotated(line_angle_offset)
-		var point = line_direction * cone_length
-		cone_points.append(point)
-	
-	cone_fill.polygon = PackedVector2Array(cone_points)
-	cone_fill.global_position = global_position
-	get_tree().current_scene.add_child(cone_fill)
-	
-	# 📳 EFECTO DE IMPACTO EN EL JUGADOR
-	create_player_impact_effect()
-	
-	# AUTOLIMPIEZA RÁPIDA
-	var cleanup_timer = Timer.new()
-	cleanup_timer.wait_time = 0.2  # Muy rápido
-	cleanup_timer.one_shot = true
-	cleanup_timer.timeout.connect(func():
-		for line in cone_lines:
-			if is_instance_valid(line):
-				line.queue_free()
-		if is_instance_valid(cone_fill):
-			cone_fill.queue_free()
-		cleanup_timer.queue_free()
-	)
-	get_tree().current_scene.add_child(cleanup_timer)
-	cleanup_timer.start()
-
-func create_player_impact_effect():
-	"""📳 CREAR EFECTO DE IMPACTO EN EL JUGADOR"""
-	if not player or not player.animated_sprite:
-		return
-	
-	# Flash rojo en el jugador
-	var original_modulate = player.animated_sprite.modulate
-	player.animated_sprite.modulate = Color(2.0, 0.5, 0.5, 1.0)
-	
-	var tween = create_tween()
-	tween.tween_property(player.animated_sprite, "modulate", original_modulate, 0.15)
+func get_attack_color() -> Color:
+	"""Obtener color de ataque según tipo"""
+	match enemy_type:
+		"zombie_dog": return Color.RED
+		"zombie_crawler": return Color.LIME
+		_: return Color.ORANGE
 
 func update_collision_avoidance_system(delta):
 	"""🚀 SISTEMA ANTI-SOLAPAMIENTO MEJORADO"""
@@ -491,42 +613,6 @@ func avoid_enemy_overlap():
 			
 			# Aplicar separación suave
 			velocity += separation_direction * push_force * 100.0
-
-func has_clear_line_of_sight_simple() -> bool:
-	"""Verificación de línea de vista ultra-simple"""
-	if not player:
-		return false
-	
-	var space_state = get_world_2d().direct_space_state
-	var query = PhysicsRayQueryParameters2D.create(
-		global_position,
-		player.global_position
-	)
-	query.collision_mask = 3  # Solo paredes y barricadas sólidas
-	query.exclude = [self]
-	
-	var result = space_state.intersect_ray(query)
-	
-	# Si no hay obstáculos, puede atacar
-	if result.is_empty():
-		return true
-	
-	# Si hay obstáculo, verificar si es barricada sin tablones
-	var collider = result.get("collider")
-	if collider and collider is StaticBody2D:
-		var parent = collider.get_parent()
-		if parent and parent.name.begins_with("Barricade_"):
-			var planks = get_safe_barricade_planks(parent)
-			return planks == 0
-	
-	return false
-
-func get_attack_color() -> Color:
-	"""Obtener color de ataque según tipo"""
-	match enemy_type:
-		"zombie_dog": return Color.RED
-		"zombie_crawler": return Color.LIME
-		_: return Color.ORANGE
 
 func check_barricades_instant_jump():
 	"""Verificar barricadas sin tablones para salto instantáneo"""
@@ -924,15 +1010,18 @@ func update_improved_ai(delta):
 			execute_emergency_jump()
 
 func execute_movement_to_player_with_derrap():
-	"""Movimiento al jugador CON DERRAPAJE PARA PERROS"""
+	"""Movimiento al jugador CON DERRAPAJE PARA PERROS (MENOS AGRESIVO)"""
 	var direction = (player.global_position - global_position).normalized()
 	
 	if enemy_type == "zombie_dog":
 		dog_movement_timer += get_physics_process_delta_time()
-		if dog_movement_timer >= 1.5:
+		
+		# 🐕 PERROS MENOS AGRESIVOS: Más tiempo entre derrapajes
+		if dog_movement_timer >= 3.0 and dog_aggression_cooldown <= 0.0:  # Aumentado de 1.5 a 3.0
 			dog_movement_timer = 0.0
+			dog_aggression_cooldown = 2.0  # Cooldown adicional
 			var perpendicular = Vector2(-direction.y, direction.x)
-			dog_derrap_offset = perpendicular * randf_range(-100, 100)
+			dog_derrap_offset = perpendicular * randf_range(-60, 60)  # Reducido de 100 a 60
 		
 		var target_pos = player.global_position + dog_derrap_offset
 		direction = (target_pos - global_position).normalized()
@@ -1072,13 +1161,13 @@ func find_nearest_barricade() -> Node2D:
 	
 	return nearest_barricade
 
-func update_type_specific_mechanics(delta):
-	"""MECÁNICAS ESPECÍFICAS BALANCEADAS POR TIPO"""
+func update_type_specific_mechanics_balanced(delta):
+	"""🐕 MECÁNICAS ESPECÍFICAS BALANCEADAS POR TIPO - PERROS MENOS AGRESIVOS"""
 	match enemy_type:
 		"zombie_crawler":
 			update_crawler_balanced_jumping(delta)
 		"zombie_dog":
-			update_dog_balanced_mechanics(delta)
+			update_dog_less_aggressive_mechanics(delta)  # CAMBIADO
 
 func update_crawler_balanced_jumping(_delta):
 	"""CRAWLERS: Salto balanceado MÁS LENTO"""
@@ -1094,14 +1183,16 @@ func update_crawler_balanced_jumping(_delta):
 			crawler_last_jump_time = current_time
 			crawler_jump_timer = 2.0
 
-func update_dog_balanced_mechanics(_delta):
-	"""PERROS: Mecánicas balanceadas y justas"""
+func update_dog_less_aggressive_mechanics(_delta):
+	"""🐕 PERROS: Mecánicas MENOS AGRESIVAS y más justas"""
 	var distance_to_player = global_position.distance_to(player.global_position)
 	
-	if distance_to_player > 200.0 and dog_movement_timer >= 4.0:
+	# PERROS MENOS AGRESIVOS: Mayor distancia y más tiempo para saltar
+	if distance_to_player > 300.0 and dog_movement_timer >= 6.0:  # Aumentado de 200 a 300 y de 4 a 6
 		dog_movement_timer = 0.0
-		if current_state == EnemyState.MOVING_TO_PLAYER:
+		if current_state == EnemyState.MOVING_TO_PLAYER and dog_aggression_cooldown <= 0.0:
 			current_state = EnemyState.JUMPING
+			dog_aggression_cooldown = 3.0  # Cooldown adicional
 
 func get_normal_speed() -> float:
 	"""Velocidades BALANCEADAS según el tipo"""
@@ -1109,7 +1200,7 @@ func get_normal_speed() -> float:
 		"zombie_crawler":
 			return base_move_speed * 1.2
 		"zombie_dog":
-			return base_move_speed * 1.3
+			return base_move_speed * 1.1  # REDUCIDO de 1.3 a 1.1
 		_:
 			return base_move_speed * 1.2
 
@@ -1124,21 +1215,21 @@ func get_barricade_damage_per_hit() -> int:
 func get_jump_cooldown_by_type() -> float:
 	"""Cooldown de salto BALANCEADO por tipo"""
 	match enemy_type:
-		"zombie_dog": return 2.0
+		"zombie_dog": return 3.0  # AUMENTADO de 2.0 a 3.0
 		"zombie_crawler": return 1.0
 		_: return 1.5
 
 func get_jump_multiplier() -> float:
 	"""Multiplicador de velocidad de salto BALANCEADO"""
 	match enemy_type:
-		"zombie_dog": return 1.8
+		"zombie_dog": return 1.6  # REDUCIDO de 1.8 a 1.6
 		"zombie_crawler": return 2.0
 		_: return 1.6
 
 func get_jump_duration() -> float:
 	"""Duración del salto"""
 	match enemy_type:
-		"zombie_dog": return 0.5
+		"zombie_dog": return 0.6  # AUMENTADO de 0.5 a 0.6
 		"zombie_crawler": return 0.4
 		_: return 0.6
 
@@ -1214,6 +1305,9 @@ func take_damage(amount: int, is_headshot: bool = false, hit_height: float = 0.5
 	current_health -= final_damage
 	current_health = max(current_health, 0)
 	
+	# Actualizar health bar
+	update_health_display()
+	
 	if animated_sprite:
 		var flash_color = Color.YELLOW if is_headshot else Color.RED
 		animated_sprite.modulate = flash_color
@@ -1246,10 +1340,21 @@ func die():
 	
 	reset_barricade_attack_state()
 	
+	# Limpiar proyectiles de ataque
+	for projectile in attack_projectiles:
+		cleanup_projectile(projectile)
+	attack_projectiles.clear()
+	
 	if animated_sprite:
 		animated_sprite.modulate = Color.GRAY
 		var tween = create_tween()
 		tween.tween_property(animated_sprite, "modulate:a", 0.3, 1.5)
+	
+	# Ocultar health bar
+	if health_bar:
+		health_bar.visible = false
+	if health_label:
+		health_label.visible = false
 	
 	died.emit(self)
 
@@ -1272,12 +1377,12 @@ func _setup_variant():
 	var rand_val = randf()
 	if rand_val < 0.25:
 		enemy_type = "zombie_dog"
-		base_move_speed = 140.0
-		current_move_speed = 140.0
+		base_move_speed = 120.0  # REDUCIDO de 140.0
+		current_move_speed = 120.0
 		damage = 1
 		attack_range = 200.0
 		barricade_attack_range = 200.0
-		attack_cooldown = 1.0
+		attack_cooldown = 1.2  # AUMENTADO de 1.0
 	elif rand_val < 0.50:
 		enemy_type = "zombie_crawler"
 		base_move_speed = 130.0
@@ -1309,6 +1414,15 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	stuck_timer = 0.0
 	velocity = Vector2.ZERO
 	
+	# LIMPIAR PROYECTILES
+	for projectile in attack_projectiles:
+		cleanup_projectile(projectile)
+	attack_projectiles.clear()
+	is_launching_attack = false
+	
+	# RESETEAR COOLDOWNS DE PERROS
+	dog_aggression_cooldown = 0.0
+	
 	reset_barricade_attack_state()
 	
 	# Resetear timers
@@ -1327,6 +1441,13 @@ func setup_for_spawn(target_player: Player, round_health: int = -1):
 	if animated_sprite:
 		animated_sprite.visible = true
 		animated_sprite.modulate = get_enemy_display_color()
+	
+	# Actualizar health bar
+	update_health_display()
+	if health_bar:
+		health_bar.visible = true
+	if health_label:
+		health_label.visible = true
 
 func set_wall_system(wall_sys: WallSystem):
 	wall_system = wall_sys
@@ -1339,6 +1460,15 @@ func reset_for_pool():
 	jump_cooldown = 0.0
 	stuck_timer = 0.0
 	velocity = Vector2.ZERO
+	
+	# LIMPIAR PROYECTILES
+	for projectile in attack_projectiles:
+		cleanup_projectile(projectile)
+	attack_projectiles.clear()
+	is_launching_attack = false
+	
+	# RESETEAR COOLDOWNS
+	dog_aggression_cooldown = 0.0
 	
 	reset_barricade_attack_state()
 	
